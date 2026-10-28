@@ -23,8 +23,23 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: Guard self-tests
-        run: node --test "tools/guards/*.test.mjs"
+      - name: Cut network access
+        # Everything after this step runs offline; the probe proves the cut is in effect.
+        run: |
+          for t in iptables ip6tables; do
+            sudo $t -A OUTPUT -o lo -j ACCEPT
+            sudo $t -A OUTPUT -j REJECT
+          done
+          if timeout 5 bash -c 'exec 3<>/dev/tcp/1.1.1.1/443' 2>/dev/null; then
+            echo "network is still reachable" >&2
+            exit 1
+          fi
+      - name: Syntax check
+        run: git ls-files -z '*.mjs' | xargs -0 -n1 node --check
+      - name: Tests (guards, canonical, commitment, conformance, tamper), offline
+        run: node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"
+      - name: Independent Python reference against all vectors
+        run: python3 -I tools/reference/rnnet_reference.py
 
   guards:
     runs-on: ubuntu-24.04

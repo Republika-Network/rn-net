@@ -1,0 +1,313 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.canonical-json.v1",
+  "kind": "canonical-invalid",
+  "vectors": [
+    {
+      "id": "empty",
+      "description": "Empty input.",
+      "input": "",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "whitespace-only",
+      "description": "Whitespace only.",
+      "input": " \n",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "trailing-comma-object",
+      "description": "Trailing comma in an object.",
+      "input": "{\"a\":1,}",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "trailing-comma-array",
+      "description": "Trailing comma in an array.",
+      "input": "[1,]",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "single-quotes",
+      "description": "Single-quoted strings.",
+      "input": "{'a':1}",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "unquoted-key",
+      "description": "Unquoted key.",
+      "input": "{a:1}",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "comment",
+      "description": "Comments are not JSON.",
+      "input": "{\"a\":1 /* x */}",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "leading-zero",
+      "description": "Leading zero.",
+      "input": "01",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "leading-zero-negative",
+      "description": "Leading zero after minus.",
+      "input": "[-01]",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "nan",
+      "description": "NaN is not JSON.",
+      "input": "NaN",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "infinity",
+      "description": "Infinity is not JSON.",
+      "input": "[Infinity]",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "plus-sign",
+      "description": "A leading plus sign.",
+      "input": "+1",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "bare-fraction",
+      "description": "A fraction without integer part.",
+      "input": ".5",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "incomplete-fraction",
+      "description": "A dot without digits.",
+      "input": "1.",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "incomplete-exponent",
+      "description": "An exponent without digits.",
+      "input": "1e",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "fraction",
+      "description": "Fractions are not allowed.",
+      "input": "1.5",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "integral-fraction",
+      "description": "1.0 is an ambiguous encoding of 1.",
+      "input": "1.0",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "exponent",
+      "description": "Exponents are not allowed.",
+      "input": "1e2",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "exponent-uppercase-signed",
+      "description": "Signed uppercase exponent.",
+      "input": "[1E+2]",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "negative-zero-fraction",
+      "description": "-0.0 fails as a non-integer first.",
+      "input": "-0.0",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "negative-zero",
+      "description": "Negative zero.",
+      "input": "-0",
+      "expectedError": "RNCJ_NEGATIVE_ZERO"
+    },
+    {
+      "id": "negative-zero-nested",
+      "description": "Negative zero inside an array.",
+      "input": "{\"n\":[-0]}",
+      "expectedError": "RNCJ_NEGATIVE_ZERO"
+    },
+    {
+      "id": "above-safe",
+      "description": "2^53 is outside the safe range.",
+      "input": "9007199254740992",
+      "expectedError": "RNCJ_NUMBER_OUT_OF_RANGE"
+    },
+    {
+      "id": "below-safe",
+      "description": "-2^53 is outside the safe range.",
+      "input": "-9007199254740992",
+      "expectedError": "RNCJ_NUMBER_OUT_OF_RANGE"
+    },
+    {
+      "id": "huge-integer",
+      "description": "A 21-digit integer.",
+      "input": "100000000000000000000",
+      "expectedError": "RNCJ_NUMBER_OUT_OF_RANGE"
+    },
+    {
+      "id": "duplicate-key",
+      "description": "Duplicate key.",
+      "input": "{\"a\":1,\"a\":1}",
+      "expectedError": "RNCJ_DUPLICATE_KEY"
+    },
+    {
+      "id": "duplicate-key-escaped",
+      "description": "Keys are compared after unescaping.",
+      "input": "{\"a\":1,\"\\u0061\":2}",
+      "expectedError": "RNCJ_DUPLICATE_KEY"
+    },
+    {
+      "id": "duplicate-key-nested",
+      "description": "Duplicates are rejected at any depth.",
+      "input": "{\"x\":{\"k\":1,\"k\":2}}",
+      "expectedError": "RNCJ_DUPLICATE_KEY"
+    },
+    {
+      "id": "lone-high-surrogate",
+      "description": "Unpaired high surrogate escape.",
+      "input": "\"\\ud800\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "lone-low-surrogate",
+      "description": "Unpaired low surrogate escape.",
+      "input": "\"\\udc00\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "reversed-surrogates",
+      "description": "Low surrogate before high surrogate.",
+      "input": "\"\\ude00\\ud83d\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "high-surrogate-then-char",
+      "description": "High surrogate followed by a normal character.",
+      "input": "\"\\ud83dx\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "high-surrogate-then-escape",
+      "description": "High surrogate followed by an escaped non-surrogate.",
+      "input": "\"\\ud83d\\u0041\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "two-high-surrogates",
+      "description": "High surrogate followed by another high surrogate.",
+      "input": "\"\\ud800\\ud800\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "lone-surrogate-key",
+      "description": "Unpaired surrogate in a key.",
+      "input": "{\"\\ud800\":1}",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "invalid-escape",
+      "description": "Unknown escape.",
+      "input": "\"\\x41\"",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "short-unicode-escape",
+      "description": "Fewer than four hex digits.",
+      "input": "\"\\u12\"",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "raw-control-character",
+      "description": "Unescaped U+0001 inside a string.",
+      "inputHex": "220122",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "raw-tab",
+      "description": "Unescaped tab inside a string.",
+      "inputHex": "2261096222",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "unterminated-string",
+      "description": "Unterminated string.",
+      "input": "\"abc",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "trailing-value",
+      "description": "Two top-level values.",
+      "input": "{} {}",
+      "expectedError": "RNCJ_TRAILING_CONTENT"
+    },
+    {
+      "id": "trailing-number",
+      "description": "Two top-level numbers.",
+      "input": "1 2",
+      "expectedError": "RNCJ_TRAILING_CONTENT"
+    },
+    {
+      "id": "extra-brace",
+      "description": "Extra closing brace.",
+      "input": "{\"a\":1}}",
+      "expectedError": "RNCJ_TRAILING_CONTENT"
+    },
+    {
+      "id": "utf8-invalid-continuation",
+      "description": "0xC3 followed by a non-continuation byte.",
+      "inputHex": "22c32822",
+      "expectedError": "RNCJ_INVALID_UTF8"
+    },
+    {
+      "id": "utf8-overlong",
+      "description": "Overlong encoding of '/'.",
+      "inputHex": "22c0af22",
+      "expectedError": "RNCJ_INVALID_UTF8"
+    },
+    {
+      "id": "utf8-encoded-surrogate",
+      "description": "UTF-8 encoding of U+D800 (CESU/WTF-8).",
+      "inputHex": "22eda08022",
+      "expectedError": "RNCJ_INVALID_UTF8"
+    },
+    {
+      "id": "utf8-truncated",
+      "description": "Truncated three-byte sequence.",
+      "inputHex": "22e28222",
+      "expectedError": "RNCJ_INVALID_UTF8"
+    },
+    {
+      "id": "utf8-invalid-byte",
+      "description": "0xFF never appears in UTF-8.",
+      "inputHex": "22ff22",
+      "expectedError": "RNCJ_INVALID_UTF8"
+    },
+    {
+      "id": "bom",
+      "description": "A UTF-8 byte order mark.",
+      "inputHex": "efbbbf7b7d",
+      "expectedError": "RNCJ_BOM"
+    },
+    {
+      "id": "depth-65-arrays",
+      "description": "65 nested arrays exceed the depth limit.",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "expectedError": "RNCJ_DEPTH_EXCEEDED"
+    },
+    {
+      "id": "depth-65-objects",
+      "description": "65 nested objects exceed the depth limit.",
+      "input": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+      "expectedError": "RNCJ_DEPTH_EXCEEDED"
+    }
+  ]
+}

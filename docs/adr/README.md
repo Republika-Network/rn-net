@@ -6,6 +6,6 @@ ADR is not edited to change its decision; a later ADR supersedes it.
 | ADR | Title | Status |
 |---|---|---|
 | [ADR-RN-001](ADR-RN-001-lane-boundary.md) | Lane boundary and authority | Accepted |
-| ADR-RN-002 | Canonicalization profile | Planned (RN-NET-01) |
-| ADR-RN-003 | Evidence commitment format and `rnnet.*` namespace | Planned (RN-NET-01) |
-| ADR-RN-004 | Trust and claim taxonomy | Planned (RN-NET-01) |
+| [ADR-RN-002](ADR-RN-002-canonical-json-profile.md) | Canonical JSON profile | Accepted |
+| [ADR-RN-003](ADR-RN-003-evidence-commitment-format.md) | Evidence commitment format and `rnnet.*` namespace | Accepted |
+| [ADR-RN-004](ADR-RN-004-verification-trust-taxonomy.md) | Verification and trust taxonomy | Accepted |

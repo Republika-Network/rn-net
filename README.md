@@ -7,9 +7,10 @@ that evidence on public test networks.
 
 ## Status
 
-**Pre-implementation.** This repository currently contains governance files,
-CI and repository security guards only. It contains no verifier, no anchoring
-code and no evidence.
+**Early implementation (RN-NET-01).** This repository contains the canonical
+JSON profile, the evidence commitment format, their specifications and
+conformance vectors, and repository security guards. It contains no evidence
+verifier, no anchoring code and no real evidence; all test inputs are synthetic.
 
 - **No operating network exists.** There are no nodes, no federation and no
   service to connect to.
@@ -48,14 +49,31 @@ their use has been expressly authorized and recorded in this repository.
 
 Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 
+## Specifications
+
+| Specification | Implementation |
+|---|---|
+| [`rnnet.canonical-json.v1`](spec/rnnet.canonical-json.v1.md) | [`packages/canonical/`](packages/canonical/) |
+| [`rnnet.evidence-commitment.v1`](spec/rnnet.evidence-commitment.v1.md) | [`packages/commitment/`](packages/commitment/) |
+| [`rnnet.verification-taxonomy.v1`](spec/rnnet.verification-taxonomy.v1.md) | [`packages/commitment/`](packages/commitment/) |
+
+Conformance vectors live in [`vectors/`](vectors/) and are checked by two
+independent implementations: the JavaScript packages
+([`packages/conformance/`](packages/conformance/)) and a Python reference
+([`tools/reference/`](tools/reference/)). Everything runs on Node.js 22 and
+Python 3 built-ins only; there are no third-party dependencies.
+
 ## Contributing and security
 
 Changes reach `main` only through pull requests that pass the required checks.
-Run the repository guards locally with Node.js 22:
+Run the same checks locally:
 
 ```sh
-node --test "tools/guards/*.test.mjs"
+node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"
+python3 -I tools/reference/rnnet_reference.py
 node tools/guards/run.mjs
 ```
+
+Tests run with network access blocked (`tools/offline.mjs`).
 
 To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
