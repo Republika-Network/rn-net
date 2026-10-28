@@ -23,25 +23,22 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: Offline checks (syntax, tests, independent Python reference)
-        # Runs in a new network namespace with no interfaces, so the checks cannot reach the
-        # network while the runner itself stays connected. The probe proves the isolation.
+      - name: Isolation check rejects a connected environment (negative control)
+        # The same check that guards the offline run must fail here, where the network is
+        # reachable, and for the expected reason.
         run: |
-          sudo unshare --net -- sudo -u "$USER" env "PATH=$PATH" "HOME=$HOME" bash -euo pipefail -c '
-            if timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
-              echo "network is reachable inside the namespace" >&2
-              exit 1
-            fi
-            echo "::group::Syntax check"
-            git ls-files -z "*.mjs" | xargs -0 -n1 node --check
-            echo "::endgroup::"
-            echo "::group::Tests (guards, canonical, commitment, conformance, tamper)"
-            node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"
-            echo "::endgroup::"
-            echo "::group::Independent Python reference against all vectors"
-            python3 -I -B tools/reference/rnnet_reference.py
-            echo "::endgroup::"
-          '
+          if out=$(sudo env "PATH=$PATH" tools/ci/offline-checks.sh --isolation-only 2>&1); then
+            echo "$out"
+            echo "::error::the isolation check passed outside a network namespace" >&2
+            exit 1
+          fi
+          echo "$out"
+          grep -q 'interfaces other than loopback present' <<<"$out"
+      - name: Offline checks (syntax, tests, independent Python reference)
+        # A new network namespace with loopback only, so the checks cannot reach the network while
+        # the runner keeps its own connection. The script proves isolation (structure, a positive
+        # loopback control, negative probes), then runs the checks as the runner user.
+        run: sudo env "PATH=$PATH" unshare --net -- tools/ci/offline-checks.sh
 
   guards:
     runs-on: ubuntu-24.04

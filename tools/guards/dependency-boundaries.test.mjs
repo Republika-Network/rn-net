@@ -37,3 +37,49 @@ test('rejects declared dependencies in any package.json', () => {
   assert.deepEqual(rules('package.json', '{"devDependencies":{"typescript":"5.0.0"}}'), ['undeclared-devDependencies']);
   assert.deepEqual(rules('package.json', '{"private":true}'), []);
 });
+
+// RN-NET-01H, finding F6: every bypass reported by the independent review is now flagged.
+test('flags the import forms and loaders reported as bypasses', () => {
+  const cases = {
+    'import{connect}from"node:net";': 'builtin-not-allowed:node:net',
+    "import/**/net from 'node:net';": 'builtin-not-allowed:node:net',
+    "/* a */import net from 'node:net';": 'builtin-not-allowed:node:net',
+    "import net from 'net';": 'third-party-import:net',
+    "import x from 'node:net' with { type: 'json' };": 'builtin-not-allowed:node:net',
+    'const n = await import(`node:net`);': 'forbidden-construct:dynamic-import-non-literal',
+    "const m = 'node:' + 'net'; await import(m);": 'forbidden-construct:dynamic-import-non-literal',
+    "const net = process.getBuiltinModule('node:net');": 'forbidden-construct:process-internals',
+    "const { getBuiltinModule: g } = process; g('node:net');": 'forbidden-construct:get-builtin-module',
+    "process.binding('tcp_wrap');": 'forbidden-construct:process-internals',
+    "process['binding']('tcp_wrap');": 'forbidden-construct:process-internals',
+    "globalThis['fet' + 'ch']('https://example.org');": 'forbidden-construct:computed-global-access',
+    "await fetch('https://example.org');": 'forbidden-construct:global-fetch',
+    "new WebSocket('wss://example.org');": 'forbidden-construct:websocket',
+    "const w = new Worker('./x.mjs');": 'forbidden-construct:worker',
+    "const net = require('node:net');": 'forbidden-construct:require',
+    "import { createRequire } from 'node:module';": 'forbidden-construct:create-require',
+    "eval('1');": 'forbidden-construct:eval',
+    "const f = new Function('return 1');": 'forbidden-construct:function-constructor',
+  };
+  for (const [source, rule] of Object.entries(cases)) {
+    assert.ok(rules('packages/canonical/src/x.mjs', source).includes(rule), `${source} -> ${rule}`);
+  }
+});
+
+test('only ES modules (and a README) may live in a package, in any directory', () => {
+  assert.deepEqual(rules('packages/canonical/src/x.cjs', "require('node:net');"), ['non-module-file']);
+  assert.deepEqual(rules('packages/canonical/src/x.js', ''), ['non-module-file']);
+  assert.deepEqual(rules('packages/canonical/data.json', '{}'), ['non-module-file']);
+  assert.deepEqual(rules('packages/canonical/README.md', '# x'), []);
+  assert.deepEqual(rules('packages/canonical/lib/x.mjs', "import net from 'node:net';"), ['builtin-not-allowed:node:net']);
+});
+
+test('ordinary code is not flagged', () => {
+  const ok = [
+    "new URL('../vectors/', import.meta.url);",
+    'const isFunction = (f) => typeof f === "function";',
+    'const fetched = cache.fetchAll;',
+    "const workers = 'Workers';",
+  ];
+  for (const source of ok) assert.deepEqual(rules('packages/conformance/src/x.mjs', source), [], source);
+});

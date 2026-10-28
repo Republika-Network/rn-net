@@ -1,6 +1,7 @@
 // Closed-schema validation of the rnnet.evidence-commitment.v1 envelope (spec §3–§4).
 // Checks run in the order the specification fixes, so every conforming implementation
 // reports the same first error for the same input.
+import { canonicalize, parse } from '../../canonical/src/index.mjs';
 import { CommitmentError, CommitmentErrorCode as E } from './errors.mjs';
 
 export const FORMAT = 'rnnet.evidence-commitment.v1';
@@ -27,17 +28,26 @@ const MAX_SOURCE_REF = 512;
 export const isSha256Digest = (value) => typeof value === 'string' && SHA256_DIGEST.test(value);
 
 /**
- * Validates an envelope and returns a plain copy containing exactly the six fields.
+ * Validates an envelope given as an in-memory value and returns a frozen copy containing
+ * exactly the six fields (spec §4.1). The value is first snapshotted through canonical
+ * serialization, which reads each property once and rejects accessors, Proxies' changing
+ * answers and anything without a JSON representation (RNCJ_* errors); only that snapshot is
+ * validated. A getter can therefore never show one value to validation and another to hashing.
  * @param {unknown} value
- * @returns {Record<string, string>}
+ * @returns {Readonly<Record<string, string>>}
  */
 export function validateEnvelope(value) {
+  return validateParsedEnvelope(parse(canonicalize(value)));
+}
+
+/**
+ * Validates a value produced by the strict parser: plain data only, no accessors.
+ * @param {unknown} value
+ * @returns {Readonly<Record<string, string>>}
+ */
+export function validateParsedEnvelope(value) {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     throw new CommitmentError(E.NOT_OBJECT, 'The envelope must be a JSON object.');
-  }
-  const proto = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) {
-    throw new CommitmentError(E.NOT_OBJECT, 'The envelope must be a plain object.');
   }
 
   const unknown = Object.keys(value).filter((key) => !FIELDS.includes(key)).sort();
@@ -67,7 +77,7 @@ export function validateEnvelope(value) {
     throw new CommitmentError(E.INVALID_SOURCE_REF, 'Invalid source reference.', 'sourceRef');
   }
 
-  return Object.fromEntries(FIELDS.map((field) => [field, value[field]]));
+  return Object.freeze(Object.fromEntries(FIELDS.map((field) => [field, value[field]])));
 }
 
 const matches = (value, pattern, maxLength) => value.length <= maxLength && pattern.test(value);

@@ -31,6 +31,13 @@ UTF-16 code unit. Byte values are written in hexadecimal.
 
 These three checks run in this order, before any JSON is read.
 
+An implementation MAY also accept text that has already been decoded, as a convenience. It
+MUST then treat the text as its UTF-8 encoding and apply the same checks in the same order:
+size counted in UTF-8 bytes, then the byte order mark (U+FEFF), then encodability (text with
+an unpaired surrogate has no UTF-8 encoding: `RNCJ_LONE_SURROGATE`). Decoded text cannot
+reveal bytes that were already replaced during decoding, so verification of committed
+material MUST use the original bytes.
+
 ### 3.2 Grammar
 
 The decoded text MUST be exactly one JSON value (RFC 8259 §2) surrounded by optional
@@ -56,8 +63,12 @@ Only integers in the safe range are therefore representable, and each has exactl
    case. Any other escape is `RNCJ_SYNTAX`.
 3. A `\uXXXX` escape for a high surrogate (D800–DBFF) MUST be immediately followed by a
    `\uXXXX` escape for a low surrogate (DC00–DFFF); the pair denotes one supplementary
-   character. A low surrogate escape on its own, or a high surrogate not followed by one,
-   is `RNCJ_LONE_SURROGATE`.
+   character. A low surrogate escape on its own is `RNCJ_LONE_SURROGATE`. After a high
+   surrogate escape:
+   - `\u` followed by anything other than four hex digits is `RNCJ_SYNTAX` (an invalid escape);
+   - anything else that is not a low surrogate escape is `RNCJ_LONE_SURROGATE`: the end of the
+     input, `\u` with four hex digits outside DC00–DFFF, a different escape such as `\n`, or
+     any other character.
 4. No Unicode normalization is applied. `"é"` (U+00E9) and `"é"` (U+0065 U+0301) are
    different strings.
 5. Noncharacters (for example U+FFFF) are allowed.
@@ -115,11 +126,18 @@ characters: U+1F600 (code units D83D DE00) sorts **before** U+FFFD.
 
 An implementation that canonicalizes values built in a program, rather than parsed from
 bytes, MUST apply the same restrictions: integers in the safe range only, no negative zero,
-well-formed strings and keys only, and depth at most 64. It MUST reject, not coerce, any
-value that has no JSON representation under this profile: undefined, functions, symbols,
-big integers, dates, maps, typed arrays, class instances, sparse arrays, accessor or
-non-enumerable properties, and symbol keys (`RNCJ_UNSUPPORTED_VALUE`). Non-finite numbers
-are `RNCJ_UNSUPPORTED_VALUE`; finite non-integers are `RNCJ_NUMBER_NOT_INTEGER`.
+well-formed strings and keys only, and depth at most 64.
+
+It MUST read each object and array exactly once, as one snapshot of its own properties, and
+both check and serialize that snapshot. A value whose answers change between reads (an
+accessor, a proxy) can then never pass the checks with one value and be written with another.
+
+It MUST reject, not coerce, any value that has no JSON representation under this profile:
+undefined, functions, symbols, big integers, dates, maps, typed arrays, class instances,
+sparse arrays, arrays with own properties other than their indices and `length`, accessor or
+non-enumerable properties (including array elements), and symbol keys
+(`RNCJ_UNSUPPORTED_VALUE`). Non-finite numbers are `RNCJ_UNSUPPORTED_VALUE`; finite
+non-integers are `RNCJ_NUMBER_NOT_INTEGER`.
 
 ## 6. Error codes
 

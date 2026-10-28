@@ -57,23 +57,33 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 | [`rnnet.evidence-commitment.v1`](spec/rnnet.evidence-commitment.v1.md) | [`packages/commitment/`](packages/commitment/) |
 | [`rnnet.verification-taxonomy.v1`](spec/rnnet.verification-taxonomy.v1.md) | [`packages/commitment/`](packages/commitment/) |
 
-Conformance vectors live in [`vectors/`](vectors/) and are checked by two
-independent implementations: the JavaScript packages
-([`packages/conformance/`](packages/conformance/)) and a Python reference
-([`tools/reference/`](tools/reference/)). Everything runs on Node.js 22 and
-Python 3 built-ins only; there are no third-party dependencies.
+Conformance vectors live in [`vectors/`](vectors/) (format described in
+[`vectors/README.md`](vectors/README.md)) and are checked by two implementations:
+the JavaScript packages ([`packages/conformance/`](packages/conformance/)) and a
+Python reference ([`tools/reference/`](tools/reference/)) written from the
+specifications. The two share a similar structure, so agreement between them is
+evidence, not proof, of correctness. Everything runs on Node.js 22 and Python 3
+built-ins only; there are no third-party dependencies.
 
 ## Contributing and security
 
 Changes reach `main` only through pull requests that pass the required checks.
-Run the same checks locally:
+Required checks are not a substitute for independent review; see
+[`docs/governance/review-process.md`](docs/governance/review-process.md).
+
+Run the same checks as CI locally, in a network namespace without network access:
 
 ```sh
-node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"
-python3 -I -B tools/reference/rnnet_reference.py
+unshare -rn tools/ci/offline-checks.sh   # syntax, tests, Python reference; proves isolation first
 node tools/guards/run.mjs
 ```
 
-Tests run with network access blocked (`tools/offline.mjs`).
+Network isolation comes from the namespace. The test preload
+(`tools/offline.mjs`) only adds defense in depth by making common Node network,
+worker and subprocess APIs throw; it is not a sandbox. Without `unshare`, the
+tests can be run directly with
+`node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"`
+and `python3 -I -B tools/reference/rnnet_reference.py`, but then nothing
+enforces that they stay offline.
 
 To report a vulnerability, see [`SECURITY.md`](SECURITY.md).

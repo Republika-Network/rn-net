@@ -12,8 +12,24 @@ export function loadVectors(name) {
   return file;
 }
 
-/** The exact input bytes of a vector: inputHex when present, otherwise UTF-8 of input. */
+/**
+ * The exact input bytes of a vector: inputHex when present; inputPattern (prefix + repeat ×
+ * count + suffix, UTF-8) for inputs too large to store literally; otherwise UTF-8 of input.
+ */
 export function inputBytes(vector) {
   if (Object.hasOwn(vector, 'inputHex')) return Uint8Array.from(Buffer.from(vector.inputHex, 'hex'));
+  if (Object.hasOwn(vector, 'inputPattern')) {
+    const { prefix, repeat, count, suffix } = vector.inputPattern;
+    return new TextEncoder().encode(prefix + repeat.repeat(count) + suffix);
+  }
   return new TextEncoder().encode(vector.input);
+}
+
+/** The expected canonical text of a valid vector: expectedPattern when present, otherwise expected. */
+export function expectedText(vector) {
+  if (Object.hasOwn(vector, 'expectedPattern')) {
+    const { prefix, repeat, count, suffix } = vector.expectedPattern;
+    return prefix + repeat.repeat(count) + suffix;
+  }
+  return vector.expected;
 }

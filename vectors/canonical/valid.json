@@ -156,6 +156,37 @@
       "input": "\"e\\u0301\"",
       "expected": "\"e\u0301\"",
       "expectedSha256": "3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2"
+    },
+    {
+      "id": "max-depth-objects",
+      "description": "64 nested objects are at the depth limit.",
+      "input": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+      "expected": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+      "expectedSha256": "a741f79345b1f3886abe63c669e21f7aa6a2f3147600c61f6c0d6cee13802adb"
+    },
+    {
+      "id": "zeros-and-negatives",
+      "description": "Zero and negative integers inside an array.",
+      "input": "[0,10,-10]",
+      "expected": "[0,10,-10]",
+      "expectedSha256": "d33735540d59dad4634a22f6e9b1f6c352deb19a15effa0d52d760887fe5c3d4"
+    },
+    {
+      "id": "size-at-limit",
+      "description": "A string whose UTF-8 encoding is exactly 1,048,576 bytes is accepted.",
+      "inputPattern": {
+        "prefix": "\"",
+        "repeat": "a",
+        "count": 1048574,
+        "suffix": "\""
+      },
+      "expectedPattern": {
+        "prefix": "\"",
+        "repeat": "a",
+        "count": 1048574,
+        "suffix": "\""
+      },
+      "expectedSha256": "ed82f33b6fb1d3cdce0d98e6ac90a1debcde2868ecabf5e63ad5e96893f2ae3e"
     }
   ]
 }

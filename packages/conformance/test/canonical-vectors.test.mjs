@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { canonicalBytes, canonicalizeText, parse } from '../../canonical/src/index.mjs';
-import { inputBytes, loadVectors } from '../src/vectors.mjs';
+import { expectedText, inputBytes, loadVectors } from '../src/vectors.mjs';
 
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
@@ -17,11 +17,12 @@ test('vector files declare the canonical profile', () => {
 for (const vector of valid.vectors) {
   test(`canonical valid: ${vector.id}`, () => {
     const bytes = inputBytes(vector);
-    assert.equal(canonicalizeText(bytes), vector.expected);
+    const expected = expectedText(vector);
+    assert.equal(canonicalizeText(bytes), expected);
     const out = canonicalBytes(parse(bytes));
     assert.equal(sha256(out), vector.expectedSha256);
     // Canonical output is a fixed point: canonicalizing it again changes nothing.
-    assert.equal(canonicalizeText(out), vector.expected);
+    assert.equal(canonicalizeText(out), expected);
   });
 }
 
@@ -36,7 +37,7 @@ for (const vector of invalid.vectors) {
 
 test('equivalent inputs share one canonical form and hash', () => {
   const byExpected = new Map();
-  for (const v of valid.vectors) byExpected.set(v.expected, [...(byExpected.get(v.expected) ?? []), v.id]);
+  for (const v of valid.vectors) byExpected.set(expectedText(v), [...(byExpected.get(expectedText(v)) ?? []), v.id]);
   const groups = [...byExpected.values()].filter((ids) => ids.length > 1);
   assert.ok(groups.some((ids) => ids.includes('non-ascii-escaped') && ids.includes('non-ascii-literal')));
 });
