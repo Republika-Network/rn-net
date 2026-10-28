@@ -1,0 +1,25 @@
+# Key material and credentials must never be tracked (see SECURITY.md).
+.env
+.env.*
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.seed
+keys/
+.secrets/
+id_rsa*
+id_ed25519*
+id_ecdsa*
+
+# Packed artifacts are referenced by digest, never committed.
+*.tgz
+
+# Tooling output
+node_modules/
+coverage/
+dist/
+.DS_Store
