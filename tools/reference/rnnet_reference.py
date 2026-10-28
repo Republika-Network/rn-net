@@ -2,7 +2,7 @@
 rnnet.evidence-commitment.v1, written from the specifications in spec/ without
 reference to the JavaScript packages. Python standard library only.
 
-Run `python3 -I tools/reference/rnnet_reference.py` from the repository root to check
+Run `python3 -I -B tools/reference/rnnet_reference.py` from the repository root to check
 every conformance vector in vectors/. It exits 1 on any disagreement.
 """
 

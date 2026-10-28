@@ -70,7 +70,7 @@ Run the same checks locally:
 
 ```sh
 node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"
-python3 -I tools/reference/rnnet_reference.py
+python3 -I -B tools/reference/rnnet_reference.py
 node tools/guards/run.mjs
 ```
 
