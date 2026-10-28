@@ -1,5 +1,6 @@
 // Runs every repository guard over the tracked files. Exits 1 if any guard reports a finding.
 import { formatFindings, trackedFiles } from './lib.mjs';
+import * as dependencyBoundaries from './dependency-boundaries.mjs';
 import * as forbiddenPaths from './forbidden-paths.mjs';
 import * as formatNamespace from './format-namespace.mjs';
 import * as secretShapes from './secret-shapes.mjs';
@@ -10,6 +11,7 @@ const guards = {
   'secret-shapes': secretShapes,
   'format-namespace': formatNamespace,
   'upstream-content': upstreamContent,
+  'dependency-boundaries': dependencyBoundaries,
 };
 
 const files = trackedFiles();

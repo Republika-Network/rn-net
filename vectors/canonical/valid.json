@@ -1,0 +1,161 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.canonical-json.v1",
+  "kind": "canonical-valid",
+  "vectors": [
+    {
+      "id": "key-order",
+      "description": "Object keys are sorted.",
+      "input": "{\"b\":2,\"a\":1,\"c\":3}",
+      "expected": "{\"a\":1,\"b\":2,\"c\":3}",
+      "expectedSha256": "e6a3385fb77c287a712e7f406a451727f0625041823ecf23bea7ef39b2e39805"
+    },
+    {
+      "id": "whitespace",
+      "description": "Insignificant whitespace (space, tab, LF, CR) is removed.",
+      "input": " \t\n\r{ \"a\" : [ 1 , 2 ] }\r\n",
+      "expected": "{\"a\":[1,2]}",
+      "expectedSha256": "01530d164d479cf08e26d3b1ad9bdba927120d97e2d057a6d792db778780d720"
+    },
+    {
+      "id": "nested-sorting",
+      "description": "Nested objects are sorted; array order is kept.",
+      "input": "{\"z\":{\"y\":1,\"x\":[{\"b\":1,\"a\":2}]},\"a\":null}",
+      "expected": "{\"a\":null,\"z\":{\"x\":[{\"a\":2,\"b\":1}],\"y\":1}}",
+      "expectedSha256": "e33b0495e6bfd853be253c19aaa57f977ec9505335ac471806e7ee264f8cef14"
+    },
+    {
+      "id": "array-order",
+      "description": "Array order is data.",
+      "input": "[3,1,2]",
+      "expected": "[3,1,2]",
+      "expectedSha256": "51bda7ab4e44726cde71fcb6e4b515357059bb6b6dd5146d1fc50f73f11678c6"
+    },
+    {
+      "id": "empty-containers",
+      "description": "Empty object and array.",
+      "input": "{ \"b\" : [ ] , \"a\" : { } }",
+      "expected": "{\"a\":{},\"b\":[]}",
+      "expectedSha256": "aeeba1e56a144077f89e26c930dad7cf933e9383cfb8e33ddff618233b29be76"
+    },
+    {
+      "id": "literals",
+      "description": "true, false and null.",
+      "input": "[true, false, null]",
+      "expected": "[true,false,null]",
+      "expectedSha256": "4d0f18de2133118249c26acc481838d4f6bb6bc1de882d99abbd19ae9397e8df"
+    },
+    {
+      "id": "top-level-string",
+      "description": "A scalar may be the top-level value.",
+      "input": " \"x\" ",
+      "expected": "\"x\"",
+      "expectedSha256": "ba2df4903a2c14e86dc3bcca58911b44ac1d2514b7227bf6eb08cfb978f55a1b"
+    },
+    {
+      "id": "top-level-zero",
+      "description": "Zero.",
+      "input": "0",
+      "expected": "0",
+      "expectedSha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+    },
+    {
+      "id": "integer-bounds",
+      "description": "The safe-integer bounds are accepted.",
+      "input": "[9007199254740991,-9007199254740991,0,-1]",
+      "expected": "[9007199254740991,-9007199254740991,0,-1]",
+      "expectedSha256": "59bc70f460ba5ec46264689490aaaec59bad9706a10b71e25d5871ac0f54a989"
+    },
+    {
+      "id": "escape-equivalence",
+      "description": "\\u0041 and \\/ decode to the same characters as A and /.",
+      "input": "\"\\u0041\\/B\"",
+      "expected": "\"A/B\"",
+      "expectedSha256": "aafa38013a7831c95664c669e5f4084858bbf19ab582aae84ab926ea3cd26608"
+    },
+    {
+      "id": "non-ascii-escaped",
+      "description": "An escaped non-ASCII character is emitted as UTF-8.",
+      "input": "\"\\u00e9\"",
+      "expected": "\"\u00e9\"",
+      "expectedSha256": "f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086"
+    },
+    {
+      "id": "non-ascii-literal",
+      "description": "The same character given as UTF-8 bytes canonicalizes identically.",
+      "inputHex": "22c3a922",
+      "expected": "\"\u00e9\"",
+      "expectedSha256": "f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086"
+    },
+    {
+      "id": "non-ascii-uppercase-escape",
+      "description": "Escape hex digits may be uppercase in the input.",
+      "input": "\"\\u00E9\"",
+      "expected": "\"\u00e9\"",
+      "expectedSha256": "f2886017e9c7abacf804b54d64787dce2b611c9544ba21f3affdd126a6e50086"
+    },
+    {
+      "id": "astral-pair",
+      "description": "A surrogate-pair escape is emitted as one 4-byte UTF-8 character.",
+      "input": "\"\\ud83d\\ude00\"",
+      "expected": "\"\ud83d\ude00\"",
+      "expectedSha256": "7a0c50b92434b015545fe93ab723db2d4b2cdd14a441405624a9ce8be29f1d5a"
+    },
+    {
+      "id": "control-characters",
+      "description": "U+0000..U+001F are escaped; b, t, n, f, r use short forms.",
+      "input": "\"\\u0000\\u0008\\u0009\\u000a\\u000b\\u000c\\u000d\\u001f\"",
+      "expected": "\"\\u0000\\b\\t\\n\\u000b\\f\\r\\u001f\"",
+      "expectedSha256": "f477bcb22cd58bf41a5162851ad295b9a62629b5fac63a0b3768cf1119192baa"
+    },
+    {
+      "id": "quote-backslash",
+      "description": "Quote and backslash are escaped.",
+      "input": "\"\\u0022\\u005c\"",
+      "expected": "\"\\\"\\\\\"",
+      "expectedSha256": "c7061f0fe2692c517003ff6f2a463fc36aab70e30ea6a45f97fcf7b5611aec74"
+    },
+    {
+      "id": "no-extra-escaping",
+      "description": "DEL, U+2028 and U+2029 are emitted literally.",
+      "input": "\"\\u007f\\u2028\\u2029\"",
+      "expected": "\"\u007f\u2028\u2029\"",
+      "expectedSha256": "95df0b63167be5cce73c768a4dd6b0005aa196870fdc24ca85e0a03c1dd7a6c0"
+    },
+    {
+      "id": "key-utf16-order",
+      "description": "Keys are ordered by UTF-16 code units (U+1F600 sorts before U+FFFD).",
+      "input": "{\"\\ufffd\":1,\"\\ud83d\\ude00\":2,\"\\u00e9\":3,\"b\":4,\"a\":5,\"A\":6,\"\":7,\"aa\":8}",
+      "expected": "{\"\":7,\"A\":6,\"a\":5,\"aa\":8,\"b\":4,\"\u00e9\":3,\"\ud83d\ude00\":2,\"\ufffd\":1}",
+      "expectedSha256": "06b97b165994e111bd5811aa54a824a7b8abee5fe0f84bb93854b86214a42062"
+    },
+    {
+      "id": "proto-key",
+      "description": "__proto__ is an ordinary key.",
+      "input": "{\"a\":1,\"__proto__\":{\"x\":1}}",
+      "expected": "{\"__proto__\":{\"x\":1},\"a\":1}",
+      "expectedSha256": "16f0a6f5823c7470398e5edfba59dfbde97abf692bcffed62a946ee9587d1271"
+    },
+    {
+      "id": "max-depth",
+      "description": "64 nested arrays are at the depth limit.",
+      "input": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "expected": "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]",
+      "expectedSha256": "b3ff3b51ce17ef2a2a68203329ff0e73738c07df874044149c283b28841a0035"
+    },
+    {
+      "id": "noncharacter",
+      "description": "Noncharacters such as U+FFFF are allowed.",
+      "input": "\"\\uffff\"",
+      "expected": "\"\uffff\"",
+      "expectedSha256": "7c6c5c98a320272b95b2a73e2a2ff15825794b0460f8af7835c9dfd9e76b38bb"
+    },
+    {
+      "id": "no-normalization",
+      "description": "No Unicode normalization: decomposed e + U+0301 stays decomposed.",
+      "input": "\"e\\u0301\"",
+      "expected": "\"e\u0301\"",
+      "expectedSha256": "3d68ce21f2899a475713cdbe7562ba9bdb6b1dfde8af1f221bdff4a0935b53b2"
+    }
+  ]
+}

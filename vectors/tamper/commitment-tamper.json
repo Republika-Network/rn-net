@@ -1,0 +1,216 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.evidence-commitment.v1",
+  "kind": "commitment-tamper",
+  "base": {
+    "envelope": {
+      "format": "rnnet.evidence-commitment.v1",
+      "sourceFormat": "example.evidence-bundle.v1",
+      "sourceCanonicalization": "rnnet.canonical-json.v1",
+      "sourceEvidenceDigest": "sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8",
+      "sourceFileSha256": "sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d",
+      "sourceRef": "example:synthetic/run-0001"
+    },
+    "commitment": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff"
+  },
+  "vectors": [
+    {
+      "id": "control-original",
+      "description": "Control: the original envelope verifies.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "control-equivalent-encoding",
+      "description": "Control: reordered keys, whitespace and escaped characters encode the same envelope.",
+      "input": "{ \"sourceRef\" : \"example:synthetic\\/run-0001\", \"\\u0073ourceFileSha256\": \"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\n \"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"format\":\"rnnet.evidence-commitment.v1\" }",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": true
+      }
+    },
+    {
+      "id": "evidence-digest-changed",
+      "description": "One hex digit of sourceEvidenceDigest changed.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff0\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "file-digest-changed",
+      "description": "One hex digit of sourceFileSha256 changed.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac9611510\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "digests-swapped",
+      "description": "Evidence and file digests swapped.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceFileSha256\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "source-ref-changed",
+      "description": "One character of sourceRef changed.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0002\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "source-format-changed",
+      "description": "Source format version changed.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v2\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "canonicalization-substituted",
+      "description": "A related canonicalization profile is not treated as equivalent.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"aoc-canonical-json/1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "field-added",
+      "description": "A field was added.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\",\"signer\":\"example-org\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_UNKNOWN_FIELD"
+      }
+    },
+    {
+      "id": "field-removed",
+      "description": "A field was removed.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_MISSING_FIELD"
+      }
+    },
+    {
+      "id": "format-upgraded",
+      "description": "The format was relabelled as v2.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v2\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_UNSUPPORTED_VERSION"
+      }
+    },
+    {
+      "id": "duplicate-key-injection",
+      "description": "A second sourceRef is appended; parsers that keep the last value would be fooled.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\",\"sourceRef\":\"example:attacker\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNCJ_DUPLICATE_KEY"
+      }
+    },
+    {
+      "id": "homoglyph-source-ref",
+      "description": "A Cyrillic letter replaces a Latin one in sourceRef.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"ex\u0430mple:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_INVALID_SOURCE_REF"
+      }
+    },
+    {
+      "id": "uppercase-digest-in-envelope",
+      "description": "The same digest written in uppercase is a different, invalid encoding.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518DC837ABB6F6A1887D4ABF378EDCAF58BF2228A1E2B058EA9EB5724FFF8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_INVALID_DIGEST"
+      }
+    },
+    {
+      "id": "trailing-object",
+      "description": "A second JSON object is appended.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:attacker\"}",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNCJ_TRAILING_CONTENT"
+      }
+    },
+    {
+      "id": "bom-prefix",
+      "description": "A byte order mark is prepended.",
+      "inputHex": "efbbbf7b22666f726d6174223a22726e6e65742e65766964656e63652d636f6d6d69746d656e742e7631222c22736f75726365466f726d6174223a226578616d706c652e65766964656e63652d62756e646c652e7631222c22736f7572636543616e6f6e6963616c697a6174696f6e223a22726e6e65742e63616e6f6e6963616c2d6a736f6e2e7631222c22736f7572636545766964656e6365446967657374223a227368613235363a33333735313864633833376162623666366131383837643461626633373865646361663538626632323238613165326230353865613965623537323466666638222c22736f7572636546696c65536861323536223a227368613235363a38336662323636633637336366646462346338623563343637383766346238326165343634383466383737376437313435363661656564616339363131353164222c22736f75726365526566223a226578616d706c653a73796e7468657469632f72756e2d30303031227d",
+      "presentedDigest": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNCJ_BOM"
+      }
+    },
+    {
+      "id": "digest-without-domain",
+      "description": "Presented digest is SHA-256 of the canonical envelope without the domain separator.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:3c24ac4bfed238880cb8ebad78c6e18b3aa12b2f4b659c1a1a551c10b5aa25dc",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "digest-other-domain",
+      "description": "Presented digest uses the v2 domain separator.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:f34e6fa67455e4d55bc18a4334a14d2d41d57296089cf597dab3ae7be68f337d",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_DIGEST_MISMATCH"
+      }
+    },
+    {
+      "id": "presented-digest-uppercase",
+      "description": "Presented commitment in uppercase hex.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "sha256:7082EFEB67D3252191C9A1B7D59C757ED82382B943460CC512C16859BA5E59FF",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_INVALID_COMMITMENT_DIGEST"
+      }
+    },
+    {
+      "id": "presented-digest-unprefixed",
+      "description": "Presented commitment without the sha256: prefix.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "presentedDigest": "7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_INVALID_COMMITMENT_DIGEST"
+      }
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.evidence-commitment.v1",
+  "kind": "commitment-valid",
+  "vectors": [
+    {
+      "id": "basic",
+      "description": "A synthetic envelope.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCanonical": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCommitment": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff"
+    },
+    {
+      "id": "reordered-whitespace",
+      "description": "Same envelope, reordered and indented: same commitment as basic.",
+      "input": "{\n  \"sourceRef\": \"example:synthetic/run-0001\",\n  \"sourceFileSha256\": \"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\n  \"sourceEvidenceDigest\": \"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\n  \"sourceCanonicalization\": \"rnnet.canonical-json.v1\",\n  \"sourceFormat\": \"example.evidence-bundle.v1\",\n  \"format\": \"rnnet.evidence-commitment.v1\"\n}",
+      "expectedCanonical": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCommitment": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff"
+    },
+    {
+      "id": "other-canonicalization-id",
+      "description": "A different canonicalization identifier yields a different commitment, even for a related profile.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"aoc-canonical-json/1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCanonical": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceCanonicalization\":\"aoc-canonical-json/1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCommitment": "sha256:a35e595e59f070f4509d9d5c8f806b411da8c3b348d56c2d54af8d5d25b36929"
+    },
+    {
+      "id": "url-source-ref",
+      "description": "A URL source reference with query and fragment.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"https://example.org/evidence/0001?view=raw&x=a%20b#bundle\"}",
+      "expectedCanonical": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceRef\":\"https://example.org/evidence/0001?view=raw&x=a%20b#bundle\"}",
+      "expectedCommitment": "sha256:f9e16d9b12a580c98cb10e7c8ba15b6154caca6e477f578c025b067ada2539bd"
+    },
+    {
+      "id": "all-hex-digits",
+      "description": "Digests using every lowercase hex digit.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sourceFileSha256\":\"sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCanonical": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"sourceFileSha256\":\"sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedCommitment": "sha256:ce8f778f7493c8235d9e8ebbe19f2d0a2b91c56ba7e82a76ce4f420e6fc93cad"
+    }
+  ]
+}

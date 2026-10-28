@@ -11,4 +11,4 @@
 - [ ] No new dependency, or the dependency is justified in an ADR.
 - [ ] No change to any upstream repository is required by this PR.
 - [ ] Claims in docs and output distinguish verified facts from unverified claims.
-- [ ] `node --test "tools/guards/*.test.mjs"` and `node tools/guards/run.mjs` pass locally.
+- [ ] The test, reference and guard commands in README.md pass locally.

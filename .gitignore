@@ -20,6 +20,8 @@ id_ecdsa*
 
 # Tooling output
 node_modules/
+__pycache__/
+*.pyc
 coverage/
 dist/
 .DS_Store

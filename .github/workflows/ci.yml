@@ -23,8 +23,25 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
-      - name: Guard self-tests
-        run: node --test "tools/guards/*.test.mjs"
+      - name: Offline checks (syntax, tests, independent Python reference)
+        # Runs in a new network namespace with no interfaces, so the checks cannot reach the
+        # network while the runner itself stays connected. The probe proves the isolation.
+        run: |
+          sudo unshare --net -- sudo -u "$USER" env "PATH=$PATH" "HOME=$HOME" bash -euo pipefail -c '
+            if timeout 5 bash -c "exec 3<>/dev/tcp/1.1.1.1/443" 2>/dev/null; then
+              echo "network is reachable inside the namespace" >&2
+              exit 1
+            fi
+            echo "::group::Syntax check"
+            git ls-files -z "*.mjs" | xargs -0 -n1 node --check
+            echo "::endgroup::"
+            echo "::group::Tests (guards, canonical, commitment, conformance, tamper)"
+            node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"
+            echo "::endgroup::"
+            echo "::group::Independent Python reference against all vectors"
+            python3 -I -B tools/reference/rnnet_reference.py
+            echo "::endgroup::"
+          '
 
   guards:
     runs-on: ubuntu-24.04
