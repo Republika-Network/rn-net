@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { CONFIG_PATH, EXIT, main } from './verify-live-anchor.mjs';
 import { COMMITMENT, fakeEvm, fakeXrpl } from '../packages/chain-readonly/test/fake-chains.mjs';
+import { loadEndpointConfig } from '../packages/chain-readonly/src/index.mjs';
 
 function io(fake, files = {}) {
   const out = { stdout: '', stderr: '', written: new Map(), transportsRequested: 0 };
@@ -53,28 +54,28 @@ test('compare-providers uses every configured provider for the network', async (
   const run = io(fake);
   assert.equal(await main(['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--compare-providers'], run.io), EXIT.PASS);
   const report = JSON.parse(run.stdout);
-  assert.deepEqual(report.providers.map((p) => p.id), ['sepolia-publicnode', 'sepolia-drpc']);
+  assert.deepEqual(report.providers.map((p) => p.id), ['sepolia-publicnode', 'sepolia-1rpc']);
   assert.equal(report.agreement, 'AGREEMENT');
 });
 
 test('exit codes: FAIL, INDETERMINATE, usage and existing files', async () => {
   const notFound = fakeEvm({ notFound: true });
-  assert.equal(await main(['--network', 'sepolia', '--tx', notFound.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc'], io(notFound).io), EXIT.FAIL);
+  assert.equal(await main(['--network', 'sepolia', '--tx', notFound.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc'], io(notFound).io), EXIT.FAIL);
   const down = fakeEvm({ fail: { eth_chainId: () => { throw Object.assign(new Error('t'), { code: 'RNLO_TIMEOUT' }); } } });
-  assert.equal(await main(['--network', 'sepolia', '--tx', down.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc'], io(down).io), EXIT.INDETERMINATE);
+  assert.equal(await main(['--network', 'sepolia', '--tx', down.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc'], io(down).io), EXIT.INDETERMINATE);
   const fake = fakeEvm();
   const usage = [
-    ['--network', 'mainnet', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc'],
-    ['--network', 'ethereum', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc'],
+    ['--network', 'mainnet', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc'],
+    ['--network', 'ethereum', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc'],
     ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT],
-    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc', '--compare-providers'],
+    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc', '--compare-providers'],
     ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'https://evil.example.org/'],
     ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'xrpl-testnet-ripple'],
-    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc', '--rpc', 'sepolia-drpc'],
-    ['--network', 'sepolia', '--tx', '0x12', '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc'],
-    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', 'sha256:x', '--rpc', 'sepolia-drpc'],
-    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc', '--url', 'https://x.org'],
-    ['--offline-replay', 'cap.json', '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc'],
+    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc', '--rpc', 'sepolia-1rpc'],
+    ['--network', 'sepolia', '--tx', '0x12', '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc'],
+    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', 'sha256:x', '--rpc', 'sepolia-1rpc'],
+    ['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc', '--url', 'https://x.org'],
+    ['--offline-replay', 'cap.json', '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc'],
     ['--offline-replay', 'cap.json', '--commitment', COMMITMENT, '--network', 'sepolia'],
   ];
   for (const argv of usage) {
@@ -84,7 +85,22 @@ test('exit codes: FAIL, INDETERMINATE, usage and existing files', async () => {
   }
   const exists = io(fake);
   exists.written.set('out.json', 'old');
-  assert.equal(await main(['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-drpc', '--output', 'out.json'], exists.io), EXIT.CANNOT_CREATE);
+  assert.equal(await main(['--network', 'sepolia', '--tx', fake.hash, '--commitment', COMMITMENT, '--rpc', 'sepolia-1rpc', '--output', 'out.json'], exists.io), EXIT.CANNOT_CREATE);
   assert.equal(exists.written.get('out.json'), 'old');
   assert.equal(await main(['--offline-replay', 'missing.json', '--commitment', COMMITMENT], io(null).io), EXIT.NO_INPUT);
+});
+
+test('the configured allowlist is exactly the approved testnet endpoints', () => {
+  const providers = loadEndpointConfig(JSON.parse(readFileSync(CONFIG_PATH, 'utf8')));
+  assert.deepEqual(providers.map((p) => [p.id, p.network, p.url]), [
+    ['xrpl-testnet-ripple', 'xrpl:testnet', 'https://s.altnet.rippletest.net:51234/'],
+    ['xrpl-testnet-xrpl-labs', 'xrpl:testnet', 'https://testnet.xrpl-labs.com/'],
+    ['sepolia-publicnode', 'evm:11155111', 'https://ethereum-sepolia-rpc.publicnode.com/'],
+    ['sepolia-1rpc', 'evm:11155111', 'https://public.1rpc.io/sepolia'],
+  ]);
+  for (const p of providers) {
+    const url = new URL(p.url);
+    assert.equal(url.protocol, 'https:');
+    assert.equal(url.username + url.password + url.search + url.hash, '');
+  }
 });

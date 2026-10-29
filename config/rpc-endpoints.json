@@ -20,15 +20,15 @@
       "id": "sepolia-publicnode",
       "network": "evm:11155111",
       "url": "https://ethereum-sepolia-rpc.publicnode.com/",
-      "operator": "PublicNode (Allnodes)",
-      "source": "https://ethereum-sepolia-rpc.publicnode.com"
+      "operator": "PublicNode",
+      "source": "https://publicnode.com"
     },
     {
-      "id": "sepolia-drpc",
+      "id": "sepolia-1rpc",
       "network": "evm:11155111",
-      "url": "https://sepolia.drpc.org/",
-      "operator": "dRPC",
-      "source": "https://drpc.org"
+      "url": "https://public.1rpc.io/sepolia",
+      "operator": "Automata 1RPC",
+      "source": "https://docs.1rpc.io/using-the-web3-api/networks"
     }
   ]
 }
