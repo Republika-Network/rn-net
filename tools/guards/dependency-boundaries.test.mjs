@@ -24,7 +24,10 @@ test('allows declared built-ins and public entry points', () => {
 });
 
 test('rejects network built-ins, third-party packages and wrong-direction imports', () => {
-  assert.deepEqual(rules('packages/canonical/src/a.mjs', "import net from 'node:net';"), ['builtin-not-allowed:node:net']);
+  assert.deepEqual(rules('packages/canonical/src/a.mjs', "import net from 'node:net';"), [
+    'builtin-export-not-allowed:node:net#default',
+    'builtin-not-allowed:node:net',
+  ]);
   assert.deepEqual(rules('packages/commitment/src/a.mjs', "import { Client } from 'xrpl';"), ['third-party-import:xrpl']);
   assert.deepEqual(rules('packages/commitment/src/a.mjs', "const v = await import('viem');"), ['third-party-import:viem']);
   assert.deepEqual(rules('packages/canonical/src/a.mjs', "import x from '../../commitment/src/index.mjs';"), ['package-not-allowed:commitment']);
@@ -60,6 +63,10 @@ test('the lockfile holds exactly the allowed development dependency', () => {
   assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, resolved: 'https://example.org/acorn-8.19.0.tgz' } })), ['undeclared-lockfile-packages']);
   assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, integrity: 'sha512-AAAA' } })), ['undeclared-lockfile-packages']);
   assert.deepEqual(rules('package-lock.json', lock({ 'node_modules/acorn': acorn, x: {} })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(
+    rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, dependencies: { 'is-number': '7.0.0' } } })),
+    ['undeclared-lockfile-packages'],
+  );
   assert.deepEqual(
     rules('package-lock.json', lock({ ...root, 'node_modules/acorn': acorn, 'node_modules/x': { version: '1.0.0', dev: true } })),
     ['undeclared-lockfile-packages'],
@@ -103,7 +110,10 @@ test('only ES modules (and a README) may live in a package, in any directory', (
   assert.deepEqual(rules('packages/canonical/src/x.js', ''), ['non-module-file']);
   assert.deepEqual(rules('packages/canonical/data.json', '{}'), ['non-module-file']);
   assert.deepEqual(rules('packages/canonical/README.md', '# x'), []);
-  assert.deepEqual(rules('packages/canonical/lib/x.mjs', "import net from 'node:net';"), ['builtin-not-allowed:node:net']);
+  assert.deepEqual(rules('packages/canonical/lib/x.mjs', "import net from 'node:net';"), [
+    'builtin-export-not-allowed:node:net#default',
+    'builtin-not-allowed:node:net',
+  ]);
 });
 
 test('ordinary code is not flagged', () => {
@@ -250,7 +260,8 @@ test('regular expressions and divisions are read by the parser, whatever surroun
 // fixtures/dependency-bypasses/. Each is a valid module that, run from packages/canonical/src/,
 // loads node:net or acorn, or reaches eval, process or the Function constructor, while an earlier
 // guard reported nothing: b01-b07 at 9521fff, b08 at a4b2e30 (merged as 0b32565), b09-b15 at
-// f416539 (the first AST-based guard).
+// f416539 (the first AST-based guard), b16-b19 at fbb0064 (through allowed built-ins; each is
+// checked where that built-in is allowed).
 const fixtures = new URL('./fixtures/dependency-bypasses/', import.meta.url);
 const read = (name) => readFileSync(new URL(name, fixtures), 'utf8');
 const EXPECTED = {
@@ -269,6 +280,10 @@ const EXPECTED = {
   'b13-shorthand-constructor.mjs': 'constructor-access',
   'b14-percent-dynamic.mjs': 'unsupported-specifier:./%2e%2e/%2e%2e/%2e%2e/tools/x/evil.mjs',
   'b15-param-default-constructor.mjs': 'constructor-access',
+  'b16-node-test-run.mjs': ['packages/canonical/test/x.test.mjs', 'builtin-export-not-allowed:node:test#run'],
+  'b17-crypto-setengine.mjs': ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#setEngine'],
+  'b18-fs-symlink.mjs': ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#symlinkSync'],
+  'b19-fs-copy.mjs': ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#copyFileSync'],
 };
 
 test('every reviewed bypass is present and has an expectation', () => {
@@ -277,8 +292,9 @@ test('every reviewed bypass is present and has an expectation', () => {
 });
 
 test('each reviewed bypass is reported from the syntax tree', () => {
-  for (const [name, rule] of Object.entries(EXPECTED)) {
-    assert.ok(rules('packages/canonical/src/x.mjs', read(name)).includes(rule), `${name} -> ${rule}`);
+  for (const [name, expected] of Object.entries(EXPECTED)) {
+    const [path, rule] = Array.isArray(expected) ? expected : ['packages/canonical/src/x.mjs', expected];
+    assert.ok(rules(path, read(name)).includes(rule), `${name} -> ${rule}`);
   }
   for (const name of ['b01-export-default.mjs', 'b02-postfix.mjs', 'b03-fnexpr.mjs', 'b04-forawait.mjs', 'b05-classexpr.mjs',
     'b06-extends.mjs', 'b08-for-head.mjs']) {
@@ -333,8 +349,36 @@ test('constructor is reported in every form except a class constructor method', 
   assert.deepEqual(rules('packages/canonical/src/x.mjs', 'class A extends Error { constructor(m) { super(m); } }'), []);
 });
 
+// An allowed built-in still has exports that load code or reach outside the package; the
+// independent review of fbb0064 ran each of these (node:test run with isolation 'none' imported
+// a file outside packages/, setEngine loaded a shared object, symlinkSync and copyFileSync made a
+// same-package path that a literal import then loaded).
+test('only allowlisted exports of allowed built-ins may be imported', () => {
+  const cases = {
+    "import { run } from 'node:test';": ['packages/canonical/test/x.test.mjs', 'builtin-export-not-allowed:node:test#run'],
+    "import { setEngine } from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#setEngine'],
+    "import { symlinkSync } from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#symlinkSync'],
+    "import { copyFileSync } from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#copyFileSync'],
+    "import { writeFileSync as w } from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#writeFileSync'],
+    "import { 'setEngine' as e } from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#setEngine'],
+    "import * as crypto from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#*'],
+    "import crypto from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#default'],
+    "import t, { test } from 'node:test';": ['packages/canonical/test/x.test.mjs', 'builtin-export-not-allowed:node:test#default'],
+    "const fs = await import('node:fs');": ['packages/conformance/src/x.mjs', 'builtin-dynamic-import:node:fs'],
+    "export { setEngine } from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-reexport:node:crypto'],
+    "export * from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-reexport:node:fs'],
+  };
+  for (const [source, [path, rule]] of Object.entries(cases)) assert.ok(rules(path, source).includes(rule), `${source} -> ${rule}`);
+  // Exactly what the packages use today.
+  assert.deepEqual(rules('packages/conformance/src/x.mjs', "import { readFileSync } from 'node:fs';\nimport { fileURLToPath } from 'node:url';"), []);
+  assert.deepEqual(rules('packages/canonical/test/x.test.mjs', "import assert from 'node:assert/strict';\nimport { test } from 'node:test';"), []);
+  assert.deepEqual(rules('packages/commitment/src/x.mjs', "import { Buffer } from 'node:buffer';\nimport { createHash } from 'node:crypto';"), []);
+});
+
 test('symlinks, shrinkwrap files, .npmrc and install-changing manifest fields are reported', () => {
-  assert.deepEqual(check([{ path: 'packages/canonical/src/s.mjs', content: '', symlink: true }]).map((f) => f.rule), ['symlink-in-package']);
+  for (const path of ['packages/canonical/src/s.mjs', 'packages/canonical', 'packages']) {
+    assert.deepEqual(check([{ path, content: null, symlink: true }]).map((f) => f.rule), ['symlink-in-package'], path);
+  }
   assert.deepEqual(rules('npm-shrinkwrap.json', '{}'), ['not-allowed:npm-shrinkwrap.json']);
   assert.deepEqual(rules('.npmrc', 'registry=https://example.org/'), ['not-allowed:.npmrc']);
   assert.deepEqual(rules('tools/.npmrc', ''), ['not-allowed:.npmrc']);

@@ -23,6 +23,20 @@ export const ALLOWED_BUILTINS = {
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
+// The only exports of those built-ins that may be imported, by name ('default' for a default
+// import). An allowed module still has exports that load code or reach outside the package
+// (node:test `run`, node:crypto `setEngine`, node:fs `symlinkSync`), so the allowlist is per
+// export: namespace imports, other names, re-exports and dynamic imports of built-ins are
+// reported.
+export const ALLOWED_BUILTIN_EXPORTS = {
+  'node:assert/strict': ['default'],
+  'node:buffer': ['Buffer'],
+  'node:crypto': ['createHash'],
+  'node:fs': ['readFileSync'],
+  'node:test': ['test'],
+  'node:url': ['fileURLToPath'],
+};
+
 // The only third-party packages in the repository: development tooling, never imported by
 // packages/** (docs/adr/ADR-RN-005-guard-parser-dependency.md). Exact versions.
 export const DEV_DEPENDENCIES = {
@@ -32,6 +46,9 @@ export const DEV_DEPENDENCIES = {
     integrity: 'sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==',
   },
 };
+// Fields a pinned lockfile entry may have; anything else (nested dependencies, for example) is
+// reported.
+const LOCKFILE_ENTRY_FIELDS = ['version', 'resolved', 'integrity', 'dev', 'license', 'bin', 'engines'];
 // Manifest fields that change what npm installs or links, beyond the dependency lists.
 const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
 
@@ -116,19 +133,37 @@ function isPropertyName(node, parent, key) {
 function analyze(program) {
   const specifiers = [];
   const problems = [];
+  const builtinImports = []; // { source, name } for each binding imported from a built-in
+  const isBuiltin = (source) => typeof source === 'string' && source.startsWith('node:');
+  const moduleName = (node) => (node.type === 'Identifier' ? node.name : node.value);
   const visit = (node, parent, key) => {
     switch (node.type) {
       case 'ImportDeclaration':
-      case 'ExportAllDeclaration':
         specifiers.push(node.source.value);
+        if (isBuiltin(node.source.value)) {
+          for (const binding of node.specifiers) {
+            const name =
+              binding.type === 'ImportDefaultSpecifier' ? 'default' : binding.type === 'ImportNamespaceSpecifier' ? '*' : moduleName(binding.imported);
+            builtinImports.push({ source: node.source.value, name });
+          }
+        }
         break;
+      case 'ExportAllDeclaration':
       case 'ExportNamedDeclaration':
-        if (node.source) specifiers.push(node.source.value);
+        if (node.source) {
+          specifiers.push(node.source.value);
+          if (isBuiltin(node.source.value)) problems.push(`builtin-reexport:${node.source.value}`);
+        }
         break;
       case 'ImportExpression':
-        // import('<specifier>') with a string literal; anything else is computed.
-        if (node.source.type === 'Literal' && typeof node.source.value === 'string') specifiers.push(node.source.value);
-        else problems.push('dynamic-import-non-literal');
+        // import('<specifier>') with a string literal; anything else is computed. A built-in
+        // imported dynamically arrives as a whole namespace, so it is reported.
+        if (node.source.type === 'Literal' && typeof node.source.value === 'string') {
+          specifiers.push(node.source.value);
+          if (isBuiltin(node.source.value)) problems.push(`builtin-dynamic-import:${node.source.value}`);
+        } else {
+          problems.push('dynamic-import-non-literal');
+        }
         break;
       case 'Identifier':
         // `constructor` reaches the Function constructor from any function (`f.constructor`,
@@ -155,7 +190,7 @@ function analyze(program) {
     for (const [childKey, child] of children(node)) visit(child, node, childKey);
   };
   visit(program, null, null);
-  return { specifiers, problems };
+  return { specifiers, problems, builtinImports };
 }
 
 /** Module specifiers of a source: every import, re-export and literal dynamic import, in order. */
@@ -220,21 +255,27 @@ export function check(files) {
       const matches = ([where, entry]) => {
         if (where === '') return true;
         const pin = expected.get(where);
-        return pin !== undefined && entry.dev === true && ['version', 'resolved', 'integrity'].every((field) => entry[field] === pin[field]);
+        return (
+          pin !== undefined &&
+          entry.dev === true &&
+          ['version', 'resolved', 'integrity'].every((field) => entry[field] === pin[field]) &&
+          Object.keys(entry).every((field) => LOCKFILE_ENTRY_FIELDS.includes(field))
+        );
       };
       const valid = path === 'package-lock.json' && entries.length === expected.size + 1 && Object.hasOwn(Object.fromEntries(entries), '') && entries.every(matches);
       if (!valid) add(path, 'undeclared-lockfile-packages');
+    }
+    // Node resolves a symlinked module's imports from its real path, not from where it is linked;
+    // a linked package directory moves everything under it.
+    if (symlink && (path === 'packages' || path.startsWith('packages/'))) {
+      add(path, 'symlink-in-package');
+      continue;
     }
     const match = /^packages\/([^/]+)\/(.+)$/.exec(path);
     if (!match) continue;
     const [, pkg, rest] = match;
     if (!Object.hasOwn(ALLOWED_PACKAGES, pkg)) {
       add(path, 'unregistered-package');
-      continue;
-    }
-    // Node resolves a symlinked module's imports from its real path, not from where it is linked.
-    if (symlink) {
-      add(path, 'symlink-in-package');
       continue;
     }
     // Only ES modules (plus a README or manifest) may live in a package, so no code file escapes
@@ -259,9 +300,12 @@ export function check(files) {
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
       add(path, 'unsupported-syntax');
-      analysis = { specifiers: [], problems: [] };
+      analysis = { specifiers: [], problems: [], builtinImports: [] };
     }
     for (const problem of new Set(analysis.problems)) add(path, problem);
+    for (const { source, name } of analysis.builtinImports) {
+      if (!(ALLOWED_BUILTIN_EXPORTS[source] ?? []).includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
+    }
     const area = rest.startsWith('test/') ? 'test' : 'src';
     const builtins = area === 'test' ? [...ALLOWED_BUILTINS[pkg], ...TEST_BUILTINS] : ALLOWED_BUILTINS[pkg];
     for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {

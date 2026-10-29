@@ -49,7 +49,12 @@ The repository has no third-party dependencies, and the runtime packages must st
    as URLs, so percent-encoding, backslashes, queries and fragments could name another file;
    such specifiers are reported. Symlinks under `packages/` are reported, because Node resolves
    a linked module's imports from its real path.
-6. The raw-text patterns stay as a second, more conservative layer. They run over the whole
+6. Built-ins are allowed per export, not per module: each package may import only the named
+   exports it needs (`createHash`, `readFileSync`, `test`, …). An allowed module still has
+   exports that load code or reach outside the package (`node:test` `run`, `node:crypto`
+   `setEngine`, `node:fs` `symlinkSync`). Namespace and other default imports, re-exports
+   and dynamic imports of built-ins are reported.
+7. The raw-text patterns stay as a second, more conservative layer. They run over the whole
    file text, so they apply even if the parse were wrong.
 
 ## Consequences
