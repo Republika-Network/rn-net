@@ -47,3 +47,16 @@ the source file is supplied), `CLAIMED` and `UNRESOLVED`. It never produces
 `CONSISTENT_UNDER_EMBEDDED_KEYS` or `THIRD_PARTY_ATTESTED`, because it verifies no
 signatures and consults no third party. Those classifications are defined now so that
 RN-NET-02 and RN-NET-03 can use them without changing this taxonomy.
+
+## 6. Use in RN-NET-02
+
+The evidence verifier ([rnnet.synthetic-evidence.v1](rnnet.synthetic-evidence.v1.md) §8,
+[rnnet.verification-report.v1](rnnet.verification-report.v1.md) §6) produces:
+
+- `VERIFIED`, for a recomputed evidence digest and for commitment comparisons;
+- `CONSISTENT_UNDER_EMBEDDED_KEYS`, for signatures under keys the evidence carries;
+- `CLAIMED`, for body claims bound by a verified digest;
+- `UNRESOLVED`, for signer identity, event occurrence and `sourceRef`.
+
+It never produces `THIRD_PARTY_ATTESTED`: no authenticated third-party trust source is
+defined yet ([ADR-RN-007](../docs/adr/ADR-RN-007-ed25519-signer-trust.md)).

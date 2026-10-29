@@ -22,6 +22,7 @@ export const ALLOWED_BUILTINS = {
   canonical: [],
   commitment: ['node:buffer', 'node:crypto'],
   conformance: ['node:buffer', 'node:fs', 'node:url'],
+  verifier: ['node:buffer', 'node:crypto'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
@@ -37,6 +38,16 @@ export const ALLOWED_BUILTIN_EXPORTS = {
   'node:fs': ['readFileSync'],
   'node:test': ['test'],
   'node:url': ['fileURLToPath'],
+};
+// Further exports allowed in one package's production code only.
+export const PACKAGE_BUILTIN_EXPORTS = {
+  // createPublicKey and verify check Ed25519 signatures (RN-NET-02); they cannot sign.
+  verifier: { 'node:crypto': ['createPublicKey', 'verify'] },
+};
+// Further exports allowed in test code only. Signing exists only to build test inputs, so
+// production code can never hold or use a private key.
+export const TEST_BUILTIN_EXPORTS = {
+  'node:crypto': ['createPrivateKey', 'generateKeyPairSync', 'sign'],
 };
 
 // The only third-party packages in the repository: development tooling, never imported by
@@ -64,7 +75,8 @@ const RELATIVE_SPECIFIER = /^\.\.?(?:\/[A-Za-z0-9_.-]+)+$/;
 export const ALLOWED_PACKAGES = {
   canonical: [],
   commitment: ['canonical'],
-  conformance: ['canonical', 'commitment'],
+  conformance: ['canonical', 'commitment', 'verifier'],
+  verifier: ['canonical', 'commitment'],
 };
 
 // Whitespace, block comments or line comments, as allowed between tokens.
@@ -305,10 +317,15 @@ export function check(files) {
       analysis = { specifiers: [], problems: [], builtinImports: [] };
     }
     for (const problem of new Set(analysis.problems)) add(path, problem);
-    for (const { source, name } of analysis.builtinImports) {
-      if (!(ALLOWED_BUILTIN_EXPORTS[source] ?? []).includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
-    }
     const area = rest.startsWith('test/') ? 'test' : 'src';
+    for (const { source, name } of analysis.builtinImports) {
+      const allowed = [
+        ...(ALLOWED_BUILTIN_EXPORTS[source] ?? []),
+        ...(PACKAGE_BUILTIN_EXPORTS[pkg]?.[source] ?? []),
+        ...(area === 'test' ? (TEST_BUILTIN_EXPORTS[source] ?? []) : []),
+      ];
+      if (!allowed.includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
+    }
     const builtins = area === 'test' ? [...ALLOWED_BUILTINS[pkg], ...TEST_BUILTINS] : ALLOWED_BUILTINS[pkg];
     for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
       if (specifier.startsWith('node:')) {
