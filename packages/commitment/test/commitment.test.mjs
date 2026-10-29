@@ -23,7 +23,8 @@ const envelope = Object.freeze({
   sourceFileSha256: sha256Digest(sourceFile),
   sourceRef: 'example:unit-test/1',
 });
-const text = (value) => JSON.stringify(value);
+// Envelope bytes, the only input verifyCommitment accepts.
+const text = (value) => new TextEncoder().encode(JSON.stringify(value));
 
 test('domain separator is the ASCII tag followed by one zero byte', () => {
   assert.equal(DOMAIN_TAG, 'rnnet:evidence-commitment:v1');
@@ -56,8 +57,16 @@ test('validateEnvelope returns exactly the six fields in specification order', (
   assert.deepEqual(Object.keys(validateEnvelope({ ...envelope })), FIELDS);
 });
 
-test('validateEnvelope rejects non-plain objects', () => {
-  assert.throws(() => validateEnvelope(new (class Envelope {})()), { code: 'RNEC_NOT_OBJECT' });
+test('validateEnvelope snapshots first: values without a JSON form fail as RNCJ, non-objects as RNEC', () => {
+  assert.throws(() => validateEnvelope(new (class Envelope {})()), { code: 'RNCJ_UNSUPPORTED_VALUE' });
+  assert.throws(() => validateEnvelope([]), { code: 'RNEC_NOT_OBJECT' });
+  assert.throws(() => validateEnvelope('x'), { code: 'RNEC_NOT_OBJECT' });
+});
+
+test('validateEnvelope and computeCommitment return frozen results', () => {
+  assert.ok(Object.isFrozen(validateEnvelope({ ...envelope })));
+  const result = computeCommitment({ ...envelope });
+  assert.ok(Object.isFrozen(result) && Object.isFrozen(result.envelope));
 });
 
 test('successful verification classifies each statement conservatively', () => {
@@ -93,10 +102,34 @@ test('a different source file is reported as a mismatch', () => {
 
 test('verifyCommitment returns codes instead of throwing on bad input', () => {
   const { digest } = computeCommitment(envelope);
-  assert.equal(verifyCommitment('{', digest).code, 'RNCJ_SYNTAX');
+  assert.equal(verifyCommitment(new TextEncoder().encode('{'), digest).code, 'RNCJ_SYNTAX');
   assert.equal(verifyCommitment(text({ ...envelope, extra: 'x' }), digest).code, 'RNEC_UNKNOWN_FIELD');
   assert.equal(verifyCommitment(text(envelope), 'sha256:xyz').code, 'RNEC_INVALID_COMMITMENT_DIGEST');
   assert.equal(verifyCommitment(text(envelope), undefined).code, 'RNEC_INVALID_COMMITMENT_DIGEST');
+});
+
+test('verifyCommitment accepts envelope bytes only; a string is reported, not trusted', () => {
+  const { digest } = computeCommitment(envelope);
+  const result = verifyCommitment(JSON.stringify(envelope), digest);
+  assert.equal(result.valid, false);
+  assert.equal(result.code, 'RNCJ_UNSUPPORTED_VALUE');
+});
+
+test('verifyCommitment throws TypeError only for invalid options, before any other check', () => {
+  const { digest } = computeCommitment(envelope);
+  assert.throws(() => verifyCommitment(text(envelope), digest, { sourceFile: 'not bytes' }), TypeError);
+  assert.throws(() => verifyCommitment(text(envelope), digest, { sourceFile: [1, 2, 3] }), TypeError);
+  assert.throws(() => verifyCommitment(text(envelope), digest, null), TypeError);
+  assert.throws(() => verifyCommitment(text(envelope), 'sha256:bad', { sourceFile: 42 }), TypeError);
+});
+
+test('verifyCommitment reads options.sourceFile exactly once', () => {
+  const { digest } = computeCommitment(envelope);
+  let reads = 0;
+  const options = { get sourceFile() { reads += 1; return reads === 1 ? sourceFile : new Uint8Array([0]); } };
+  const result = verifyCommitment(text(envelope), digest, options);
+  assert.equal(reads, 1);
+  assert.equal(result.valid, true);
 });
 
 test('verification statements never claim more than RN-NET-01 checks', () => {

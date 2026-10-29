@@ -11,4 +11,6 @@
 - [ ] No new dependency, or the dependency is justified in an ADR.
 - [ ] No change to any upstream repository is required by this PR.
 - [ ] Claims in docs and output distinguish verified facts from unverified claims.
+- [ ] Sensitive paths (`.github/**`, `tools/**`, `spec/**`, `vectors/**`, `docs/adr/**`) changed: listed in the description, and the workflow diff was read in full (docs/governance/review-process.md).
+- [ ] An independent review is recorded before this leaves draft.
 - [ ] The test, reference and guard commands in README.md pass locally.

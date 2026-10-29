@@ -203,6 +203,16 @@
       }
     },
     {
+      "id": "malformed-digest-and-invalid-envelope",
+      "description": "The presented commitment is checked before the envelope.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\",\"extra\":\"x\"}",
+      "presentedDigest": "sha256:XYZ",
+      "expected": {
+        "valid": false,
+        "code": "RNEC_INVALID_COMMITMENT_DIGEST"
+      }
+    },
+    {
       "id": "presented-digest-unprefixed",
       "description": "Presented commitment without the sha256: prefix.",
       "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",

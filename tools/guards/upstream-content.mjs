@@ -3,12 +3,13 @@
 import { createHash } from 'node:crypto';
 import { scanLines } from './lib.mjs';
 
-// Public upstream identifiers. Bracketed characters keep this file from matching itself.
+// Public upstream identifiers, matched case-insensitively. Bracketed characters keep this file
+// from matching itself.
 export const rules = [
-  { id: 'upstream-package', pattern: /@aoc-[e]nterprise\// },
-  { id: 'upstream-path', pattern: /\bsrc\/[e]nterprise\// },
-  { id: 'upstream-invariant', pattern: /\bS[E]C-INV-\d/ },
-  { id: 'upstream-signing-domain', pattern: /\bf[r]ontera:[a-z-]+(:[a-z0-9-]+)*:v\d/ },
+  { id: 'upstream-package', pattern: /@aoc-[e]nterprise\//i },
+  { id: 'upstream-path', pattern: /\bsrc\/[e]nterprise\//i },
+  { id: 'upstream-invariant', pattern: /\bS[E]C-INV-\d/i },
+  { id: 'upstream-signing-domain', pattern: /\bf[r]ontera:[a-z-]+(:[a-z0-9-]+)*:v\d/i },
 ];
 
 // Names that must not appear in this public repository (private repositories, customers,

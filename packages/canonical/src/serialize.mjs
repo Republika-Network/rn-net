@@ -47,31 +47,50 @@ function serializeNumber(value, path) {
   return String(value);
 }
 
+// Spec §5: a constructed container is read exactly once, through one call that returns all
+// its own property descriptors. Everything after that works on the returned snapshot, so a
+// getter or Proxy cannot show one value to the checks and another to the output.
+function snapshot(container, path) {
+  const descriptors = Object.getOwnPropertyDescriptors(container);
+  if (Object.getOwnPropertySymbols(descriptors).length > 0) fail(E.UNSUPPORTED_VALUE, 'Symbol keys are not allowed.', path);
+  return descriptors;
+}
+
+/** The value of a plain, enumerable data property; anything else is rejected. */
+function dataValue(descriptor, path) {
+  // Object.hasOwn rather than `in`, so a polluted Object.prototype.value cannot pass an accessor.
+  if (!Object.hasOwn(descriptor, 'value')) fail(E.UNSUPPORTED_VALUE, 'Accessor properties are not allowed.', path);
+  if (!descriptor.enumerable) fail(E.UNSUPPORTED_VALUE, 'Non-enumerable properties are not allowed.', path);
+  return descriptor.value;
+}
+
 function serializeArray(array, depth, path) {
   if (Object.getPrototypeOf(array) !== Array.prototype) fail(E.UNSUPPORTED_VALUE, 'Unsupported array type.', path);
+  const descriptors = snapshot(array, path);
+  const length = descriptors.length.value;
   const parts = [];
-  for (let i = 0; i < array.length; i++) {
-    if (!Object.hasOwn(array, i)) fail(E.UNSUPPORTED_VALUE, 'Sparse arrays are not allowed.', `${path}[${i}]`);
-    parts.push(serialize(array[i], depth, `${path}[${i}]`));
+  for (let i = 0; i < length; i++) {
+    const childPath = `${path}[${i}]`;
+    if (!Object.hasOwn(descriptors, i)) fail(E.UNSUPPORTED_VALUE, 'Sparse arrays are not allowed.', childPath);
+    parts.push(serialize(dataValue(descriptors[i], childPath), depth, childPath));
   }
+  // Own properties are exactly the indices plus `length`; named extras would otherwise be dropped.
+  if (Object.keys(descriptors).length !== length + 1) fail(E.UNSUPPORTED_VALUE, 'Arrays may not have extra properties.', path);
   return `[${parts.join(',')}]`;
 }
 
 function serializeObject(object, depth, path) {
   const proto = Object.getPrototypeOf(object);
   if (proto !== Object.prototype && proto !== null) fail(E.UNSUPPORTED_VALUE, 'Only plain objects are allowed.', path);
-  if (Object.getOwnPropertySymbols(object).length > 0) fail(E.UNSUPPORTED_VALUE, 'Symbol keys are not allowed.', path);
-  const descriptors = Object.getOwnPropertyDescriptors(object);
+  const descriptors = snapshot(object, path);
   // UTF-16 code unit order: the default string comparison of ECMAScript.
   const keys = Object.keys(descriptors).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const parts = [];
   for (const key of keys) {
-    const descriptor = descriptors[key];
     const childPath = `${path}[${JSON.stringify(key)}]`;
-    if (!('value' in descriptor)) fail(E.UNSUPPORTED_VALUE, 'Accessor properties are not allowed.', childPath);
-    if (!descriptor.enumerable) fail(E.UNSUPPORTED_VALUE, 'Non-enumerable properties are not allowed.', childPath);
+    const value = dataValue(descriptors[key], childPath);
     if (!key.isWellFormed()) fail(E.LONE_SURROGATE, 'Key contains an unpaired surrogate.', childPath);
-    parts.push(`${quote(key)}:${serialize(descriptor.value, depth, childPath)}`);
+    parts.push(`${quote(key)}:${serialize(value, depth, childPath)}`);
   }
   return `{${parts.join(',')}}`;
 }

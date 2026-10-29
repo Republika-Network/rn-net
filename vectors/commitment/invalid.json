@@ -186,6 +186,125 @@
       "description": "Strict parsing applies to the envelope.",
       "inputHex": "efbbbf7b22666f726d6174223a22726e6e65742e65766964656e63652d636f6d6d69746d656e742e7631222c22736f75726365466f726d6174223a226578616d706c652e65766964656e63652d62756e646c652e7631222c22736f7572636543616e6f6e6963616c697a6174696f6e223a22726e6e65742e63616e6f6e6963616c2d6a736f6e2e7631222c22736f7572636545766964656e6365446967657374223a227368613235363a33333735313864633833376162623666366131383837643461626633373865646361663538626632323238613165326230353865613965623537323466666638222c22736f7572636546696c65536861323536223a227368613235363a38336662323636633637336366646462346338623563343637383766346238326165343634383466383737376437313435363661656564616339363131353164222c22736f75726365526566223a226578616d706c653a73796e7468657469632f72756e2d30303031227d",
       "expectedError": "RNCJ_BOM"
+    },
+    {
+      "id": "first-error-unknown-before-missing",
+      "description": "An unknown field is reported before a missing one.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"extra\":\"x\"}",
+      "expectedError": "RNEC_UNKNOWN_FIELD",
+      "expectedField": "extra"
+    },
+    {
+      "id": "first-error-unknown-utf16-order",
+      "description": "Two unknown keys: the first in UTF-16 code unit order (U+1F600 before U+FFFD) is reported.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\",\"\ufffd\":\"x\",\"\ud83d\ude00\":\"y\"}",
+      "expectedError": "RNEC_UNKNOWN_FIELD",
+      "expectedField": "\ud83d\ude00"
+    },
+    {
+      "id": "first-error-missing-before-type",
+      "description": "A missing field is reported before a wrong type.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":1,\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\"}",
+      "expectedError": "RNEC_MISSING_FIELD",
+      "expectedField": "sourceRef"
+    },
+    {
+      "id": "first-error-type-in-table-order",
+      "description": "The first wrongly typed field in table order is reported.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":1,\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":null,\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_FIELD_TYPE",
+      "expectedField": "sourceFormat"
+    },
+    {
+      "id": "first-error-format-before-fields",
+      "description": "The format is checked before the other field rules.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v2\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"bad\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_UNSUPPORTED_VERSION",
+      "expectedField": "format"
+    },
+    {
+      "id": "first-error-digest-before-ref",
+      "description": "Digests are checked before sourceRef.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"bad\",\"sourceRef\":\"bad ref\"}",
+      "expectedError": "RNEC_INVALID_DIGEST",
+      "expectedField": "sourceFileSha256"
+    },
+    {
+      "id": "first-error-both-digests",
+      "description": "The evidence digest is checked before the file digest.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"bad\",\"sourceFileSha256\":\"bad\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_DIGEST",
+      "expectedField": "sourceEvidenceDigest"
+    },
+    {
+      "id": "source-format-129",
+      "description": "sourceFormat longer than 128 characters.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_SOURCE_FORMAT",
+      "expectedField": "sourceFormat"
+    },
+    {
+      "id": "source-format-empty-label",
+      "description": "Empty label between dots.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"a..b\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_SOURCE_FORMAT",
+      "expectedField": "sourceFormat"
+    },
+    {
+      "id": "source-format-trailing-dot",
+      "description": "Trailing dot.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"a.b.\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_SOURCE_FORMAT",
+      "expectedField": "sourceFormat"
+    },
+    {
+      "id": "canonicalization-129",
+      "description": "sourceCanonicalization longer than 128 characters.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_CANONICALIZATION_ID",
+      "expectedField": "sourceCanonicalization"
+    },
+    {
+      "id": "canonicalization-double-separator",
+      "description": "Two separators in a row.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"a//b\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_CANONICALIZATION_ID",
+      "expectedField": "sourceCanonicalization"
+    },
+    {
+      "id": "canonicalization-trailing-separator",
+      "description": "Trailing separator.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"a-\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_CANONICALIZATION_ID",
+      "expectedField": "sourceCanonicalization"
+    },
+    {
+      "id": "canonicalization-leading-separator",
+      "description": "Leading separator.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\".a\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:synthetic/run-0001\"}",
+      "expectedError": "RNEC_INVALID_CANONICALIZATION_ID",
+      "expectedField": "sourceCanonicalization"
+    },
+    {
+      "id": "source-ref-uppercase-scheme",
+      "description": "The scheme is lowercase.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"Example:x\"}",
+      "expectedError": "RNEC_INVALID_SOURCE_REF",
+      "expectedField": "sourceRef"
+    },
+    {
+      "id": "source-ref-digit-scheme",
+      "description": "The scheme starts with a letter.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"1x:y\"}",
+      "expectedError": "RNEC_INVALID_SOURCE_REF",
+      "expectedField": "sourceRef"
+    },
+    {
+      "id": "source-ref-empty-body",
+      "description": "At least one character follows the colon.",
+      "input": "{\"format\":\"rnnet.evidence-commitment.v1\",\"sourceFormat\":\"example.evidence-bundle.v1\",\"sourceCanonicalization\":\"rnnet.canonical-json.v1\",\"sourceEvidenceDigest\":\"sha256:337518dc837abb6f6a1887d4abf378edcaf58bf2228a1e2b058ea9eb5724fff8\",\"sourceFileSha256\":\"sha256:83fb266c673cfddb4c8b5c46787f4b82ae46484f8777d714566aeedac961151d\",\"sourceRef\":\"example:\"}",
+      "expectedError": "RNEC_INVALID_SOURCE_REF",
+      "expectedField": "sourceRef"
     }
   ]
 }

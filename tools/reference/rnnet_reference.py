@@ -181,7 +181,8 @@ class _Parser:
             raise RefError("RNCJ_SYNTAX")  # leading zero
         end_int = m.end(1)
         nxt = self.s[m.end():m.end() + 1]
-        if (m.group(2) is None and nxt == ".") or (m.group(3) is None and nxt in ("e", "E")):
+        # A "." can only start a fraction after the integer part; "e" only before an exponent.
+        if (m.group(2) is None and m.group(3) is None and nxt == ".") or (m.group(3) is None and nxt in ("e", "E")):
             raise RefError("RNCJ_SYNTAX")  # incomplete fraction or exponent
         self.i = m.end()
         if m.group(2) is not None or m.group(3) is not None:
@@ -189,6 +190,8 @@ class _Parser:
         lexeme = self.s[m.start():end_int]
         if lexeme == "-0":
             raise RefError("RNCJ_NEGATIVE_ZERO")
+        if len(lexeme.lstrip("-")) > 16:  # before int(): Python refuses very long conversions
+            raise RefError("RNCJ_NUMBER_OUT_OF_RANGE")
         n = int(lexeme)
         if abs(n) > MAX_SAFE:
             raise RefError("RNCJ_NUMBER_OUT_OF_RANGE")
@@ -295,7 +298,17 @@ def verify(data: bytes, presented: str):
 def input_bytes(vector) -> bytes:
     if "inputHex" in vector:
         return bytes.fromhex(vector["inputHex"])
+    if "inputPattern" in vector:
+        p = vector["inputPattern"]
+        return (p["prefix"] + p["repeat"] * p["count"] + p["suffix"]).encode("utf-8")
     return vector["input"].encode("utf-8")
+
+
+def expected_text(vector) -> str:
+    if "expectedPattern" in vector:
+        p = vector["expectedPattern"]
+        return p["prefix"] + p["repeat"] * p["count"] + p["suffix"]
+    return vector["expected"]
 
 
 def outcome(fn):
@@ -313,8 +326,9 @@ def main(root: Path) -> int:
     for v in load("vectors/canonical/valid.json")["vectors"]:
         checked += 1
         r = outcome(lambda: canonicalize(parse(input_bytes(v))))
-        sha = hashlib.sha256(v["expected"].encode("utf-8")).hexdigest()
-        if r != ("ok", v["expected"]) or sha != v["expectedSha256"]:
+        expected = expected_text(v)
+        sha = hashlib.sha256(expected.encode("utf-8")).hexdigest()
+        if r != ("ok", expected) or sha != v["expectedSha256"]:
             failures.append((v["id"], r))
 
     for v in load("vectors/canonical/invalid.json")["vectors"]:

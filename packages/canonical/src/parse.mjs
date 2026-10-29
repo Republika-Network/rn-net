@@ -8,7 +8,9 @@ const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 /**
  * Parses JSON text into plain values: null, booleans, safe integers, strings, arrays and
  * null-prototype objects.
- * @param {Uint8Array | string} input UTF-8 bytes (preferred) or an already-decoded string
+ * @param {Uint8Array | string} input UTF-8 bytes (normative), or a string (a convenience: it is
+ *   treated as the UTF-8 encoding of that string, so it cannot detect bytes that were already
+ *   replaced by U+FFFD when the string was decoded)
  */
 export function parse(input) {
   return new Parser(decodeInput(input)).parseDocument();
@@ -16,9 +18,11 @@ export function parse(input) {
 
 function decodeInput(input) {
   if (typeof input === 'string') {
-    if (!input.isWellFormed()) throw new CanonicalError(E.LONE_SURROGATE, 'Input string contains an unpaired surrogate.');
+    // Same order as for bytes (spec §3.1): size, byte order mark, then encodability. A string's
+    // UTF-8 length is never smaller than its UTF-16 length, so the first test is a cheap bound.
+    if (input.length > LIMITS.maxBytes || utf8Length(input) > LIMITS.maxBytes) throw sizeError();
     if (input.charCodeAt(0) === 0xfeff) throw new CanonicalError(E.BOM, 'Input starts with a byte order mark.', { offset: 0 });
-    if (new TextEncoder().encode(input).length > LIMITS.maxBytes) throw sizeError();
+    if (!input.isWellFormed()) throw new CanonicalError(E.LONE_SURROGATE, 'Input string contains an unpaired surrogate.');
     return input;
   }
   if (!(input instanceof Uint8Array)) {
@@ -40,6 +44,21 @@ const sizeError = () => new CanonicalError(E.SIZE_EXCEEDED, `Input exceeds ${LIM
 const isDigit = (c) => c >= 0x30 && c <= 0x39;
 const isHighSurrogate = (u) => u >= 0xd800 && u <= 0xdbff;
 const isLowSurrogate = (u) => u >= 0xdc00 && u <= 0xdfff;
+
+/** UTF-8 length of a string without allocating; an unpaired surrogate counts as 3 bytes. */
+function utf8Length(string) {
+  let bytes = 0;
+  for (let i = 0; i < string.length; i++) {
+    const c = string.charCodeAt(i);
+    if (c < 0x80) bytes += 1;
+    else if (c < 0x800) bytes += 2;
+    else if (isHighSurrogate(c) && isLowSurrogate(string.charCodeAt(i + 1))) {
+      bytes += 4;
+      i++;
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 class Parser {
   constructor(text) {

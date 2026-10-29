@@ -35,3 +35,11 @@ test('allows nominative references to upstream projects', () => {
 test('every denied hash is a SHA-256 hex digest', () => {
   for (const hash of DENIED_TOKEN_HASHES) assert.match(hash, /^[0-9a-f]{64}$/);
 });
+
+// RN-NET-01H, finding F11: identifiers are matched regardless of case.
+test('flags upstream identifiers in any letter case', () => {
+  assert.ok(rules(join('per sec', '-inv-12')).includes('upstream-invariant'));
+  assert.ok(rules(join('see src/', 'Enterprise/host.ts')).includes('upstream-path'));
+  assert.ok(rules(join('import x from "@aoc-', 'Enterprise/runtime"')).includes('upstream-package'));
+  assert.ok(rules(join('Fron', 'tera:executor-receipt:v1')).includes('upstream-signing-domain'));
+});

@@ -308,6 +308,206 @@
       "description": "65 nested objects exceed the depth limit.",
       "input": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":1}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
       "expectedError": "RNCJ_DEPTH_EXCEEDED"
+    },
+    {
+      "id": "literal-truncated",
+      "description": "A truncated literal.",
+      "input": "tru",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "literal-wrong-letter",
+      "description": "A literal with a wrong final letter.",
+      "input": "trux",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "literal-uppercase",
+      "description": "Literals are lowercase.",
+      "input": "True",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "literal-null-truncated",
+      "description": "A truncated null.",
+      "input": "[nul]",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "literal-then-letter",
+      "description": "A complete literal followed by more text.",
+      "input": "truex",
+      "expectedError": "RNCJ_TRAILING_CONTENT"
+    },
+    {
+      "id": "whitespace-form-feed",
+      "description": "Form feed is not JSON whitespace.",
+      "inputHex": "0c31",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "whitespace-vertical-tab",
+      "description": "Vertical tab is not JSON whitespace.",
+      "inputHex": "0b31",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "whitespace-nbsp",
+      "description": "U+00A0 is not JSON whitespace.",
+      "inputHex": "c2a031",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "whitespace-line-separator",
+      "description": "U+2028 is not JSON whitespace.",
+      "inputHex": "e280a831",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "whitespace-form-feed-inside",
+      "description": "Form feed between array elements.",
+      "inputHex": "5b312c0c325d",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "escape-single-quote",
+      "description": "Backslash-apostrophe is not a JSON escape.",
+      "input": "\"\\'\"",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "high-surrogate-bad-hex",
+      "description": "High surrogate followed by \\u with fewer than four hex digits (spec 3.4).",
+      "input": "\"\\ud800\\u12\"",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "high-surrogate-non-hex",
+      "description": "High surrogate followed by \\u and non-hex characters (spec 3.4).",
+      "input": "\"\\ud800\\uzzzz\"",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "high-surrogate-then-short-escape",
+      "description": "High surrogate followed by a different escape (spec 3.4).",
+      "input": "\"\\ud800\\n\"",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "high-surrogate-at-end",
+      "description": "High surrogate at the end of the input (spec 3.4).",
+      "input": "\"\\ud800",
+      "expectedError": "RNCJ_LONE_SURROGATE"
+    },
+    {
+      "id": "exponent-then-dot",
+      "description": "The number token 1e5 is read first, then classified.",
+      "input": "1e5.",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "signed-exponent-then-fraction",
+      "description": "The number token 1E-2 is read first, then classified.",
+      "input": "[1E-2.5]",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "fraction-then-dot",
+      "description": "The number token 1.5 is read first, then classified.",
+      "input": "1.5.",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "seventeen-digits",
+      "description": "17 digits exceed the safe range.",
+      "input": "10000000000000000",
+      "expectedError": "RNCJ_NUMBER_OUT_OF_RANGE"
+    },
+    {
+      "id": "negative-double-zero",
+      "description": "Leading zero after minus.",
+      "input": "-00",
+      "expectedError": "RNCJ_SYNTAX"
+    },
+    {
+      "id": "integer-5000-digits",
+      "description": "A 5,000-digit integer is out of range, not a crash.",
+      "inputPattern": {
+        "prefix": "",
+        "repeat": "1",
+        "count": 5000,
+        "suffix": ""
+      },
+      "expectedError": "RNCJ_NUMBER_OUT_OF_RANGE"
+    },
+    {
+      "id": "depth-100000-arrays",
+      "description": "100,000 opening brackets fail at depth 65.",
+      "inputPattern": {
+        "prefix": "",
+        "repeat": "[",
+        "count": 100000,
+        "suffix": ""
+      },
+      "expectedError": "RNCJ_DEPTH_EXCEEDED"
+    },
+    {
+      "id": "size-over-limit",
+      "description": "One byte over the size limit.",
+      "inputPattern": {
+        "prefix": "\"",
+        "repeat": "a",
+        "count": 1048575,
+        "suffix": "\""
+      },
+      "expectedError": "RNCJ_SIZE_EXCEEDED"
+    },
+    {
+      "id": "size-before-bom",
+      "description": "Size is checked before the byte order mark.",
+      "inputPattern": {
+        "prefix": "\ufeff\"",
+        "repeat": "a",
+        "count": 1048573,
+        "suffix": "\""
+      },
+      "expectedError": "RNCJ_SIZE_EXCEEDED"
+    },
+    {
+      "id": "bom-before-utf8",
+      "description": "The byte order mark is checked before UTF-8 validity.",
+      "inputHex": "efbbbfff",
+      "expectedError": "RNCJ_BOM"
+    },
+    {
+      "id": "first-error-fraction",
+      "description": "The first defect is reported: a fraction before -0.",
+      "input": "[1.5,-0]",
+      "expectedError": "RNCJ_NUMBER_NOT_INTEGER"
+    },
+    {
+      "id": "first-error-negative-zero",
+      "description": "The first defect is reported: -0 before a fraction.",
+      "input": "[-0,1.5]",
+      "expectedError": "RNCJ_NEGATIVE_ZERO"
+    },
+    {
+      "id": "first-error-duplicate",
+      "description": "A duplicate key is reported before its value is read.",
+      "input": "{\"a\":1,\"a\":1.5}",
+      "expectedError": "RNCJ_DUPLICATE_KEY"
+    },
+    {
+      "id": "first-error-value-before-duplicate",
+      "description": "A bad value is reported before a later duplicate key.",
+      "input": "{\"a\":-0,\"a\":1}",
+      "expectedError": "RNCJ_NEGATIVE_ZERO"
+    },
+    {
+      "id": "unclosed-array",
+      "description": "An array without its closing bracket.",
+      "input": "[1,2",
+      "expectedError": "RNCJ_SYNTAX"
     }
   ]
 }

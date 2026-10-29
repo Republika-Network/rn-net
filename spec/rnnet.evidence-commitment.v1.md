@@ -73,6 +73,15 @@ failure:
 9. `sourceEvidenceDigest`, then `sourceFileSha256` (`RNEC_INVALID_DIGEST`).
 10. `sourceRef` (`RNEC_INVALID_SOURCE_REF`).
 
+### 4.1 Envelopes given as in-memory values
+
+An implementation that also accepts an envelope as a value built in a program MUST first
+serialize it under `rnnet.canonical-json.v1` §5, which reads every property exactly once,
+then parse and validate that serialization as in steps 2–10, and compute the commitment
+(§5) over the validated result. `RNCJ_*` errors therefore precede `RNEC_*` errors for such
+values. The digest always covers exactly the envelope that was validated, even if the
+original value would answer differently when read again.
+
 ## 5. Commitment construction
 
 ### 5.1 Domain separator
@@ -106,7 +115,9 @@ envelope's content, not one particular serialization of it.
 
 ## 6. Verification
 
-Given envelope bytes and a presented commitment, a verifier:
+Given envelope **bytes** and a presented commitment, a verifier performs the steps below.
+Verification input is bytes, never decoded text, because decoding can already have replaced
+invalid bytes and so hide what was committed.
 
 1. Rejects a presented commitment that is not `sha256:` + 64 lowercase hex (`RNEC_INVALID_COMMITMENT_DIGEST`).
 2. Validates the envelope (§4).
