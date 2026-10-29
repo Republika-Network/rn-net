@@ -25,7 +25,21 @@ const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:c
 
 // The only third-party packages in the repository: development tooling, never imported by
 // packages/** (docs/adr/ADR-RN-005-guard-parser-dependency.md). Exact versions.
-export const DEV_DEPENDENCIES = { acorn: '8.19.0' };
+export const DEV_DEPENDENCIES = {
+  acorn: {
+    version: '8.19.0',
+    resolved: 'https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz',
+    integrity: 'sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==',
+  },
+};
+// Manifest fields that change what npm installs or links, beyond the dependency lists.
+const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
+
+// A relative specifier the guard can resolve exactly as Node does: `./` or `../` followed by
+// plain path segments. Node resolves specifiers as URLs, so percent-encoding (`%2e%2e` is `..`),
+// backslashes (`\` is `/` in file URLs), queries and fragments could reach a file other than
+// the one the specifier appears to name; such specifiers are reported, not resolved.
+const RELATIVE_SPECIFIER = /^\.\.?(?:\/[A-Za-z0-9_.-]+)+$/;
 
 // Packages each package may depend on.
 export const ALLOWED_PACKAGES = {
@@ -117,10 +131,12 @@ function analyze(program) {
         else problems.push('dynamic-import-non-literal');
         break;
       case 'Identifier':
-        if (isPropertyName(node, parent, key)) {
-          if (node.name === 'constructor' && parent.type === 'MemberExpression') problems.push('constructor-access');
-          break;
+        // `constructor` reaches the Function constructor from any function (`f.constructor`,
+        // `const { constructor } = f`); only a class's own constructor method may use the name.
+        if (node.name === 'constructor' && !(parent?.type === 'MethodDefinition' && parent.kind === 'constructor')) {
+          problems.push('constructor-access');
         }
+        if (isPropertyName(node, parent, key)) break;
         if (FORBIDDEN_IDENTIFIERS.includes(node.name)) problems.push(`forbidden-identifier:${node.name}`);
         if (node.name === 'process') {
           const allowed =
@@ -166,36 +182,47 @@ const RAW_RULES = [
   { id: 'string-named-import-clause', pattern: new RegExp(String.raw`(?<![\w$.])(?:import|export)${GAP}(?:[\w$]+${GAP},${GAP})?\{[^}]*['"\x60]`) },
 ];
 
+/** Repository path a relative specifier names, or null where Node's URL resolution differs. */
 function resolve(fromPath, specifier) {
+  if (!RELATIVE_SPECIFIER.test(specifier)) return null;
   const parts = fromPath.split('/').slice(0, -1);
   for (const segment of specifier.split('/')) {
     if (segment === '..') parts.pop();
     else if (segment !== '.') parts.push(segment);
   }
-  return parts.join('/');
+  const resolved = parts.join('/');
+  // Cross-check against URL resolution, the way Node resolves module specifiers.
+  const viaUrl = new URL(specifier, `file:///repository/${fromPath}`).pathname;
+  return viaUrl === `/repository/${resolved}` ? resolved : null;
 }
 
 export function check(files) {
   const findings = [];
   const add = (path, rule) => findings.push({ path, rule });
 
-  for (const { path, content } of files) {
-    if (path.endsWith('package.json') && content !== null) {
+  for (const { path, content, symlink } of files) {
+    const name = path.split('/').at(-1);
+    if (name === 'npm-shrinkwrap.json' || name === '.npmrc') add(path, `not-allowed:${name}`);
+    if (name === 'package.json' && content !== null) {
       const manifest = JSON.parse(content);
       for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
         const declared = Object.entries(manifest[key] ?? {});
         const allowed = path === 'package.json' && key === 'devDependencies' ? DEV_DEPENDENCIES : {};
-        if (declared.some(([name, version]) => allowed[name] !== version)) add(path, `undeclared-${key}`);
+        if (declared.some(([dependency, version]) => allowed[dependency]?.version !== version)) add(path, `undeclared-${key}`);
       }
+      for (const field of MANIFEST_FIELDS_NOT_ALLOWED) if (Object.hasOwn(manifest, field)) add(path, `manifest-field-not-allowed:${field}`);
     }
-    if (path.endsWith('package-lock.json') && content !== null) {
-      // Exactly the root project and the allowed development dependencies, at their pinned versions.
+    if (name === 'package-lock.json' && content !== null) {
+      // Exactly the root project and the allowed development dependencies, pinned by version,
+      // source and integrity.
       const entries = Object.entries(JSON.parse(content).packages ?? {});
-      const expected = new Map([['', null], ...Object.entries(DEV_DEPENDENCIES).map(([n, v]) => [`node_modules/${n}`, v])]);
-      const valid =
-        path === 'package-lock.json' &&
-        entries.length === expected.size &&
-        entries.every(([where, entry]) => expected.has(where) && (where === '' || (entry.version === expected.get(where) && entry.dev === true)));
+      const expected = new Map(Object.entries(DEV_DEPENDENCIES).map(([dependency, pin]) => [`node_modules/${dependency}`, pin]));
+      const matches = ([where, entry]) => {
+        if (where === '') return true;
+        const pin = expected.get(where);
+        return pin !== undefined && entry.dev === true && ['version', 'resolved', 'integrity'].every((field) => entry[field] === pin[field]);
+      };
+      const valid = path === 'package-lock.json' && entries.length === expected.size + 1 && Object.hasOwn(Object.fromEntries(entries), '') && entries.every(matches);
       if (!valid) add(path, 'undeclared-lockfile-packages');
     }
     const match = /^packages\/([^/]+)\/(.+)$/.exec(path);
@@ -203,6 +230,11 @@ export function check(files) {
     const [, pkg, rest] = match;
     if (!Object.hasOwn(ALLOWED_PACKAGES, pkg)) {
       add(path, 'unregistered-package');
+      continue;
+    }
+    // Node resolves a symlinked module's imports from its real path, not from where it is linked.
+    if (symlink) {
+      add(path, 'symlink-in-package');
       continue;
     }
     // Only ES modules (plus a README or manifest) may live in a package, so no code file escapes
@@ -242,6 +274,10 @@ export function check(files) {
         continue;
       }
       const target = resolve(path, specifier);
+      if (target === null) {
+        add(path, `unsupported-specifier:${specifier}`);
+        continue;
+      }
       const targetMatch = /^packages\/([^/]+)\/(.+)$/.exec(target);
       if (!targetMatch) {
         add(path, 'import-outside-packages');

@@ -38,11 +38,18 @@ The repository has no third-party dependencies, and the runtime packages must st
    guard enforces both:
    - the root manifest may declare exactly the allowlisted development dependency at its exact
      version, and no other manifest may declare any dependency;
-   - the lockfile may contain nothing else;
-   - an import of `acorn` from `packages/` is reported.
+   - the lockfile may contain nothing else, pinned by version, source URL and integrity hash;
+   - `npm-shrinkwrap.json`, `.npmrc` and the manifest fields `overrides`, `workspaces` and
+     `bundleDependencies` are not allowed;
+   - an import of `acorn` from `packages/` is reported, by name or by path.
 4. A file Acorn cannot parse as an ECMAScript module is reported (`unsupported-syntax`), not
    skipped.
-5. The raw-text patterns stay as a second, more conservative layer. They run over the whole
+5. Relative specifiers are resolved only when they are `./` or `../` followed by plain path
+   segments, and the result is cross-checked against URL resolution. Node resolves specifiers
+   as URLs, so percent-encoding, backslashes, queries and fragments could name another file;
+   such specifiers are reported. Symlinks under `packages/` are reported, because Node resolves
+   a linked module's imports from its real path.
+6. The raw-text patterns stay as a second, more conservative layer. They run over the whole
    file text, so they apply even if the parse were wrong.
 
 ## Consequences
@@ -52,7 +59,8 @@ The repository has no third-party dependencies, and the runtime packages must st
   - false positives on valid code the tokenizer had to reject.
 - **What it does not remove:**
   - The guard is still a lint, not a sandbox. A name assembled at run time, or a forbidden
-    object reached indirectly, is beyond static analysis.
+    object reached by reflection without naming it, is beyond static analysis. One example is
+    finding the Function constructor among an object's property descriptors.
   - Node.js could in principle accept syntax Acorn rejects (reported, so fail closed) or parse
     a construct differently from Acorn (not expected for a conforming parser, but not
     excluded).
