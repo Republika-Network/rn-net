@@ -28,6 +28,8 @@ const MAX_MEMOS = 32;
 const XRPL_TESTNET_ID = 1n;
 /** AccountSet fields that change settings (xrpl.org AccountSet); an anchor changes none. */
 const ACCOUNT_SETTINGS = ['ClearFlag', 'SetFlag', 'Domain', 'EmailHash', 'MessageKey', 'NFTokenMinter', 'TickSize', 'TransferRate', 'WalletLocator', 'WalletSize'];
+/** AccountSet transaction flags that change settings: tfRequireDestTag ... tfAllowXRP. */
+const ACCOUNT_SETTING_FLAGS = 0x003f0000;
 
 /** Phase A (§3.2): structure, network and consistency; throws on the first failure. */
 function checkStructure(tx) {
@@ -65,6 +67,10 @@ function checkStructure(tx) {
   if (body.TransactionType !== 'AccountSet') fail('RNAX_UNSUPPORTED_TRANSACTION_TYPE', 'tx.tx_json.TransactionType');
   // A no-op AccountSet: any field that changes account settings makes it another operation.
   for (const field of ACCOUNT_SETTINGS) if (Object.hasOwn(body, field)) fail('RNAX_UNSUPPORTED_TRANSACTION_TYPE', `tx.tx_json.${field}`);
+  if (Object.hasOwn(body, 'Flags')) {
+    if (!Number.isInteger(body.Flags) || body.Flags < 0 || body.Flags > 0xffffffff) fail('RNAX_FIELD_TYPE', 'tx.tx_json.Flags');
+    if ((body.Flags & ACCOUNT_SETTING_FLAGS) !== 0) fail('RNAX_UNSUPPORTED_TRANSACTION_TYPE', 'tx.tx_json.Flags');
+  }
   if (typeof body.Account !== 'string' || !ACCOUNT.test(body.Account)) fail('RNAX_INVALID_ACCOUNT', 'tx.tx_json.Account');
   if (Object.hasOwn(body, 'Memos')) {
     if (kind(body.Memos) !== 'array' || body.Memos.length > MAX_MEMOS) fail('RNAX_MALFORMED_MEMO', 'tx.tx_json.Memos');

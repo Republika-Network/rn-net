@@ -212,6 +212,11 @@ def xrpl_structure(tx):
     for field in ("ClearFlag", "SetFlag", "Domain", "EmailHash", "MessageKey", "NFTokenMinter", "TickSize", "TransferRate", "WalletLocator", "WalletSize"):
         if field in body:
             raise Fail("RNAX_UNSUPPORTED_TRANSACTION_TYPE", "tx.tx_json." + field)
+    if "Flags" in body:
+        if not is_int(body["Flags"]) or not 0 <= body["Flags"] <= 0xFFFFFFFF:
+            raise Fail("RNAX_FIELD_TYPE", "tx.tx_json.Flags")
+        if body["Flags"] & 0x003F0000:
+            raise Fail("RNAX_UNSUPPORTED_TRANSACTION_TYPE", "tx.tx_json.Flags")
     if not isinstance(body.get("Account"), str) or not ACCOUNT.fullmatch(body["Account"]):
         raise Fail("RNAX_INVALID_ACCOUNT", "tx.tx_json.Account")
     if "Memos" in body:

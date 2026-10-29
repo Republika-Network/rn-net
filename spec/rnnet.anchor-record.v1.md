@@ -115,7 +115,7 @@ The transaction may carry other memos with other `MemoType` values. They are ign
 | A5 | `tx_json.NetworkID` is absent | `RNAX_WRONG_NETWORK` |
 | A6 | Each CTID present (`ctid`, then `tx_json.ctid`): it is `C` followed by 15 uppercase hex digits, and its low 16 bits (the network ID) are 1 | `RNAX_INVALID_CTID`, `RNAX_WRONG_NETWORK` |
 | A7 | Each duplicate reference agrees with its counterpart (see below) | `RNAX_CONTRADICTORY_REFERENCE` (and `RNAX_MISSING_FIELD` or `RNAX_FIELD_TYPE` for `meta.TransactionIndex`) |
-| A8 | `tx_json.TransactionType` is `AccountSet`, and `tx_json` has none of the settings fields `ClearFlag`, `SetFlag`, `Domain`, `EmailHash`, `MessageKey`, `NFTokenMinter`, `TickSize`, `TransferRate`, `WalletLocator`, `WalletSize` | `RNAX_UNSUPPORTED_TRANSACTION_TYPE` |
+| A8 | `tx_json.TransactionType` is `AccountSet`, and `tx_json` has none of the settings fields `ClearFlag`, `SetFlag`, `Domain`, `EmailHash`, `MessageKey`, `NFTokenMinter`, `TickSize`, `TransferRate`, `WalletLocator`, `WalletSize`. `Flags`, if present, is an integer from 0 to 4,294,967,295 (else `RNAX_FIELD_TYPE`) with none of the setting bits `0x003F0000` (`tfRequireDestTag` to `tfAllowXRP`). Other bits, such as `tfFullyCanonicalSig`, are allowed. | `RNAX_UNSUPPORTED_TRANSACTION_TYPE` |
 | A9 | `tx_json.Account` matches `^r[1-9A-HJ-NP-Za-km-z]{24,34}$` | `RNAX_INVALID_ACCOUNT` |
 | A10 | `tx_json.Memos` is absent, or an array of at most 32 elements. Each element is exactly `{"Memo": {...}}`. Its members are a non-empty subset of `MemoType`, `MemoData` and `MemoFormat`, each a string of uppercase hex with an even number of digits, at most 2,048 digits. | `RNAX_MALFORMED_MEMO` |
 
@@ -131,7 +131,11 @@ duplicate is present:
 | Each CTID's transaction index: bits 16–31 | `meta.TransactionIndex` |
 
 **When a CTID is present.** `meta.TransactionIndex` is then required (`RNAX_MISSING_FIELD`) and
-must be an integer (`RNAX_FIELD_TYPE`). It is checked before the CTID comparisons.
+must be an integer (`RNAX_FIELD_TYPE`). The checks run in the order of the table above:
+
+1. `tx_json.ctid` is compared with `ctid`;
+2. `meta.TransactionIndex` is checked;
+3. each CTID's ledger index and transaction index are compared.
 
 **Network identity offline.** Without a CTID, offline data cannot tell XRPL Testnet from Mainnet
 (network ID 0) or Devnet (2). None of them carries a `NetworkID` field. The network is then only
