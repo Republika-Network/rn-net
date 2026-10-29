@@ -1,0 +1,88 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.anchor-payload.v1",
+  "kind": "anchor-payload",
+  "note": "Synthetic. Every transaction record, hash, ledger, block and account here is derived from a label and does not exist on any network.",
+  "vectors": [
+    {
+      "id": "valid",
+      "payloadHex": "524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd"
+    },
+    {
+      "id": "valid-other-commitment",
+      "payloadHex": "524e4e4554414e4301017082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expectedCommitment": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff"
+    },
+    {
+      "id": "wrong-version",
+      "payloadHex": "524e4e4554414e430201ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedError": "RNAP_UNSUPPORTED_VERSION"
+    },
+    {
+      "id": "version-zero",
+      "payloadHex": "524e4e4554414e430001ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedError": "RNAP_UNSUPPORTED_VERSION"
+    },
+    {
+      "id": "wrong-magic",
+      "payloadHex": "524e4e4554414e440101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedError": "RNAP_NOT_ANCHOR_PAYLOAD"
+    },
+    {
+      "id": "lowercase-magic",
+      "payloadHex": "726e6e6574616e630101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedError": "RNAP_NOT_ANCHOR_PAYLOAD"
+    },
+    {
+      "id": "empty",
+      "payloadHex": "",
+      "expectedError": "RNAP_NOT_ANCHOR_PAYLOAD"
+    },
+    {
+      "id": "magic-only",
+      "payloadHex": "524e4e4554414e43",
+      "expectedError": "RNAP_INVALID_LENGTH"
+    },
+    {
+      "id": "truncated",
+      "payloadHex": "524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbff",
+      "expectedError": "RNAP_INVALID_LENGTH"
+    },
+    {
+      "id": "extra-bytes",
+      "payloadHex": "524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd00",
+      "expectedError": "RNAP_INVALID_LENGTH"
+    },
+    {
+      "id": "payload-twice",
+      "payloadHex": "524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedError": "RNAP_INVALID_LENGTH"
+    },
+    {
+      "id": "digest-of-31-bytes",
+      "payloadHex": "524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbff",
+      "expectedError": "RNAP_INVALID_LENGTH"
+    },
+    {
+      "id": "digest-of-33-bytes",
+      "payloadHex": "524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffdff",
+      "expectedError": "RNAP_INVALID_LENGTH"
+    },
+    {
+      "id": "unsupported-commitment-format",
+      "payloadHex": "524e4e4554414e430102ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedError": "RNAP_UNSUPPORTED_COMMITMENT_FORMAT"
+    },
+    {
+      "id": "version-2-other-length",
+      "payloadHex": "524e4e4554414e430201ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd0000",
+      "expectedError": "RNAP_UNSUPPORTED_VERSION"
+    },
+    {
+      "id": "digest-reversed-byte-order",
+      "payloadHex": "524e4e4554414e430101fdffcbea73878899a4ebf947c3229908eb9dd8c7c5c7258f1cc7d9c6f9c68cff",
+      "expectedCommitment": "sha256:fdffcbea73878899a4ebf947c3229908eb9dd8c7c5c7258f1cc7d9c6f9c68cff"
+    }
+  ]
+}

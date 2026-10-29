@@ -23,6 +23,7 @@ export const ALLOWED_BUILTINS = {
   commitment: ['node:buffer', 'node:crypto'],
   conformance: ['node:buffer', 'node:fs', 'node:url'],
   verifier: ['node:buffer', 'node:crypto'],
+  anchor: ['node:buffer', 'node:crypto'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
@@ -75,8 +76,9 @@ const RELATIVE_SPECIFIER = /^\.\.?(?:\/[A-Za-z0-9_.-]+)+$/;
 export const ALLOWED_PACKAGES = {
   canonical: [],
   commitment: ['canonical'],
-  conformance: ['canonical', 'commitment', 'verifier'],
+  conformance: ['canonical', 'commitment', 'verifier', 'anchor'],
   verifier: ['canonical', 'commitment'],
+  anchor: ['canonical'],
 };
 
 // Whitespace, block comments or line comments, as allowed between tokens.

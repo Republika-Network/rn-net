@@ -101,6 +101,7 @@ run_checks() {
   echo "::group::Independent Python reference against all vectors"
   python3 -I -B tools/reference/rnnet_reference.py
   python3 -I -B tools/reference/rnnet_evidence_reference.py
+  python3 -I -B tools/reference/rnnet_anchor_reference.py
   echo "::endgroup::"
 }
 

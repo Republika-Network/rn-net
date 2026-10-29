@@ -44,3 +44,17 @@ public labels, and stops if the verifier disagrees with any hand-stated outcome 
 checks the committed file is exactly what the generator builds. The Python reference
 (`tools/reference/rnnet_evidence_reference.py`, with its own RFC 8032 Ed25519) rebuilds every
 `expectedReport` independently.
+
+## Anchoring (`anchor/`)
+
+Synthetic: every transaction record, hash, ledger, block and account is derived from a label and
+does not exist on any network. Built by `node tools/vectors/anchor-vectors.mjs --write`, which
+stops if the implementation disagrees with a hand-stated outcome or code; a test checks the
+committed files are exactly what it builds, and `tools/reference/rnnet_anchor_reference.py`
+rebuilds every expected record and report independently.
+
+| File | Fields |
+|---|---|
+| `anchor/payload.json` | `payloadHex`, and `expectedCommitment` or `expectedError` (`rnnet.anchor-payload.v1`) |
+| `anchor/xrpl.json`, `anchor/evm.json` | `input` (an `rnnet.anchor-observation.v1`), `expectedCommitment`, `expectedOutcome`, `expectedFindings`, `expectedRecord` |
+| `anchor/dual.json` | `xrpl` and/or `evm` observations, `expectedCommitment`, `expectedOutcome`, `expectedConclusions`, `expectedFindings`, `expectedReport` |
