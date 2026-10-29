@@ -15,7 +15,9 @@
 // packages/** is checked; tools/ is repository tooling and may use any built-in.
 import { parse } from 'acorn';
 
-// Built-in modules each package may import. Tests may also use the test-only modules.
+// Built-in modules each package may import. Tests (packages/*/test/) may also use the test-only
+// modules; everything else in a package is production code and may import, within its own
+// package, only files under src/.
 export const ALLOWED_BUILTINS = {
   canonical: [],
   commitment: ['node:buffer', 'node:crypto'],
@@ -328,7 +330,12 @@ export function check(files) {
         continue;
       }
       const [, targetPkg, targetRest] = targetMatch;
-      if (targetPkg === pkg) continue;
+      if (targetPkg === pkg) {
+        // Production code (everything outside test/) imports only production code: never a test
+        // file or helper, which may use test-only built-ins and capabilities.
+        if (area === 'src' && !targetRest.startsWith('src/')) add(path, `production-imports-non-production:${targetRest}`);
+        continue;
+      }
       if (!ALLOWED_PACKAGES[pkg].includes(targetPkg)) add(path, `package-not-allowed:${targetPkg}`);
       else if (targetRest !== 'src/index.mjs') add(path, `private-import:${targetPkg}/${targetRest}`);
     }

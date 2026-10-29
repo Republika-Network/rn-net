@@ -375,6 +375,46 @@ test('only allowlisted exports of allowed built-ins may be imported', () => {
   assert.deepEqual(rules('packages/commitment/src/x.mjs', "import { Buffer } from 'node:buffer';\nimport { createHash } from 'node:crypto';"), []);
 });
 
+// RN-NET-01K: the independent review of 43dc44c showed production code borrowing test-only
+// built-ins through a same-package test helper (canonical/src has no allowed built-ins).
+test('production code cannot import test files or helpers of its own package', () => {
+  const helper = "import { test } from 'node:test';\nimport { Buffer } from 'node:buffer';\nexport { test, Buffer };\n";
+  const reviewed = check([
+    { path: 'packages/canonical/test/helper.mjs', content: helper },
+    { path: 'packages/canonical/src/y.mjs', content: "import { test, Buffer } from '../test/helper.mjs';\n" },
+  ]);
+  assert.deepEqual(reviewed, [{ path: 'packages/canonical/src/y.mjs', rule: 'production-imports-non-production:test/helper.mjs' }]);
+  const cases = {
+    'packages/canonical/src/a.mjs': "export { test } from '../test/helper.mjs';",
+    'packages/commitment/src/a.mjs': "export * from '../test/helper.mjs';",
+    'packages/conformance/src/a.mjs': "const h = await import('../test/helper.mjs');",
+    'packages/canonical/src/sub/a.mjs': "import { test } from '../../test/helper.mjs';",
+    'packages/canonical/src/b.mjs': "import x from './../test/a.test.mjs';",
+    'packages/canonical/lib/a.mjs': "import { test } from '../test/helper.mjs';", // outside test/ is production
+    'packages/canonical/src/c.mjs': "import x from '../helpers/h.mjs';", // a helper anywhere outside src/
+  };
+  for (const [path, source] of Object.entries(cases)) {
+    assert.ok(rules(path, source).some((r) => r.startsWith('production-imports-non-production:')), `${path}: ${source}`);
+  }
+  // A re-export chain inside src/ is reported where it first leaves src/.
+  const chain = check([
+    { path: 'packages/canonical/src/a.mjs', content: "export * from './b.mjs';" },
+    { path: 'packages/canonical/src/b.mjs', content: "export { test } from '../test/helper.mjs';" },
+  ]);
+  assert.deepEqual(chain, [{ path: 'packages/canonical/src/b.mjs', rule: 'production-imports-non-production:test/helper.mjs' }]);
+});
+
+test('test code keeps its imports and the accepted node:test capabilities', () => {
+  const ok = {
+    'packages/canonical/test/a.test.mjs': "import { canonicalize } from '../src/index.mjs';\nimport { helper } from './helper.mjs';",
+    'packages/commitment/test/a.test.mjs': "import { parse } from '../../canonical/src/index.mjs';",
+    'packages/canonical/test/b.test.mjs':
+      "import { test } from 'node:test';\ntest('x', async (t) => { t.mock.fn(); await t.test('y', () => {}); });\nconst s = test.run({ files: [] });\ntest.mock.fn();\ntest.snapshot.setResolveSnapshotPath(() => 'x');",
+    'packages/canonical/src/a.mjs': "import { b } from './b.mjs';\nimport { c } from './sub/c.mjs';",
+  };
+  for (const [path, source] of Object.entries(ok)) assert.deepEqual(rules(path, source), [], path);
+});
+
 test('symlinks, shrinkwrap files, .npmrc and install-changing manifest fields are reported', () => {
   for (const path of ['packages/canonical/src/s.mjs', 'packages/canonical', 'packages']) {
     assert.deepEqual(check([{ path, content: null, symlink: true }]).map((f) => f.rule), ['symlink-in-package'], path);
