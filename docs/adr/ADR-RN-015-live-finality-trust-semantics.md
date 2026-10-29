@@ -1,6 +1,6 @@
 # ADR-RN-015: Live finality and trust semantics
 
-- Status: Proposed (RN-NET-03B1)
+- Status: Accepted (founder approval of PR #7 as implemented, RN-NET-03B1-CLOSE)
 - Date: 2026-10-29
 - Specification:
   - [rnnet.live-observation-report.v1](../../spec/rnnet.live-observation-report.v1.md) §5, §6, §7.4
