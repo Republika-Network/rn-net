@@ -67,7 +67,7 @@ function dataValue(descriptor, path) {
 function serializeArray(array, depth, path) {
   if (Object.getPrototypeOf(array) !== Array.prototype) fail(E.UNSUPPORTED_VALUE, 'Unsupported array type.', path);
   const descriptors = snapshot(array, path);
-  const length = descriptors.length.value;
+  const length = arrayLength(descriptors, path);
   const parts = [];
   for (let i = 0; i < length; i++) {
     const childPath = `${path}[${i}]`;
@@ -77,6 +77,20 @@ function serializeArray(array, depth, path) {
   // Own properties are exactly the indices plus `length`; named extras would otherwise be dropped.
   if (Object.keys(descriptors).length !== length + 1) fail(E.UNSUPPORTED_VALUE, 'Arrays may not have extra properties.', path);
   return `[${parts.join(',')}]`;
+}
+
+const MAX_ARRAY_LENGTH = 2 ** 32 - 1;
+
+// A Proxy can report any value for the `length` descriptor, including an object whose valueOf
+// answers differently on each use. Only a plain integer in the array-length range is accepted,
+// so the loop bound and the extra-property check below see the same number.
+function arrayLength(descriptors, path) {
+  const descriptor = Object.hasOwn(descriptors, 'length') ? descriptors.length : undefined;
+  const length = descriptor !== undefined && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined;
+  if (!Number.isInteger(length) || length < 0 || length > MAX_ARRAY_LENGTH) {
+    fail(E.UNSUPPORTED_VALUE, 'Array length is not a valid array length.', path);
+  }
+  return length;
 }
 
 function serializeObject(object, depth, path) {

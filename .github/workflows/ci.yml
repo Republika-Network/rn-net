@@ -34,6 +34,10 @@ jobs:
           fi
           echo "$out"
           grep -q 'interfaces other than loopback present' <<<"$out"
+      - name: Isolation script fails closed (tests)
+        # Simulates a failing `ip`, a failing namespace, a dead positive control, a reachable
+        # address and failing check stages; each must fail the isolation script.
+        run: tools/ci/offline-checks.test.sh
       - name: Offline checks (syntax, tests, independent Python reference)
         # A new network namespace with loopback only, so the checks cannot reach the network while
         # the runner keeps its own connection. The script proves isolation (structure, a positive

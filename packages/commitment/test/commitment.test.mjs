@@ -121,6 +121,10 @@ test('verifyCommitment throws TypeError only for invalid options, before any oth
   assert.throws(() => verifyCommitment(text(envelope), digest, { sourceFile: [1, 2, 3] }), TypeError);
   assert.throws(() => verifyCommitment(text(envelope), digest, null), TypeError);
   assert.throws(() => verifyCommitment(text(envelope), 'sha256:bad', { sourceFile: 42 }), TypeError);
+  // Primitives are refused by the options check itself, not by a later property read (RN-NET-01J, N3).
+  for (const options of [null, 'sourceFile', 1, true]) {
+    assert.throws(() => verifyCommitment(text(envelope), digest, options), { name: 'TypeError', message: 'options must be an object.' });
+  }
 });
 
 test('verifyCommitment reads options.sourceFile exactly once', () => {

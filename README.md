@@ -65,6 +65,9 @@ specifications. The two share a similar structure, so agreement between them is
 evidence, not proof, of correctness. Everything runs on Node.js 22 and Python 3
 built-ins only; there are no third-party dependencies.
 
+Behaviour changes to the JavaScript API, and what consumers can rely on, are recorded in
+[`docs/api-compatibility.md`](docs/api-compatibility.md).
+
 ## Contributing and security
 
 Changes reach `main` only through pull requests that pass the required checks.
@@ -75,12 +78,14 @@ Run the same checks as CI locally, in a network namespace without network access
 
 ```sh
 unshare -rn tools/ci/offline-checks.sh   # syntax, tests, Python reference; proves isolation first
+tools/ci/offline-checks.test.sh          # the isolation script fails closed
 node tools/guards/run.mjs
 ```
 
-Network isolation comes from the namespace. The test preload
-(`tools/offline.mjs`) only adds defense in depth by making common Node network,
-worker and subprocess APIs throw; it is not a sandbox. Without `unshare`, the
+Network isolation comes from the namespace: an operating-system boundary. The test
+preload (`tools/offline.mjs`) is JavaScript-level instrumentation that only adds
+defense in depth by making common Node network, worker and subprocess APIs throw;
+it is not a sandbox. Likewise the dependency guard is a source lint, not a sandbox. Without `unshare`, the
 tests can be run directly with
 `node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"`
 and `python3 -I -B tools/reference/rnnet_reference.py`, but then nothing
