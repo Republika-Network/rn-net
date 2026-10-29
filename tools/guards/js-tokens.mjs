@@ -6,29 +6,42 @@
 // literals, escaped identifiers, legacy octal escapes, unknown characters) throws
 // UnsupportedSyntax, and the guard reports the file instead of guessing.
 //
-// Whether a `/` starts a regular expression depends on the grammar. Without a full parser, the
-// tokenizer decides from the previous token and from what the enclosing brackets were: a `)`
-// that closes an `if`, `for`, `while` or `with` condition, and a `}` that closes a block, are
-// followed by a regular expression; other `)` by a division. Where the answer would need a full
-// parser, the tokenizer fails closed instead: a `/` after a `}` it did not classify as a block
-// (an object literal, but also a labelled block or a `case` block), or after `of`, is
-// UnsupportedSyntax. The remaining known misreading is a function or class expression body
-// followed by a division, which is read as a regular expression; the raw pattern checks in the
-// guard apply to every file as a second layer.
+// Whether a `/` starts a regular expression or is a division depends on the grammar, and a
+// wrong guess can hide code (a regular expression read as a division can open a fake template
+// literal; a division read as a regular expression swallows the rest of the line). The tokenizer
+// is not a parser. It decides only where the previous token settles the question for every
+// valid module, and fails closed everywhere else:
+//
+//   regular expression  at the start; after a punctuator other than `)`, `]`, `}`, `++`, `--`;
+//                       after a reserved word that precedes an expression (REGEX_AFTER_KEYWORD);
+//                       after a `)` that closes an `if`, `for`, `for await`, `while` or `with`
+//                       condition; after a `}` that closes a plain statement block (one opened at
+//                       the start, after `;`, `{`, `}`, such a condition, a `switch` or `catch`
+//                       head, or `else`, `try`, `finally`, `do`).
+//   division            after a name, number, string, template, regular expression, private
+//                       name, `]`, or any other `)`.
+//   rejected            after `++` or `--` (postfix or prefix), after `of`, and after any other
+//                       `}`: the body of a function, method, arrow or class, an object literal,
+//                       a labelled or `case` block.
+//
+// These rules are reasoned from the grammar, not proven, and they are only as good as that
+// reasoning: the raw pattern checks in the guard run over every file as a second layer.
 
 export class UnsupportedSyntax extends Error {}
 
 // Keywords after which `/` starts a regular expression rather than a division.
+// Reserved words after which an expression starts. All are reserved in module code.
 const REGEX_AFTER_KEYWORD = new Set([
   'return', 'typeof', 'instanceof', 'in', 'new', 'delete', 'void', 'throw', 'case', 'do', 'else', 'yield', 'await',
+  'default', 'extends',
 ]);
-// Keywords after which `{` starts an object literal rather than a block.
-const EXPRESSION_KEYWORDS = new Set([
-  'return', 'typeof', 'instanceof', 'in', 'of', 'new', 'delete', 'void', 'throw', 'case', 'yield', 'await',
-]);
+// Words after which `{` opens a plain statement block.
+const BLOCK_KEYWORDS = new Set(['else', 'try', 'finally', 'do']);
 // Statements whose parenthesized condition is followed by a statement, which may begin with a
 // regular expression.
 const CONDITION_KEYWORDS = new Set(['if', 'for', 'while', 'with']);
+// Statements whose parenthesized head is followed by a block.
+const HEAD_KEYWORDS = new Set(['switch', 'catch']);
 
 const PUNCTUATORS = [
   '>>>=', '...', '===', '!==', '**=', '<<=', '>>=', '>>>', '&&=', '||=', '??=',
@@ -53,7 +66,7 @@ const SINGLE_ESCAPES = { b: '\b', f: '\f', n: '\n', r: '\r', t: '\t', v: '\v', 0
 export function tokenize(source) {
   const tokens = [];
   const braces = []; // { block } for `{`, or '${' for a template substitution
-  const parens = []; // for each open `(`: whether it holds a statement condition
+  const parens = []; // for each open `(`: 'condition', 'head' or 'other'
   let i = 0;
 
   const fail = (what) => {
@@ -63,20 +76,35 @@ export function tokenize(source) {
 
   if (source.startsWith('#!')) while (i < source.length && !LINE_TERMINATOR.test(source[i])) i++;
 
-  // Whether a `{` here opens a block (rather than an object literal).
-  const opensBlock = () => {
+  // Whether a `{` here opens a plain statement block. Anything else (a function, method, arrow
+  // or class body, an object literal, a labelled or `case` block) is not, and a `/` after its
+  // closing `}` is rejected.
+  const opensPlainBlock = () => {
     const prev = tokens.at(-1);
     if (prev === undefined) return true;
-    if (prev.type === 'punctuator') return [';', '{', '}', ')', '=>'].includes(prev.value);
-    if (prev.type === 'identifier') return !EXPRESSION_KEYWORDS.has(prev.value);
-    return false;
+    if (prev.type === 'punctuator') {
+      if (prev.value === ')') return prev.parenKind !== 'other';
+      return [';', '{', '}'].includes(prev.value);
+    }
+    return prev.type === 'identifier' && BLOCK_KEYWORDS.has(prev.value) && !isMemberName(tokens.at(-2));
+  };
+
+  // What an opening `(` here belongs to.
+  const parenKind = () => {
+    const prev = tokens.at(-1);
+    if (prev?.type !== 'identifier' || isMemberName(tokens.at(-2))) return 'other';
+    if (CONDITION_KEYWORDS.has(prev.value)) return 'condition';
+    if (prev.value === 'await' && tokens.at(-2)?.type === 'identifier' && tokens.at(-2).value === 'for') return 'condition';
+    if (HEAD_KEYWORDS.has(prev.value)) return 'head';
+    return 'other';
   };
 
   const regexAllowed = () => {
     const prev = tokens.at(-1);
     if (prev === undefined) return true;
     if (prev.type === 'punctuator') {
-      if (prev.value === '}' && !prev.regexAfter) fail('`/` after an object literal or labelled block is ambiguous');
+      if (prev.value === '}' && !prev.regexAfter) fail('`/` after a `}` that does not close a plain block is ambiguous');
+      if (prev.value === '++' || prev.value === '--') fail(`\`/\` after \`${prev.value}\` is ambiguous`);
       if (prev.value === ')' || prev.value === '}') return prev.regexAfter;
       return prev.value !== ']';
     }
@@ -237,11 +265,8 @@ export function tokenize(source) {
     const punctuator = PUNCTUATORS.find((p) => source.startsWith(p, i) && !(p === '?.' && /\d/.test(source[i + 2] ?? '')));
     if (punctuator === undefined) fail(`unsupported character ${JSON.stringify(c)}`);
     const token = { type: 'punctuator', value: punctuator, start };
-    if (punctuator === '{') braces.push({ block: opensBlock() });
-    if (punctuator === '(') {
-      const prev = tokens.at(-1);
-      parens.push(prev?.type === 'identifier' && CONDITION_KEYWORDS.has(prev.value) && !isMemberName(tokens.at(-2)));
-    }
+    if (punctuator === '{') braces.push({ block: opensPlainBlock() });
+    if (punctuator === '(') parens.push(parenKind());
     if (punctuator === '}') {
       const open = braces.pop();
       if (open === undefined) fail('unbalanced }');
@@ -249,7 +274,8 @@ export function tokenize(source) {
     }
     if (punctuator === ')') {
       if (parens.length === 0) fail('unbalanced )');
-      token.regexAfter = parens.pop();
+      token.parenKind = parens.pop();
+      token.regexAfter = token.parenKind === 'condition';
     }
     i += punctuator.length;
     tokens.push(token);

@@ -172,6 +172,20 @@ function rawImportsOf(content) {
   return [...content.matchAll(STATIC_SPECIFIER), ...content.matchAll(DYNAMIC_SPECIFIER)].map((m) => m[2]);
 }
 
+// Raw-text rules that do not depend on tokenizing correctly: they match anywhere in the file,
+// comments and strings included, so code the tokenizer misreads is still seen. They are
+// deliberately broad; reword a comment rather than weaken them.
+const RAW_WORD = (word) => new RegExp(String.raw`(?<![\w$])${word}(?![\w$])`);
+const RAW_RULES = [
+  ...FORBIDDEN_IDENTIFIERS.map((word) => ({ id: `forbidden-word:${word}`, pattern: RAW_WORD(word) })),
+  {
+    id: 'forbidden-word:process',
+    pattern: new RegExp(String.raw`(?<![\w$])process(?![\w$])(?!${GAP}\.${GAP}(?:hrtime|versions?)(?![\w$]))`),
+  },
+  // import { 'name' as x } and export { x as 'name' }: the raw specifier patterns cannot read them.
+  { id: 'string-named-import-clause', pattern: new RegExp(String.raw`(?<![\w$.])(?:import|export)${GAP}(?:[\w$]+${GAP},${GAP})?\{[^}]*['"\x60]`) },
+];
+
 function resolve(fromPath, specifier) {
   const parts = fromPath.split('/').slice(0, -1);
   for (const segment of specifier.split('/')) {
@@ -211,6 +225,9 @@ export function check(files) {
     }
     for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) {
       if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
+    }
+    for (const { id, pattern } of RAW_RULES) {
+      if (pattern.test(content)) add(path, id);
     }
     let analysis;
     try {
