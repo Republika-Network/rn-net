@@ -62,7 +62,8 @@ the record.
 node tools/verify-anchors.mjs --commitment <sha256:...> --xrpl <file> --evm <file> [--output <file>]
 ```
 
-**Exit codes:** 0 `PASS`, 1 `FAIL`, 2 `UNSUPPORTED`, 64 usage error, 66 unreadable input.
+**Exit codes:** 0 `PASS`, 1 `FAIL`, 2 `UNSUPPORTED`, 64 usage error, 66 unreadable input, 73
+output file cannot be created.
 
 **Behaviour:**
 

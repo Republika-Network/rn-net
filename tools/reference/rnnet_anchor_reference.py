@@ -138,7 +138,7 @@ def new_record(network, expected, data):
 
 def finish(rec, finality_class, finality_basis):
     f = rec["findings"]
-    rec["outcome"] = "PASS" if not f else ("UNSUPPORTED" if f[0]["code"] in UNSUPPORTED else "FAIL")
+    rec["outcome"] = "PASS" if not f else ("UNSUPPORTED" if all(x["code"] in UNSUPPORTED for x in f) else "FAIL")
     if rec["outcome"] == "PASS":
         rec["assurance"] = "CONSISTENT_WITH_SUPPLIED_DATA"
         st = lambda s, c, b: {"subject": s, "classification": c, "basis": BASIS[b]}
@@ -183,27 +183,35 @@ def xrpl_structure(tx):
     body, meta = tx["tx_json"], tx["meta"]
     if "NetworkID" in body:
         raise Fail("RNAX_WRONG_NETWORK", "tx.tx_json.NetworkID")
-    ctid = None
-    if "ctid" in tx:
-        if not isinstance(tx["ctid"], str) or not re.fullmatch(r"C[0-9A-F]{15}", tx["ctid"]):
-            raise Fail("RNAX_INVALID_CTID", "tx.ctid")
-        ctid = int(tx["ctid"], 16)
-        if ctid & 0xFFFF != 1:
-            raise Fail("RNAX_WRONG_NETWORK", "tx.ctid")
+    ctids = []
+    for holder, path in ((tx, "tx.ctid"), (body, "tx.tx_json.ctid")):
+        if "ctid" not in holder:
+            continue
+        if not isinstance(holder["ctid"], str) or not re.fullmatch(r"C[0-9A-F]{15}", holder["ctid"]):
+            raise Fail("RNAX_INVALID_CTID", path)
+        value = int(holder["ctid"], 16)
+        if value & 0xFFFF != 1:
+            raise Fail("RNAX_WRONG_NETWORK", path)
+        ctids.append((value, path))
     if "hash" in body and body["hash"] != tx["hash"]:
         raise Fail("RNAX_CONTRADICTORY_REFERENCE", "tx.tx_json.hash")
     if "ledger_index" in body and not (is_int(body["ledger_index"]) and body["ledger_index"] == tx["ledger_index"]):
         raise Fail("RNAX_CONTRADICTORY_REFERENCE", "tx.tx_json.ledger_index")
-    if ctid is not None:
-        if (ctid >> 32) & 0x0FFFFFFF != tx["ledger_index"]:
-            raise Fail("RNAX_CONTRADICTORY_REFERENCE", "tx.ctid")
-        if "TransactionIndex" in meta:
-            if not is_int(meta["TransactionIndex"]):
-                raise Fail("RNAX_FIELD_TYPE", "tx.meta.TransactionIndex")
-            if (ctid >> 16) & 0xFFFF != meta["TransactionIndex"]:
-                raise Fail("RNAX_CONTRADICTORY_REFERENCE", "tx.ctid")
+    if len(ctids) == 2 and ctids[0][0] != ctids[1][0]:
+        raise Fail("RNAX_CONTRADICTORY_REFERENCE", "tx.tx_json.ctid")
+    if ctids:
+        if "TransactionIndex" not in meta:
+            raise Fail("RNAX_MISSING_FIELD", "tx.meta.TransactionIndex")
+        if not is_int(meta["TransactionIndex"]):
+            raise Fail("RNAX_FIELD_TYPE", "tx.meta.TransactionIndex")
+    for value, path in ctids:
+        if (value >> 32) & 0x0FFFFFFF != tx["ledger_index"] or (value >> 16) & 0xFFFF != meta["TransactionIndex"]:
+            raise Fail("RNAX_CONTRADICTORY_REFERENCE", path)
     if body.get("TransactionType") != "AccountSet":
         raise Fail("RNAX_UNSUPPORTED_TRANSACTION_TYPE", "tx.tx_json.TransactionType")
+    for field in ("ClearFlag", "SetFlag", "Domain", "EmailHash", "MessageKey", "NFTokenMinter", "TickSize", "TransferRate", "WalletLocator", "WalletSize"):
+        if field in body:
+            raise Fail("RNAX_UNSUPPORTED_TRANSACTION_TYPE", "tx.tx_json." + field)
     if not isinstance(body.get("Account"), str) or not ACCOUNT.fullmatch(body["Account"]):
         raise Fail("RNAX_INVALID_ACCOUNT", "tx.tx_json.Account")
     if "Memos" in body:
@@ -212,7 +220,7 @@ def xrpl_structure(tx):
             raise Fail("RNAX_MALFORMED_MEMO", "tx.tx_json.Memos")
         for i, w in enumerate(memos):
             s = f"tx.tx_json.Memos[{i}]"
-            if not isinstance(w, dict) or len(w) != 1 or not isinstance(w.get("Memo"), dict):
+            if not isinstance(w, dict) or len(w) != 1 or not isinstance(w.get("Memo"), dict) or not w["Memo"]:
                 raise Fail("RNAX_MALFORMED_MEMO", s)
             for k, v in w["Memo"].items():
                 if k not in ("MemoType", "MemoData", "MemoFormat") or not isinstance(v, str) or not MEMO_HEX.fullmatch(v):
@@ -376,7 +384,7 @@ def verify_dual(xrpl, evm, expected):
     outcome = "FAIL"
     if "PAYLOAD_MATCH" in conclusions and "RECORDS_CONSISTENT" in conclusions:
         outcome = "PASS"
-    elif "UNSUPPORTED" in outcomes and "FAIL" not in outcomes:
+    elif len(outcomes) == 2 and "UNSUPPORTED" in outcomes and "FAIL" not in outcomes:
         outcome = "UNSUPPORTED"
     return {
         "format": "rnnet.anchor-verification-report.v1", "expectedCommitment": expected, "outcome": outcome,

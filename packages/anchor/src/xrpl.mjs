@@ -26,6 +26,8 @@ const MEMO_HEX = /^(?:[0-9A-F]{2}){0,1024}$/;
 const MEMO_FIELDS = ['MemoType', 'MemoData', 'MemoFormat'];
 const MAX_MEMOS = 32;
 const XRPL_TESTNET_ID = 1n;
+/** AccountSet fields that change settings (xrpl.org AccountSet); an anchor changes none. */
+const ACCOUNT_SETTINGS = ['ClearFlag', 'SetFlag', 'Domain', 'EmailHash', 'MessageKey', 'NFTokenMinter', 'TickSize', 'TransferRate', 'WalletLocator', 'WalletSize'];
 
 /** Phase A (§3.2): structure, network and consistency; throws on the first failure. */
 function checkStructure(tx) {
@@ -40,28 +42,36 @@ function checkStructure(tx) {
   if (!Number.isInteger(tx.ledger_index) || tx.ledger_index < 1 || tx.ledger_index > 0xffffffff) fail('RNAX_INVALID_LEDGER_INDEX', 'tx.ledger_index');
   const { tx_json: body, meta } = tx;
   if (Object.hasOwn(body, 'NetworkID')) fail('RNAX_WRONG_NETWORK', 'tx.tx_json.NetworkID');
-  let ctid;
-  if (Object.hasOwn(tx, 'ctid')) {
-    if (typeof tx.ctid !== 'string' || !CTID.test(tx.ctid)) fail('RNAX_INVALID_CTID', 'tx.ctid');
-    ctid = BigInt(`0x${tx.ctid}`);
-    if ((ctid & 0xffffn) !== XRPL_TESTNET_ID) fail('RNAX_WRONG_NETWORK', 'tx.ctid');
+  // A CTID may appear at the top level and inside tx_json; each one present is checked.
+  const ctids = [];
+  for (const [holder, path] of [[tx, 'tx.ctid'], [body, 'tx.tx_json.ctid']]) {
+    if (!Object.hasOwn(holder, 'ctid')) continue;
+    if (typeof holder.ctid !== 'string' || !CTID.test(holder.ctid)) fail('RNAX_INVALID_CTID', path);
+    const value = BigInt(`0x${holder.ctid}`);
+    if ((value & 0xffffn) !== XRPL_TESTNET_ID) fail('RNAX_WRONG_NETWORK', path);
+    ctids.push([value, path]);
   }
   if (Object.hasOwn(body, 'hash') && body.hash !== tx.hash) fail('RNAX_CONTRADICTORY_REFERENCE', 'tx.tx_json.hash');
   if (Object.hasOwn(body, 'ledger_index') && body.ledger_index !== tx.ledger_index) fail('RNAX_CONTRADICTORY_REFERENCE', 'tx.tx_json.ledger_index');
-  if (ctid !== undefined) {
-    if (Number((ctid >> 32n) & 0x0fffffffn) !== tx.ledger_index) fail('RNAX_CONTRADICTORY_REFERENCE', 'tx.ctid');
-    if (Object.hasOwn(meta, 'TransactionIndex')) {
-      if (!Number.isInteger(meta.TransactionIndex)) fail('RNAX_FIELD_TYPE', 'tx.meta.TransactionIndex');
-      if (Number((ctid >> 16n) & 0xffffn) !== meta.TransactionIndex) fail('RNAX_CONTRADICTORY_REFERENCE', 'tx.ctid');
-    }
+  if (ctids.length === 2 && ctids[0][0] !== ctids[1][0]) fail('RNAX_CONTRADICTORY_REFERENCE', 'tx.tx_json.ctid');
+  if (ctids.length > 0) {
+    if (!Object.hasOwn(meta, 'TransactionIndex')) fail('RNAX_MISSING_FIELD', 'tx.meta.TransactionIndex');
+    if (!Number.isInteger(meta.TransactionIndex)) fail('RNAX_FIELD_TYPE', 'tx.meta.TransactionIndex');
+  }
+  for (const [value, path] of ctids) {
+    if (Number((value >> 32n) & 0x0fffffffn) !== tx.ledger_index) fail('RNAX_CONTRADICTORY_REFERENCE', path);
+    if (Number((value >> 16n) & 0xffffn) !== meta.TransactionIndex) fail('RNAX_CONTRADICTORY_REFERENCE', path);
   }
   if (body.TransactionType !== 'AccountSet') fail('RNAX_UNSUPPORTED_TRANSACTION_TYPE', 'tx.tx_json.TransactionType');
+  // A no-op AccountSet: any field that changes account settings makes it another operation.
+  for (const field of ACCOUNT_SETTINGS) if (Object.hasOwn(body, field)) fail('RNAX_UNSUPPORTED_TRANSACTION_TYPE', `tx.tx_json.${field}`);
   if (typeof body.Account !== 'string' || !ACCOUNT.test(body.Account)) fail('RNAX_INVALID_ACCOUNT', 'tx.tx_json.Account');
   if (Object.hasOwn(body, 'Memos')) {
     if (kind(body.Memos) !== 'array' || body.Memos.length > MAX_MEMOS) fail('RNAX_MALFORMED_MEMO', 'tx.tx_json.Memos');
     body.Memos.forEach((wrapper, i) => {
       const subject = `tx.tx_json.Memos[${i}]`;
       if (kind(wrapper) !== 'object' || Object.keys(wrapper).length !== 1 || kind(wrapper.Memo) !== 'object') fail('RNAX_MALFORMED_MEMO', subject);
+      if (Object.keys(wrapper.Memo).length === 0) fail('RNAX_MALFORMED_MEMO', subject);
       for (const [field, value] of Object.entries(wrapper.Memo)) {
         if (!MEMO_FIELDS.includes(field) || typeof value !== 'string' || !MEMO_HEX.test(value)) fail('RNAX_MALFORMED_MEMO', subject);
       }

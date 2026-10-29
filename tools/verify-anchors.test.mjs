@@ -41,6 +41,19 @@ test('writes only to an explicit output path', () => {
   assert.deepEqual([...result.written], [['r.json', `${v.expectedReport}\n`]]);
 });
 
+test('an output file that cannot be created has its own exit code', () => {
+  const v = byId('same-commitment-both');
+  const code = main(['--commitment', v.expectedCommitment, '--xrpl', 'x', '--evm', 'e', '--output', 'r.json'], {
+    readFile: (path) => new TextEncoder().encode({ x: v.xrpl, e: v.evm }[path]),
+    writeFile: () => {
+      throw Object.assign(new Error('exists'), { code: 'EEXIST' });
+    },
+    stdout: () => {},
+    stderr: () => {},
+  });
+  assert.equal(code, EXIT.CANNOT_CREATE);
+});
+
 test('usage errors and unreadable inputs', () => {
   const c = `sha256:${'ab'.repeat(32)}`;
   for (const argv of [[], ['--commitment', c, '--xrpl', 'x'], ['--commitment', 'sha256:x', '--xrpl', 'x', '--evm', 'e'], ['--commitment', c, '--xrpl', 'x', '--evm', 'e', '--url', 'https://example.org'], ['--commitment', c, '--xrpl', 'x', '--evm']]) {

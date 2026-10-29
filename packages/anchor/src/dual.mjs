@@ -49,7 +49,7 @@ export function verifyDualAnchor(observations, expectedCommitment) {
   const outcomes = Object.values(records).map((r) => r.outcome);
   let outcome = 'FAIL';
   if (conclusions.includes(Conclusion.PAYLOAD_MATCH) && conclusions.includes(Conclusion.RECORDS_CONSISTENT)) outcome = 'PASS';
-  else if (outcomes.includes('UNSUPPORTED') && !outcomes.includes('FAIL')) outcome = 'UNSUPPORTED';
+  else if (outcomes.length === 2 && outcomes.includes('UNSUPPORTED') && !outcomes.includes('FAIL')) outcome = 'UNSUPPORTED';
 
   return freeze({
     format: REPORT_FORMAT,

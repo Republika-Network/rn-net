@@ -352,6 +352,124 @@
       "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_CONTRADICTORY_REFERENCE\",\"severity\":\"error\",\"subject\":\"tx.tx_json.hash\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:0133b32d9973ca6a60ba5c90e9ee121a354e535d9102fb0735ae9f206894ba01\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
     },
     {
+      "id": "ctid-without-transaction-index",
+      "description": "A ctid with no meta.TransactionIndex to check it against.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}]}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_MISSING_FIELD"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_MISSING_FIELD\",\"severity\":\"error\",\"subject\":\"tx.meta.TransactionIndex\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:7bf53bd3f0a827a0075fd576574882d54e5b51d849dcf3c62ace20f2c3b8bf3a\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "transaction-index-string",
+      "description": "meta.TransactionIndex as a string.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":\"3\",\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}]}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_FIELD_TYPE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_FIELD_TYPE\",\"severity\":\"error\",\"subject\":\"tx.meta.TransactionIndex\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:51035906bb84618b143adffffdcc0111db6173b4917fe6bb40297c064634e5d9\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "tx-json-ctid-only",
+      "description": "A ctid inside tx_json only, consistent: as in the API v2 example.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"ctid\":\"C040BBF800030001\"}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "PASS",
+      "expectedFindings": [],
+      "expectedRecord": "{\"assurance\":\"CONSISTENT_WITH_SUPPLIED_DATA\",\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:4dd0f6f3940d5d89ffee3bda744dc0c1e263e68a9f8763cb9b448b325a6b69ab\"},\"network\":\"xrpl:testnet\",\"outcome\":\"PASS\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[{\"basis\":\"Decoded from the supplied transaction data and equal to the payload of the expected commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"anchorPayload\"},{\"basis\":\"Named by the supplier of the record and consistent with the transaction's own network fields; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"network\"},{\"basis\":\"Stated by the supplied transaction data; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"transactionStatus\"},{\"basis\":\"The supplied data names the ledger or block that includes the transaction; no inclusion proof was checked.\",\"classification\":\"CLAIMED\",\"subject\":\"inclusion\"},{\"basis\":\"The supplied data states the transaction is in a validated ledger; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"finality\"},{\"basis\":\"Not recomputed from the signed transaction, so not bound to the data that was checked.\",\"classification\":\"UNRESOLVED\",\"subject\":\"transactionHash\"},{\"basis\":\"The sending account as stated by the supplied data.\",\"classification\":\"CLAIMED\",\"subject\":\"submitter\"}],\"transaction\":{\"account\":\"rSyntheticAnchorTestAccount1111\",\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledgerHash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"ledgerIndex\":4242424}}"
+    },
+    {
+      "id": "tx-json-ctid-both-consistent",
+      "description": "The same ctid at the top level and inside tx_json.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"ctid\":\"C040BBF800030001\"}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "PASS",
+      "expectedFindings": [],
+      "expectedRecord": "{\"assurance\":\"CONSISTENT_WITH_SUPPLIED_DATA\",\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:290cd6ce7e51593c1faffc5052ea67b0d29e1959ed918a43835ab91997b625c8\"},\"network\":\"xrpl:testnet\",\"outcome\":\"PASS\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[{\"basis\":\"Decoded from the supplied transaction data and equal to the payload of the expected commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"anchorPayload\"},{\"basis\":\"Named by the supplier of the record and consistent with the transaction's own network fields; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"network\"},{\"basis\":\"Stated by the supplied transaction data; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"transactionStatus\"},{\"basis\":\"The supplied data names the ledger or block that includes the transaction; no inclusion proof was checked.\",\"classification\":\"CLAIMED\",\"subject\":\"inclusion\"},{\"basis\":\"The supplied data states the transaction is in a validated ledger; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"finality\"},{\"basis\":\"Not recomputed from the signed transaction, so not bound to the data that was checked.\",\"classification\":\"UNRESOLVED\",\"subject\":\"transactionHash\"},{\"basis\":\"The sending account as stated by the supplied data.\",\"classification\":\"CLAIMED\",\"subject\":\"submitter\"}],\"transaction\":{\"account\":\"rSyntheticAnchorTestAccount1111\",\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledgerHash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"ledgerIndex\":4242424}}"
+    },
+    {
+      "id": "tx-json-ctid-mainnet",
+      "description": "A tx_json.ctid naming network 0 (Mainnet).",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"ctid\":\"C040BBF800030000\"}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_WRONG_NETWORK"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_WRONG_NETWORK\",\"severity\":\"error\",\"subject\":\"tx.tx_json.ctid\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:34b8b78bf1ab076aee30815a253c01463eafdca207425833459dea30088fb5b3\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "tx-json-ctid-mainnet-only",
+      "description": "Only a tx_json.ctid, naming network 0.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"ctid\":\"C040BBF800030000\"}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_WRONG_NETWORK"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_WRONG_NETWORK\",\"severity\":\"error\",\"subject\":\"tx.tx_json.ctid\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:1f736343e0defaebcbc0c97738b7200b90915e2f3cdf1063d6db3f407585ccaf\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "tx-json-ctid-contradicts",
+      "description": "A tx_json.ctid for another ledger than the top-level ctid.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"ctid\":\"C040BBF900030001\"}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_CONTRADICTORY_REFERENCE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_CONTRADICTORY_REFERENCE\",\"severity\":\"error\",\"subject\":\"tx.tx_json.ctid\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:f6195e31545cae1faf5e2c77be600f323ef04011b1b8ba840f4d20441acebf66\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "tx-json-ctid-invalid",
+      "description": "A malformed tx_json.ctid.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"ctid\":\"zz\"}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_INVALID_CTID"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_INVALID_CTID\",\"severity\":\"error\",\"subject\":\"tx.tx_json.ctid\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:b1c78b9ceb3b106ad536b572ffa27cf1f114753d19b5bb7b7f9e0d63bf600265\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "memo-empty",
+      "description": "An empty Memo object.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{}},{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}]}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAX_MALFORMED_MEMO"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_MALFORMED_MEMO\",\"severity\":\"error\",\"subject\":\"tx.tx_json.Memos[0]\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:41fbd93d6b498a0d6f1331f0b618e24b56c4cf6a9125ea13140fadbeece3e3ff\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "accountset-changes-settings",
+      "description": "An AccountSet that also sets a flag: not a no-op anchor.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}],\"SetFlag\":8}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "UNSUPPORTED",
+      "expectedFindings": [
+        "RNAX_UNSUPPORTED_TRANSACTION_TYPE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAX_UNSUPPORTED_TRANSACTION_TYPE\",\"severity\":\"unsupported\",\"subject\":\"tx.tx_json.SetFlag\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:4a7d625a1fdf1155d1b4b0f4543f4e1ebd2e8bb76872706cf66e9b1d40b2124c\"},\"network\":\"xrpl:testnet\",\"outcome\":\"UNSUPPORTED\",\"statements\":[]}"
+    },
+    {
+      "id": "unvalidated-with-unsupported-payload",
+      "description": "An unsupported payload in an unvalidated transaction: the failure wins.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":false,\"ctid\":\"C040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430201FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}]}}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAP_UNSUPPORTED_VERSION",
+        "RNAX_NOT_VALIDATED"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAP_UNSUPPORTED_VERSION\",\"severity\":\"unsupported\",\"subject\":\"tx.tx_json.Memos[0].MemoData\"},{\"code\":\"RNAX_NOT_VALIDATED\",\"severity\":\"error\",\"subject\":\"tx.validated\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:d9e86e08e3fc7f4980cc8327125f5d16a8dbc19f00a560d519764b68cfc7f178\"},\"network\":\"xrpl:testnet\",\"outcome\":\"FAIL\",\"statements\":[],\"transaction\":{\"account\":\"rSyntheticAnchorTestAccount1111\",\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledgerHash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"ledgerIndex\":4242424}}"
+    },
+    {
       "id": "invalid-ctid",
       "description": "A ctid not starting with C.",
       "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"854482F3A6A237F46C32E5F5DFD9F5055B25E2B0F7126350F211850A568CAE94\",\"ledger_index\":4242424,\"ledger_hash\":\"F1D9ED7776598501D63E0422AB09BF3C1360C46629E70088A4629DD6DAAB5294\",\"validated\":true,\"ctid\":\"D040BBF800030001\",\"close_time_iso\":\"2026-10-29T00:00:00Z\",\"meta\":{\"TransactionIndex\":3,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rSyntheticAnchorTestAccount1111\",\"Fee\":\"12\",\"Sequence\":7,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\"}}]}}}",

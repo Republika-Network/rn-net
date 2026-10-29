@@ -8,12 +8,13 @@
 //
 //   node tools/verify-anchors.mjs --commitment <sha256:...> --xrpl <file> --evm <file> [--output <file>]
 //
-// Exit codes: 0 PASS, 1 FAIL, 2 UNSUPPORTED, 64 usage error, 66 an input file cannot be read.
+// Exit codes: 0 PASS, 1 FAIL, 2 UNSUPPORTED, 64 usage error, 66 an input file cannot be read,
+// 73 the --output file cannot be created (it already exists, for example).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { encodeAnchorReport, verifyDualAnchor } from '../packages/anchor/src/index.mjs';
 
-export const EXIT = Object.freeze({ PASS: 0, FAIL: 1, UNSUPPORTED: 2, USAGE: 64, NO_INPUT: 66 });
+export const EXIT = Object.freeze({ PASS: 0, FAIL: 1, UNSUPPORTED: 2, USAGE: 64, NO_INPUT: 66, CANNOT_CREATE: 73 });
 const USAGE = 'usage: node tools/verify-anchors.mjs --commitment <sha256:...> --xrpl <file> --evm <file> [--output <file>]';
 const OPTIONS = ['--commitment', '--xrpl', '--evm', '--output'];
 const COMMITMENT = /^sha256:[0-9a-f]{64}$/;
@@ -51,8 +52,15 @@ export function main(argv, io) {
   }
   const report = verifyDualAnchor({ xrpl, evm }, options['--commitment']);
   const text = `${new TextDecoder().decode(encodeAnchorReport(report))}\n`;
-  if (options['--output'] !== undefined) io.writeFile(options['--output'], new TextEncoder().encode(text));
-  else io.stdout(text);
+  if (options['--output'] === undefined) io.stdout(text);
+  else {
+    try {
+      io.writeFile(options['--output'], new TextEncoder().encode(text));
+    } catch (error) {
+      io.stderr(`verify-anchors: cannot create output: ${error.code ?? error.message}\n`);
+      return EXIT.CANNOT_CREATE;
+    }
+  }
   return EXIT[report.outcome];
 }
 

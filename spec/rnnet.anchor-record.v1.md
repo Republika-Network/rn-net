@@ -113,20 +113,29 @@ The transaction may carry other memos with other `MemoType` values. They are ign
 | A3 | `ledger_hash` is 64 uppercase hex digits | `RNAX_INVALID_LEDGER_HASH` |
 | A4 | `ledger_index` is between 1 and 4,294,967,295 | `RNAX_INVALID_LEDGER_INDEX` |
 | A5 | `tx_json.NetworkID` is absent | `RNAX_WRONG_NETWORK` |
-| A6 | If `ctid` is present: it is `C` followed by 15 uppercase hex digits, and its low 16 bits (the network ID) are 1 | `RNAX_INVALID_CTID`, `RNAX_WRONG_NETWORK` |
-| A7 | Each duplicate reference agrees with its counterpart (see below) | `RNAX_CONTRADICTORY_REFERENCE` |
-| A8 | `tx_json.TransactionType` is `AccountSet` | `RNAX_UNSUPPORTED_TRANSACTION_TYPE` |
+| A6 | Each CTID present (`ctid`, then `tx_json.ctid`): it is `C` followed by 15 uppercase hex digits, and its low 16 bits (the network ID) are 1 | `RNAX_INVALID_CTID`, `RNAX_WRONG_NETWORK` |
+| A7 | Each duplicate reference agrees with its counterpart (see below) | `RNAX_CONTRADICTORY_REFERENCE` (and `RNAX_MISSING_FIELD` or `RNAX_FIELD_TYPE` for `meta.TransactionIndex`) |
+| A8 | `tx_json.TransactionType` is `AccountSet`, and `tx_json` has none of the settings fields `ClearFlag`, `SetFlag`, `Domain`, `EmailHash`, `MessageKey`, `NFTokenMinter`, `TickSize`, `TransferRate`, `WalletLocator`, `WalletSize` | `RNAX_UNSUPPORTED_TRANSACTION_TYPE` |
 | A9 | `tx_json.Account` matches `^r[1-9A-HJ-NP-Za-km-z]{24,34}$` | `RNAX_INVALID_ACCOUNT` |
-| A10 | `tx_json.Memos` is absent, or an array of at most 32 elements. Each element is exactly `{"Memo": {...}}`, whose members are a subset of `MemoType`, `MemoData` and `MemoFormat`, each a string of uppercase hex with an even number of digits, at most 2,048 digits. | `RNAX_MALFORMED_MEMO` |
+| A10 | `tx_json.Memos` is absent, or an array of at most 32 elements. Each element is exactly `{"Memo": {...}}`. Its members are a non-empty subset of `MemoType`, `MemoData` and `MemoFormat`, each a string of uppercase hex with an even number of digits, at most 2,048 digits. | `RNAX_MALFORMED_MEMO` |
 
-Step A7 compares each duplicate reference with its counterpart, where the duplicate is present:
+Step A7 compares each duplicate reference with its counterpart, in this order, where the
+duplicate is present:
 
 | Duplicate reference | Must equal |
 |---|---|
 | `tx_json.hash` | `hash` |
 | `tx_json.ledger_index` | `ledger_index` |
-| `ctid` ledger index: bits 32–59, with the lead nibble removed | `ledger_index` |
-| `ctid` transaction index: bits 16–31 | `meta.TransactionIndex`, which must be an integer |
+| `tx_json.ctid`, when `ctid` is also present | `ctid` |
+| Each CTID's ledger index: bits 32–59, with the lead nibble removed | `ledger_index` |
+| Each CTID's transaction index: bits 16–31 | `meta.TransactionIndex` |
+
+**When a CTID is present.** `meta.TransactionIndex` is then required (`RNAX_MISSING_FIELD`) and
+must be an integer (`RNAX_FIELD_TYPE`). It is checked before the CTID comparisons.
+
+**Network identity offline.** Without a CTID, offline data cannot tell XRPL Testnet from Mainnet
+(network ID 0) or Devnet (2). None of them carries a `NetworkID` field. The network is then only
+the supplier's claim (ADR-RN-010).
 
 **Phase B: anchor.** At most one finding.
 
@@ -145,8 +154,8 @@ Step A7 compares each duplicate reference with its counterpart, where the duplic
 | C1 | `validated` is `true` | `RNAX_NOT_VALIDATED` |
 | C2 | `meta.TransactionResult` is the string `tesSUCCESS` | `RNAX_TRANSACTION_NOT_SUCCESSFUL` |
 
-**Hex rule.** Lowercase hex is malformed: rippled writes binary fields as uppercase hex. Mixed
-case is malformed too. The only exception is the `ctid` rule at step A6.
+**Hex rule.** Lowercase and mixed-case hex are malformed, because rippled writes binary fields
+and hashes in uppercase hex. This applies to hashes, CTIDs and memo fields.
 
 ## 4. Ethereum Sepolia
 
@@ -233,8 +242,8 @@ in canonical form.
 | Outcome | When |
 |---|---|
 | `PASS` | No findings |
-| `UNSUPPORTED` | The first finding is one of `RNAO_UNSUPPORTED_FORMAT`, `RNAO_UNSUPPORTED_VERSION`, `RNAX_UNSUPPORTED_TRANSACTION_TYPE`, `RNAE_UNSUPPORTED_TRANSACTION_TYPE`, `RNAP_UNSUPPORTED_VERSION` or `RNAP_UNSUPPORTED_COMMITMENT_FORMAT` |
-| `FAIL` | Otherwise |
+| `UNSUPPORTED` | Every finding is one of `RNAO_UNSUPPORTED_FORMAT`, `RNAO_UNSUPPORTED_VERSION`, `RNAX_UNSUPPORTED_TRANSACTION_TYPE`, `RNAE_UNSUPPORTED_TRANSACTION_TYPE`, `RNAP_UNSUPPORTED_VERSION` or `RNAP_UNSUPPORTED_COMMITMENT_FORMAT` |
+| `FAIL` | Otherwise: any other finding makes the record `FAIL`, even alongside an unsupported one |
 
 ### 5.3 Statements for `PASS`, in order
 
@@ -295,8 +304,9 @@ slot, as in §3 and §4.
 **Outcome:**
 
 - `PASS` when `PAYLOAD_MATCH` and `RECORDS_CONSISTENT` both hold;
-- `UNSUPPORTED` when a record is `UNSUPPORTED` and none is `FAIL`;
-- `FAIL` otherwise.
+- `UNSUPPORTED` when both records are present, at least one is `UNSUPPORTED`, and none is
+  `FAIL`;
+- `FAIL` otherwise, including whenever a record is missing.
 
 **What `PASS` means.** A `PASS` means that the same commitment payload is found, consistently,
 in the data supplied for both networks. It does **not** mean either of these:

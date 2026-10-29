@@ -58,11 +58,13 @@ its own.
   adapter. Its record is still labelled as such: inclusion, status, finality and network are
   `CLAIMED`, and the transaction hash is `UNRESOLVED`.
 - **Mainnet and Testnet.** Both have network IDs below 1025 and so omit `NetworkID`. Offline
-  data can therefore only show that a transaction is *not* for another identified network. The
-  network name is the supplier's claim.
+  data can therefore only show that a transaction is *not* for another identified network: a
+  CTID at the top level or in `tx_json` must name network 1. A Mainnet or Devnet result with its
+  CTIDs removed cannot be told apart from a Testnet one. The network name is the supplier's
+  claim.
 - **Out of scope here:**
   - recomputing the hash from the transaction blob;
-  - checking the account address checksum;
+  - checking the account address checksum (the account is checked by pattern only);
   - verifying ledger inclusion against validated ledger headers.
 
   These are future work (assurance levels 3–4). RN-NET-03B will submit the first real

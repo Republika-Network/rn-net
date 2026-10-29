@@ -87,10 +87,10 @@ export function phase(findings, run) {
   }
 }
 
-/** The record's outcome from its findings (§5.2). */
+/** The record's outcome from its findings (§5.2): any error is FAIL; only-unsupported is UNSUPPORTED. */
 export function outcomeOf(findings) {
   if (findings.length === 0) return 'PASS';
-  return UNSUPPORTED.has(findings[0].code) ? 'UNSUPPORTED' : 'FAIL';
+  return findings.every((f) => UNSUPPORTED.has(f.code)) ? 'UNSUPPORTED' : 'FAIL';
 }
 
 /** A frozen, plain-data copy whose canonical bytes are fixed. */

@@ -56,6 +56,8 @@ from a contract.
   so it is `UNRESOLVED`.
 - **What a supplied receipt is.** A supplied receipt is not an authenticated proof. That would
   need block headers and a light client or consensus verification, which is future work.
+- **Contracts as recipients.** Whether `to` holds code (a contract or precompile) cannot be
+  determined offline. The adapter requires only that no contract is created.
 - **Types the adapter rejects as unsupported transports:**
   - blob transactions (type 3);
   - set-code transactions (type 4);
