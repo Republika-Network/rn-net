@@ -7,7 +7,7 @@ that evidence on public test networks.
 
 ## Status
 
-**Early implementation (RN-NET-01, RN-NET-02, RN-NET-03A).** This repository contains:
+**Early implementation (RN-NET-01 to RN-NET-03B1).** This repository contains:
 
 - the canonical JSON profile and the evidence commitment format;
 - an independent, offline evidence verifier for one original, synthetic evidence
@@ -15,12 +15,16 @@ that evidence on public test networks.
   deterministic verification report;
 - an offline anchoring foundation: a 42-byte anchor payload for a commitment, and checks of
   *supplied* XRPL Testnet and Ethereum Sepolia transaction data, with a dual-chain report;
+- read-only reading of anchoring transactions from reviewed public XRPL Testnet and Sepolia RPC
+  providers (`packages/chain-readonly/`, `tools/verify-live-anchor.mjs`), with provider comparison,
+  captures and offline replay. It never signs or submits anything;
 - their specifications, conformance vectors and second implementations;
 - repository security guards.
 
-It submits no transactions, holds no keys and contacts no network: the anchoring checks
-establish consistency of supplied data only (`CHAIN_INCLUSION_UNVERIFIED`), never chain
-inclusion. All test inputs, including every transaction record, are synthetic.
+It submits no transactions and holds no keys. Only `tools/verify-live-anchor.mjs`, when run in
+live mode, contacts a network, and only with read-only methods. What providers report stays a
+claim: nothing here is an authenticated proof of chain inclusion (`CHAIN_PROVEN` is never
+produced). All test inputs, including every transaction record, are synthetic.
 The verifier establishes integrity and signature consistency under keys the
 evidence carries. It does **not** establish signer identity, policy enforcement or
 that any described event happened (see the
@@ -74,6 +78,7 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 | [`rnnet.verification-report.v1`](spec/rnnet.verification-report.v1.md) | [`packages/verifier/`](packages/verifier/README.md) |
 | [`rnnet.anchor-payload.v1`](spec/rnnet.anchor-payload.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
 | [`rnnet.anchor-record.v1`](spec/rnnet.anchor-record.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
+| [`rnnet.live-observation-report.v1`](spec/rnnet.live-observation-report.v1.md) | [`packages/chain-readonly/`](packages/chain-readonly/) |
 
 Conformance vectors live in [`vectors/`](vectors/) (format described in
 [`vectors/README.md`](vectors/README.md)) and are checked by two implementations:
@@ -103,6 +108,17 @@ codes; see [`packages/anchor/README.md`](packages/anchor/README.md)):
 ```sh
 node tools/verify-anchors.mjs --commitment sha256:<hex> --xrpl xrpl-observation.json --evm sepolia-observation.json
 ```
+
+To read a real anchoring transaction from reviewed providers (read-only; providers by id from
+[`config/rpc-endpoints.json`](config/rpc-endpoints.json)), and to replay a capture offline:
+
+```sh
+node tools/verify-live-anchor.mjs --network sepolia --tx 0x<hash> --commitment sha256:<hex> --compare-providers --capture cap.json
+node tools/verify-live-anchor.mjs --offline-replay cap.json --commitment sha256:<hex>
+```
+
+Exit codes: 0 `PASS`, 1 `FAIL`, 2 `UNSUPPORTED`, 3 `INDETERMINATE` (no provider available), 64
+usage error, 66 unreadable input, 73 output cannot be created.
 
 Behaviour changes to the JavaScript API, and what consumers can rely on, are recorded in
 [`docs/api-compatibility.md`](docs/api-compatibility.md).

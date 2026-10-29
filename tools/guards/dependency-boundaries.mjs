@@ -24,6 +24,7 @@ export const ALLOWED_BUILTINS = {
   conformance: ['node:buffer', 'node:fs', 'node:url'],
   verifier: ['node:buffer', 'node:crypto'],
   anchor: ['node:buffer', 'node:crypto'],
+  'chain-readonly': ['node:buffer', 'node:crypto'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
@@ -79,6 +80,7 @@ export const ALLOWED_PACKAGES = {
   conformance: ['canonical', 'commitment', 'verifier', 'anchor'],
   verifier: ['canonical', 'commitment'],
   anchor: ['canonical'],
+  'chain-readonly': ['canonical', 'anchor'],
 };
 
 // Whitespace, block comments or line comments, as allowed between tokens.
