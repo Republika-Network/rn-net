@@ -17,6 +17,6 @@ ADR is not edited to change its decision; a later ADR supersedes it.
 | [ADR-RN-010](ADR-RN-010-xrpl-testnet-memo-anchoring.md) | XRPL Testnet memo anchoring | Proposed |
 | [ADR-RN-011](ADR-RN-011-sepolia-transaction-data-anchoring.md) | Ethereum Sepolia transaction-data anchoring | Proposed |
 | [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md) | Cross-chain verification and trust boundaries | Proposed |
-| [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md) | Read-only RPC architecture | Proposed |
-| [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md) | Multi-provider observation and provenance | Proposed |
-| [ADR-RN-015](ADR-RN-015-live-finality-trust-semantics.md) | Live finality and trust semantics | Proposed |
+| [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md) | Read-only RPC architecture | Accepted |
+| [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md) | Multi-provider observation and provenance | Accepted |
+| [ADR-RN-015](ADR-RN-015-live-finality-trust-semantics.md) | Live finality and trust semantics | Accepted |
