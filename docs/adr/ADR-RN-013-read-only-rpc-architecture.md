@@ -42,7 +42,8 @@ It also must not open a path to writing, signing or arbitrary destinations.
    - There is no fallback between networks or to Mainnet.
 4. **Bounded work.** One request is in flight at a time, with these limits:
    - at most 2 attempts, and the second only on timeouts, connection failures, 429 and 502–504;
-   - 300 requests per provider;
+   - 600 attempts per provider, retries included (at least twice the most a reading can need, so
+     the budget never cuts a finality walk short);
    - 256 KiB per response;
    - 10 s per request.
 

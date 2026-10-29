@@ -101,7 +101,7 @@ Request bodies are built only by the package, as canonical JSON:
 |---|---|
 | Response size | 262,144 bytes |
 | Per-request timeout | 10 s |
-| Requests per provider per verification | 300 (`RNLO_REQUEST_BUDGET`) |
+| Attempts per provider per verification, retries included | 600 (`RNLO_REQUEST_BUDGET`). A Sepolia reading makes at most 262 calls, each of at most 2 attempts, so the budget is never reached by a reading that is following the rules. |
 | Concurrency | One request in flight; providers are read one after another |
 | Attempts per request | 2. The second attempt is made only after a timeout, a connection failure, HTTP 429 (`RNLO_RATE_LIMITED`) or HTTP 502–504. |
 
@@ -202,8 +202,9 @@ result is `RNLO_BLOCK_MISMATCH`.
 | `UNRESOLVED` | The tag is unsupported or malformed, or its block is more than 256 above the transaction's block. In that case no walk is attempted: the number is used only to decide not to walk, never to infer finality. |
 
 `finalized` is walked first. When it is `IN_ANCESTRY` or `CONFLICT`, `safe` takes the same result
-without a walk, since the safe head descends from the finalized one. So a conflict is never lost to
-the request budget.
+without a walk, since the safe head descends from the finalized one. At most one full walk is made,
+and the request budget (§3) covers it even when every call is retried, so a conflict is never lost
+to the budget.
 
 **Block numbers alone are never used.** A transaction is not treated as final because its number
 is lower than the finalized number.
@@ -354,7 +355,7 @@ provider:
 |---|---|
 | `RNLO_TIMEOUT`, `RNLO_CONNECTION`, `RNLO_RATE_LIMITED`, `RNLO_HTTP_STATUS` | The provider did not answer usefully |
 | `RNLO_REDIRECT`, `RNLO_BLOCKED_ADDRESS`, `RNLO_RESPONSE_TOO_LARGE` | Refused by the transport's safety rules |
-| `RNLO_REQUEST_BUDGET` | More than 300 requests for one provider |
+| `RNLO_REQUEST_BUDGET` | More than 600 attempts for one provider |
 | `RNLO_INVALID_JSON`, `RNLO_INVALID_RESPONSE`, `RNLO_RPC_ERROR`, `RNLO_UNSUPPORTED_API_VERSION` | The response is malformed, an error, or of an unsupported shape |
 | `RNLO_NOT_FOUND` | The provider does not know the transaction |
 | `RNLO_WRONG_NETWORK`, `RNLO_NETWORK_UNKNOWN` | The provider is not on the requested network, or does not say |

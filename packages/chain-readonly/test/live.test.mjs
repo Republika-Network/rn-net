@@ -300,13 +300,20 @@ test('N1: a deep finalized conflict is reported as CONFLICT, never lost to the r
   const forkHash = (n) => `0x${n.toString(16).padStart(8, '0')}${'f'.repeat(56)}`;
   const forkBlock = (n) => ({ hash: forkHash(n), number: `0x${n.toString(16)}`, parentHash: n === 110 ? base.byNumber.get(109).hash : forkHash(n - 1), transactions: [] });
   const byHash = (hash) => (/^0x[0-9a-f]{8}f{56}$/.test(hash) ? forkBlock(Number.parseInt(hash.slice(2, 10), 16)) : undefined);
-  const deep = fakeEvm({ finalized: forkBlock(310), safe: forkBlock(374), blockOverride: byHash });
+  const deep = fakeEvm({ finalized: forkBlock(366), safe: forkBlock(430), blockOverride: byHash });
   const report = await run(EVM, deep);
   assert.deepEqual(report.providers[0].finality, { finalized: 'CONFLICT', safe: 'CONFLICT' });
   assert.equal(report.outcome, 'FAIL');
   assert.ok(codes(report).includes('RNLO_FINALITY_CONFLICT'));
   assert.ok(deep.calls.length < 300, `${deep.calls.length} requests`);
   assert.equal(deep.calls.filter((m) => m === 'eth_getBlockByNumber').length, 1, 'safe is not walked after a conflict');
+  // R1: the same conflict, with every call failing once (503) before succeeding, is still a conflict.
+  let attempts = 0;
+  const flaky = (request) => (++attempts % 2 === 1 ? Promise.resolve({ status: 503, body: new Uint8Array() }) : deep.transport(request));
+  const retried = await verifyLiveAnchor({ network: EVM, transactionHash: deep.hash, expectedCommitment: COMMITMENT, providers: [provider('pa', EVM)], transport: flaky });
+  assert.deepEqual(retried.providers[0].finality, { finalized: 'CONFLICT', safe: 'CONFLICT' });
+  assert.equal(retried.outcome, 'FAIL');
+  assert.ok(codes(retried).includes('RNLO_FINALITY_CONFLICT'));
 });
 
 test('N2: a number with no canonical form is never copied as an object', async () => {

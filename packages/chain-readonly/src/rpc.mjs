@@ -19,8 +19,12 @@ export const LIMITS = Object.freeze({
   maxResponseBytes: 262_144,
   /** Attempts per request; retries only for timeouts, connection failures, 429 and 502-504. */
   maxAttempts: 2,
-  /** Requests per provider per verification, including the Sepolia ancestry walk. */
-  maxRequestsPerProvider: 300,
+  /**
+   * Attempts per provider per verification, retries included. A Sepolia read makes at most 262 calls
+   * (4, then 2 tag reads and at most one 256-step walk) of at most 2 attempts each, so the budget
+   * never ends a finality walk early; it only stops runaway reading.
+   */
+  maxRequestsPerProvider: 600,
   /** Per-request timeout the transport must enforce, in milliseconds. */
   timeoutMs: 10_000,
 });

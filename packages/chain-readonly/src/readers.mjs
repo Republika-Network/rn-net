@@ -156,7 +156,7 @@ async function walk(context, tag, targetHash, targetHeight) {
     if (error instanceof ReadError && error.code === 'RNLO_RPC_ERROR') return 'UNRESOLVED'; // tag not supported
     throw error;
   }
-  if (kind(head) !== 'object' || typeof head.number !== 'string' || !QUANTITY.test(head.number)) return 'UNRESOLVED';
+  if (kind(head) !== 'object' || typeof head.number !== 'string' || !QUANTITY.test(head.number) || typeof head.hash !== 'string' || !EVM_HASH.test(head.hash)) return 'UNRESOLVED';
   let current = head;
   let height = Number.parseInt(head.number, 16);
   if (height < targetHeight) return 'NOT_REACHED';
