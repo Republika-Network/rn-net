@@ -39,6 +39,34 @@ test('rejects declared dependencies in any package.json', () => {
   assert.deepEqual(rules('package.json', '{"private":true}'), []);
 });
 
+test('only the root manifest may declare the allowed development dependency, at its exact version (RN-NET-01K)', () => {
+  assert.deepEqual(rules('package.json', '{"devDependencies":{"acorn":"8.19.0"}}'), []);
+  assert.deepEqual(rules('package.json', '{"devDependencies":{"acorn":"^8.19.0"}}'), ['undeclared-devDependencies']);
+  assert.deepEqual(rules('package.json', '{"devDependencies":{"acorn":"8.19.0","acorn-walk":"8.3.4"}}'), ['undeclared-devDependencies']);
+  assert.deepEqual(rules('package.json', '{"dependencies":{"acorn":"8.19.0"}}'), ['undeclared-dependencies']);
+  assert.deepEqual(rules('packages/canonical/package.json', '{"devDependencies":{"acorn":"8.19.0"}}'), ['undeclared-devDependencies']);
+  assert.deepEqual(rules('tools/package.json', '{"devDependencies":{"acorn":"8.19.0"}}'), ['undeclared-devDependencies']);
+  // Packages may never import it.
+  assert.deepEqual(rules('packages/canonical/src/x.mjs', "import { parse } from 'acorn';"), ['third-party-import:acorn']);
+});
+
+test('the lockfile holds exactly the allowed development dependency', () => {
+  const lock = (packages) => JSON.stringify({ lockfileVersion: 3, packages });
+  const root = { '': { devDependencies: { acorn: '8.19.0' } } };
+  const acorn = { version: '8.19.0', dev: true };
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': acorn })), []);
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, version: '8.18.0' } })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { version: '8.19.0' } })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(
+    rules('package-lock.json', lock({ ...root, 'node_modules/acorn': acorn, 'node_modules/x': { version: '1.0.0', dev: true } })),
+    ['undeclared-lockfile-packages'],
+  );
+  assert.deepEqual(rules('packages/canonical/package-lock.json', lock({ ...root, 'node_modules/acorn': acorn })), [
+    'undeclared-lockfile-packages',
+    'non-module-file',
+  ]);
+});
+
 // RN-NET-01H, finding F6: the bypasses reported by the RN-NET-01 independent review.
 test('flags the import forms and loaders reported as bypasses', () => {
   const cases = {
@@ -141,23 +169,27 @@ test('flags aliased, optional, indirect and constructor routes to code loading',
   }
 });
 
-test('fails closed on source outside the supported language', () => {
-  const cases = {
-    "import net from 'node:net": 'unsupported-syntax', // unterminated string
-    '/* unterminated': 'unsupported-syntax',
-    'const a = `x${1}': 'unsupported-syntax',
-    '\\u0065val("1");': 'unsupported-syntax', // escaped identifier
-    "const s = '\\101';": 'unsupported-syntax', // legacy octal escape
-    'const a = `${ 1': 'unsupported-syntax', // unterminated substitution
-    'import net, 5 from "node:net";': 'unrecognized-import',
-    'import { a b } from "node:net";': 'unrecognized-import',
-    'export { a } from net;': 'unrecognized-export',
-    'export * as a;': 'unrecognized-export',
-    'const o = { import: 1 };': 'unrecognized-import',
-  };
-  for (const [source, rule] of Object.entries(cases)) {
-    assert.ok(rules('packages/canonical/src/x.mjs', source).includes(rule), `${source} -> ${rule}`);
-  }
+test('fails closed on source the parser rejects', () => {
+  const cases = [
+    "import net from 'node:net", // unterminated string
+    '/* unterminated',
+    'const a = `x${1}',
+    "const s = '\\101';", // legacy octal escape, not allowed in modules
+    'const a = `${ 1', // unterminated substitution
+    'import net, 5 from "node:net";',
+    'import { a b } from "node:net";',
+    'export { a } from net;',
+    'export * as a;',
+    "<!-- x\nimport net from 'node:net';", // HTML-like comments are not allowed in modules
+    'with (a) {}', // not allowed in strict code
+  ];
+  for (const source of cases) assert.ok(rules('packages/canonical/src/x.mjs', source).includes('unsupported-syntax'), source);
+});
+
+test('escaped identifiers are read as the names they spell', () => {
+  assert.ok(rules('packages/canonical/src/x.mjs', '\\u0065val("1");').includes('forbidden-identifier:eval'));
+  assert.ok(rules('packages/canonical/src/x.mjs', 'const g = glob\\u0061lThis;').includes('forbidden-identifier:globalThis'));
+  assert.ok(rules('packages/canonical/src/x.mjs', "import net from 'node:\\u006eet';").includes('builtin-not-allowed:node:net'));
 });
 
 test('imports in comments, strings and regular expressions are not imports', () => {
@@ -178,80 +210,70 @@ test('imports in comments, strings and regular expressions are not imports', () 
     'const isFunction = (f) => typeof f === "function";',
     'class A { constructor() {} }',
     'const n = process.hrtime.bigint();',
-    'export const a = 1; export function b() {} export { a as c, b, };',
+    'export const a = 1; export function b() {} export { a as c, };',
   ];
   for (const source of ok) assert.deepEqual(rules('packages/canonical/test/x.test.mjs', source), [], source);
 });
 
-test('regular expressions are told from divisions by context, failing closed where ambiguous', () => {
-  // A regular expression read as a division would let a fake template literal hide the import
-  // below from the tokens; the line comment hides it from simple raw patterns.
+test('regular expressions and divisions are read by the parser, whatever surrounds them', () => {
+  // A regular expression read as a division (or the reverse) could let a fake template literal
+  // hide the import below; the line comment hides it from simple raw patterns.
   const hidden = (prefix) => `${prefix}/\`/.test('');\nimport net from // c\n  'node:net'; // \``;
-  for (const prefix of ['if (a) ', 'while (a) ', 'function f() {}\n', 'x: {}\n', 'switch (a) { case 1: {}\n']) {
+  for (const prefix of ['if (a) ', 'while (a) ', 'function f() {}\n', 'x: {}\n', 'switch (a) { case 1: {}\n}\n', 'export default ']) {
+    assert.deepEqual(importsOf(hidden(prefix)), ['node:net'], prefix);
     assert.ok(rules('packages/canonical/src/x.mjs', hidden(prefix)).includes('builtin-not-allowed:node:net'), prefix);
   }
-  assert.deepEqual(importsOf(hidden('if (a) ')), ['node:net']);
-  // Where only a parser could tell, the file is reported.
-  const ambiguous = [
-    'x: {}\n/a/.test(s);',
-    'const of = 4; const y = of / 2;',
-    'function f() {}\n/x/.test(s);',
-    'let i = 0; i++ / 2;',
-    'let i = 0; i-- / 2;',
-    'const f = () => {}\n/x/.test(s);',
-    'const o = {} / 1;',
-  ];
-  for (const source of ambiguous) assert.ok(rules('packages/canonical/src/x.mjs', source).includes('unsupported-syntax'), source);
-  // Ordinary divisions and regular expressions.
+  // Code the earlier tokenizer had to reject is now read and accepted.
   const ok = [
     'const m = (a + b) / 2 / c;',
     'const r = x.return / 2 / y;',
     "const r = x.of / 2; const s = '/';",
-    "const r = x.typeof / 2; const s = '/';",
+    'const of = 4; const y = of / 2;',
+    'let i = 0; const j = i++ / 2 + i-- / 2;',
+    'x: {}\n/a/.test(s);',
+    'function f() {}\n/x/.test(s);',
+    'const g = function () {} / 1;',
+    'const k = class {} / 1;',
+    'for (; {} / 1; ) break;',
     'if (a) /x/.test(s);',
-    'if (a) {}\n/x/.test(s);',
-    'try {} finally {}\n/x/.test(s);',
-    'switch (a) {}\n/x/.test(s);',
-    'for (const x of y) /x/.test(x);',
-    'const d = x.default / 2 / y;',
-    'const o = { a: [1] }; const q = o.a[0] / 2;',
+    'for await (const x of y) /x/.test(x);',
+    'const o = { import: 1, if: 2, for: 3 };',
     'const t = `${a / 2}`; const u = /`/;',
   ];
   for (const source of ok) assert.deepEqual(rules('packages/canonical/test/x.test.mjs', source), [], source);
 });
 
-// RN-NET-01J, N2: the seven bypasses found by the independent review of 9521fff, kept verbatim in
+// RN-NET-01J and RN-NET-01K, N2: the bypasses found by independent reviews, kept verbatim in
 // fixtures/dependency-bypasses/. Each is a valid module that loads node:net (or reaches
-// process.getBuiltinModule and eval) while the guard at 9521fff reported nothing.
+// process.getBuiltinModule and eval) while an earlier guard reported nothing: b1-b7 at 9521fff,
+// b8 at a4b2e30 (merged as 0b32565).
 const fixtures = new URL('./fixtures/dependency-bypasses/', import.meta.url);
 const bypasses = readdirSync(fixtures).filter((name) => name.endsWith('.mjs')).sort();
 
-test('the seven reviewed bypasses are all present', () => {
+test('the eight reviewed bypasses are all present', () => {
   assert.deepEqual(bypasses, [
     'b1-export-default.mjs', 'b2-postfix.mjs', 'b3-fnexpr.mjs', 'b4-forawait.mjs', 'b5-classexpr.mjs', 'b6-extends.mjs',
-    'b7-hidden-process.mjs',
+    'b7-hidden-process.mjs', 'b8-for-head.mjs',
   ]);
 });
 
-test('each reviewed bypass is caught by the token layer and by the raw layer independently', () => {
-  const tokenLayer = /^(?:builtin-not-allowed:|unsupported-syntax$|process-access$|forbidden-identifier:)/;
+test('each reviewed bypass is caught by the syntax tree', () => {
+  const read = (name) => readFileSync(new URL(name, fixtures), 'utf8');
+  for (const name of bypasses.filter((n) => n !== 'b7-hidden-process.mjs')) {
+    assert.deepEqual(importsOf(read(name)), ['node:net'], name);
+    assert.ok(rules('packages/canonical/src/x.mjs', read(name)).includes('builtin-not-allowed:node:net'), name);
+  }
+  const b7 = rules('packages/canonical/src/x.mjs', read('b7-hidden-process.mjs'));
+  assert.ok(b7.includes('process-access') && b7.includes('forbidden-identifier:eval'), String(b7));
+});
+
+test('b1-b7 are also caught by the raw layer; b8 shows why the raw layer is only a second layer', () => {
   const rawLayer = /^(?:string-named-import-clause$|forbidden-word:)/;
   for (const name of bypasses) {
     const found = rules('packages/canonical/src/x.mjs', readFileSync(new URL(name, fixtures), 'utf8'));
-    assert.ok(found.some((rule) => tokenLayer.test(rule)), `${name}: token layer: ${found}`);
-    assert.ok(found.some((rule) => rawLayer.test(rule)), `${name}: raw layer: ${found}`);
-  }
-});
-
-test('the token layer reads each bypass the way JavaScript does', () => {
-  const read = (name) => readFileSync(new URL(name, fixtures), 'utf8');
-  // Where the grammar settles the regular expression, the hidden import is found.
-  for (const name of ['b1-export-default.mjs', 'b4-forawait.mjs', 'b6-extends.mjs']) {
-    assert.deepEqual(importsOf(read(name)), ['node:net'], name);
-  }
-  // Where only a parser could tell, the file is rejected.
-  for (const name of ['b2-postfix.mjs', 'b3-fnexpr.mjs', 'b5-classexpr.mjs']) {
-    assert.throws(() => importsOf(read(name)), { name: 'Error', message: /ambiguous/ }, name);
+    const raw = found.filter((rule) => rawLayer.test(rule) || rule.startsWith('forbidden-construct:'));
+    if (name === 'b8-for-head.mjs') assert.deepEqual(raw, [], 'a quote in a comment defeats the raw specifier pattern');
+    else assert.ok(raw.length > 0, `${name}: raw layer: ${found}`);
   }
 });
 

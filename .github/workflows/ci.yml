@@ -23,6 +23,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+      - name: Install development dependencies (lockfile only, no install scripts)
+        # Before network isolation. Only the guard's parser (see ADR-RN-005); packages/ has no dependencies.
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Isolation check rejects a connected environment (negative control)
         # The same check that guards the offline run must fail here, where the network is
         # reachable, and for the expected reason.
@@ -54,6 +57,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
+      - name: Install development dependencies (lockfile only, no install scripts)
+        # Before network isolation. Only the guard's parser (see ADR-RN-005); packages/ has no dependencies.
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Repository guards
         run: node tools/guards/run.mjs
 

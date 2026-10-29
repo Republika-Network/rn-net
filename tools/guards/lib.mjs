@@ -1,4 +1,5 @@
-// Shared helpers for the repository guards. Zero dependencies: Node.js 22 built-ins only.
+// Shared helpers for the repository guards. Node.js 22 built-ins only; the dependency-boundary
+// guard alone also uses Acorn (ADR-RN-005).
 import { execFileSync } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

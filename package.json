@@ -1,0 +1,8 @@
+{
+  "name": "rn-net",
+  "private": true,
+  "description": "Repository tooling only. Runtime packages under packages/ have no dependencies.",
+  "devDependencies": {
+    "acorn": "8.19.0"
+  }
+}
