@@ -1,6 +1,6 @@
 // The only network transport in this repository (RN-NET-03B1, ADR-RN-013). It is used only by
-// tools/verify-live-anchor.mjs in live mode; packages/ never imports it, and the offline test
-// suite never loads it.
+// tools/verify-live-anchor.mjs in live mode, and packages/ never imports it. The offline tests
+// import it only to test its pure parts; the offline preload refuses its connections and lookups.
 //
 // One HTTPS POST to a configured endpoint:
 // - no redirects are followed (a 3xx response is an error);
@@ -28,6 +28,12 @@ export function isBlockedAddress(address) {
     if ((first & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
     if ((first & 0xff00) === 0xff00) return true; // ff00::/8 multicast
     if (lower.startsWith('64:ff9b:') || lower.startsWith('2001:db8:') || lower.startsWith('100::')) return true;
+    if (first === 0x2002) return true; // 6to4: embeds an IPv4 address
+    const second = Number.parseInt(lower.split(':')[1] || '0', 16);
+    if (first === 0x2001 && second === 0) return true; // Teredo 2001::/32
+    if (first === 0x2001 && second === 0x2) return true; // 2001:2::/48 benchmarking
+    if (first === 0x2001 && (second & 0xfff0) === 0x10) return true; // ORCHID 2001:10::/28
+    if (first === 0x2001 && (second & 0xfff0) === 0x20) return true; // ORCHIDv2 2001:20::/28
     return (first & 0xe000) !== 0x2000; // only 2000::/3 is global unicast
   }
   return true;
@@ -43,6 +49,7 @@ function blockedV4(address) {
     (a === 192 && b === 168) ||
     (a === 192 && b === 0) || // 192.0.0.0/24 and 192.0.2.0/24
     (a === 198 && (b === 18 || b === 19 || b === 51)) ||
+    (a === 192 && b === 88 && Number(address.split('.')[2]) === 99) || // 192.88.99.0/24 6to4 relay
     (a === 203 && b === 0)
   );
 }
@@ -65,7 +72,9 @@ export const guardedLookup = makeGuardedLookup();
 export function httpsTransport({ url, body, timeoutMs, maxResponseBytes }) {
   return new Promise((resolve, reject) => {
     const target = new URL(url);
-    if (target.protocol !== 'https:' || target.username || target.password) return reject(fail('RNLO_BLOCKED_ADDRESS'));
+    // An address literal would skip the guarded lookup, so only DNS names are accepted.
+    const host = target.hostname.replace(/^\[|\]$/g, '');
+    if (target.protocol !== 'https:' || target.username || target.password || isIP(host) !== 0) return reject(fail('RNLO_BLOCKED_ADDRESS'));
     let settled = false;
     const finish = (fn, value) => {
       if (!settled) {

@@ -97,6 +97,11 @@ export async function readEvm(context, hash) {
 
   let finality = { finalized: 'UNRESOLVED', safe: 'UNRESOLVED' };
   if (transaction.blockHash !== null && transaction.blockHash !== undefined) {
+    // Block references are checked before they are used in a request.
+    if (typeof transaction.blockHash !== 'string' || !EVM_HASH.test(transaction.blockHash)) throw new ReadError('RNLO_INVALID_RESPONSE', 'blockHash');
+    for (const field of ['blockNumber', 'transactionIndex']) {
+      if (typeof transaction[field] !== 'string' || !QUANTITY.test(transaction[field])) throw new ReadError('RNLO_INVALID_RESPONSE', field);
+    }
     const block = await call(context, 'eth_getBlockByHash', [transaction.blockHash, false]);
     if (kind(block) !== 'object' || block.hash !== transaction.blockHash || block.number !== transaction.blockNumber) throw new ReadError('RNLO_BLOCK_MISMATCH');
     const index = typeof transaction.transactionIndex === 'string' && QUANTITY.test(transaction.transactionIndex) ? Number.parseInt(transaction.transactionIndex, 16) : -1;
@@ -151,6 +156,8 @@ async function walk(context, tag, targetHash, targetHeight) {
   let current = head;
   let height = Number.parseInt(head.number, 16);
   if (height < targetHeight) return 'NOT_REACHED';
+  // Too far to walk: refused, not inferred. The number only decides that no walk is attempted.
+  if (height - targetHeight > ANCESTRY_LIMIT) return 'UNRESOLVED';
   for (let steps = 0; height > targetHeight; steps++) {
     if (steps >= ANCESTRY_LIMIT) return 'UNRESOLVED';
     if (typeof current.parentHash !== 'string' || !EVM_HASH.test(current.parentHash)) throw new ReadError('RNLO_BLOCK_MISMATCH', 'parentHash');

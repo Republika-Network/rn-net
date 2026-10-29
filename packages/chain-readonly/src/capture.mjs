@@ -40,7 +40,7 @@ export function replayTransport(capture) {
     if (!queues.has(exchange.providerId)) queues.set(exchange.providerId, []);
     queues.get(exchange.providerId).push(exchange);
   }
-  return async (request) => {
+  const transport = async (request) => {
     const next = queues.get(request.providerId)?.shift();
     if (!next) throw new ReplayMismatch(`no recorded exchange for ${request.providerId}`);
     if (next.request !== Buffer.from(request.body).toString('base64')) throw new ReplayMismatch(`request differs for ${request.providerId}`);
@@ -49,10 +49,17 @@ export function replayTransport(capture) {
     if (sha256(body) !== next.response.sha256) throw new ReplayMismatch('response digest differs');
     return { status: next.response.status, body };
   };
+  /** Throws unless every recorded exchange was used: a capture must fit its verification exactly. */
+  transport.assertConsumed = () => {
+    for (const [id, queue] of queues) if (queue.length > 0) throw new ReplayMismatch(`${queue.length} unused exchanges for ${id}`);
+  };
+  return transport;
 }
 
 const PROVIDER_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+export const OPERATOR = /^[A-Za-z0-9][A-Za-z0-9 ().&,'-]{0,63}$/;
+const ORIGIN = /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::[1-9][0-9]{0,4})?$/;
 
 /** Checks a parsed capture; returns it or throws TypeError. */
 export function checkCapture(capture) {
@@ -63,7 +70,7 @@ export function checkCapture(capture) {
   for (const field of ['network', 'transactionHash']) if (typeof capture[field] !== 'string') fail(`${field} missing`);
   if (!Array.isArray(capture.providers) || capture.providers.length === 0) fail('providers missing');
   for (const p of capture.providers) {
-    if (typeof p?.id !== 'string' || !PROVIDER_ID.test(p.id) || typeof p.operator !== 'string' || typeof p.origin !== 'string') fail('bad provider');
+    if (typeof p?.id !== 'string' || !PROVIDER_ID.test(p.id) || typeof p.operator !== 'string' || !OPERATOR.test(p.operator) || typeof p.origin !== 'string' || !ORIGIN.test(p.origin)) fail('bad provider');
   }
   if (!Array.isArray(capture.exchanges) || capture.exchanges.length > MAX_EXCHANGES) fail('exchanges missing or too many');
   for (const e of capture.exchanges) {

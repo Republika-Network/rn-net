@@ -82,7 +82,9 @@ export async function main(argv, io) {
     }
     const providers = recorded.providers.map((p) => ({ id: p.id, network: recorded.network, url: `${p.origin}/`, operator: p.operator }));
     try {
-      report = await verifyLiveAnchor({ network: recorded.network, transactionHash: recorded.transactionHash, expectedCommitment: options['--commitment'], providers, transport: replayTransport(recorded) });
+      const transport = replayTransport(recorded);
+      report = await verifyLiveAnchor({ network: recorded.network, transactionHash: recorded.transactionHash, expectedCommitment: options['--commitment'], providers, transport });
+      transport.assertConsumed();
     } catch (error) {
       io.stderr(`verify-live-anchor: ${error.message}\n`);
       return EXIT.NO_INPUT;

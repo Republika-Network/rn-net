@@ -32,7 +32,8 @@ export function parseRpcJson(bytes, maxBytes) {
   if (bytes.length > maxBytes) throw new JsonError('response too large', maxBytes);
   let text;
   try {
-    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes);
+    // ignoreBOM: true keeps a byte order mark in the text, so it is refused below rather than stripped.
+    text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
     throw new JsonError('invalid UTF-8', 0);
   }

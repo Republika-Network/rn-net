@@ -48,7 +48,7 @@ RPC response.
 |---|---|
 | `id` | Lowercase words joined by `-` |
 | `network` | `xrpl:testnet` or `evm:11155111` |
-| `operator` | 1 to 64 characters |
+| `operator` | 1 to 64 letters, digits, spaces or `().&,'-`, starting with a letter or digit |
 | `url` | See below |
 
 **URL rules.** The `url` must be all of the following:
@@ -56,7 +56,8 @@ RPC response.
 - in normalized form;
 - `https:`;
 - free of user name, password, query and fragment;
-- on a DNS host name, not an IP address or a single-label name;
+- on a DNS host name, not an IP address or a single-label name (the transport refuses address
+  literals too, because they would bypass its DNS checks);
 - on a path of at most 128 URL-safe characters.
 
 The `id` must be unique, and so must the `url`.
@@ -78,7 +79,7 @@ supported in v1.
   resolved address is not public unicast:
   - loopback, private, link-local, shared, documentation, benchmarking, multicast or unspecified;
   - IPv6 ULA or link-local;
-  - IPv4-mapped private;
+  - IPv4-mapped private, NAT64, 6to4, Teredo, IPv6 benchmarking and ORCHID;
 - the request has a deadline (`RNLO_TIMEOUT`);
 - the response is read up to a size limit (`RNLO_RESPONSE_TOO_LARGE`).
 
@@ -198,7 +199,7 @@ result is `RNLO_BLOCK_MISMATCH`.
 | `IN_ANCESTRY` | The block reached at that height is the transaction's block |
 | `CONFLICT` | Another block is at that height (another fork). This produces `RNLO_FINALITY_CONFLICT`, which fails the report. |
 | `NOT_REACHED` | The tagged block is below the transaction's block |
-| `UNRESOLVED` | The tag is unsupported or malformed, or more than 256 steps away |
+| `UNRESOLVED` | The tag is unsupported or malformed, or its block is more than 256 above the transaction's block. In that case no walk is attempted: the number is used only to decide not to walk, never to infer finality. |
 
 **Block numbers alone are never used.** A transaction is not treated as final because its number
 is lower than the finalized number. If the transaction is in the finalized ancestry, `safe` is
@@ -241,7 +242,7 @@ The report is a canonical JSON object.
 | `INVALID_RESPONSE` | `RNLO_INVALID_JSON`, `RNLO_INVALID_RESPONSE`, `RNLO_RPC_ERROR`, `RNLO_UNSUPPORTED_API_VERSION` |
 | `UNAVAILABLE` | Everything else: timeouts, connection failures, rate limits, HTTP errors, blocked addresses, redirects, oversized responses, an exhausted request budget |
 
-**What it never contains:** retrieval times, URLs or response text. It is a function of the response
+**What it never contains:** retrieval times, URLs or response text. Provider `id` and `operator` come from the endpoint configuration or, in replay, from the capture, where they must meet the same rules (§2: an operator is 1 to 64 letters, digits, spaces or `().&,'-`). It is a function of the response
 bytes alone, so replaying a capture (§8) reproduces it byte for byte.
 
 ### 7.2 Agreement
@@ -329,6 +330,8 @@ provider:
 - The capture's request bytes must equal the bytes asked for, and each response's digest must
   match. Otherwise replay stops with `RNLO_REPLAY_MISMATCH`; a mismatch is never treated as an
   unavailable source.
+- Every recorded exchange must be used. A capture with exchanges left over does not fit the
+  verification (`RNLO_REPLAY_MISMATCH`).
 - Replay never opens a connection, and the CLI does not load the network transport in replay mode.
 
 **What a capture proves.** It shows which bytes were received, not that they are true.

@@ -242,3 +242,52 @@ test('the anchor payload bytes are exactly RN-NET-03A v1', () => {
   assert.equal(PAYLOAD, Buffer.from(encodeAnchorPayload(COMMITMENT)).toString('hex'));
   assert.equal(PAYLOAD.slice(0, 20), '524e4e4554414e430101');
 });
+
+// --- RN-NET-03B1 review findings ------------------------------------------------------------------
+
+test('F1: a finalized head far above the transaction is UNRESOLVED without exhausting the budget', async () => {
+  // Simulate a deep chain cheaply: the tagged heads claim heights far above block 110.
+  const base = fakeEvm();
+  const far = { ...base.byNumber.get(140), number: `0x${(110 + 257).toString(16)}` };
+  const deep = fakeEvm({ finalized: far, safe: { ...far, number: `0x${(110 + 400).toString(16)}` } });
+  const report = await run(EVM, deep);
+  assert.deepEqual(report.providers[0].finality, { finalized: 'UNRESOLVED', safe: 'UNRESOLVED' });
+  assert.equal(report.outcome, 'PASS');
+  assert.ok(report.statuses.includes('UNRESOLVED'));
+  assert.ok(deep.calls.length < 12, `${deep.calls.length} requests`);
+  const near = { ...base.byNumber.get(140) }; // 30 above: walked
+  assert.deepEqual((await run(EVM, fakeEvm({ finalized: near, safe: near }))).providers[0].finality, { finalized: 'IN_ANCESTRY', safe: 'IN_ANCESTRY' });
+});
+
+test('F2: unusable block references from one provider fail that provider, not the run', async () => {
+  for (const blockHash of [1.5, '\ud800', `0x${'Z'.repeat(64)}`, 'latest', { a: 1 }]) {
+    const report = await run(EVM, fakeEvm({ transaction: { blockHash } }));
+    assert.equal(report.providers[0].outcome, 'INVALID_RESPONSE', String(blockHash));
+  }
+  const honest = fakeEvm();
+  const evil = fakeEvm({ transaction: { blockHash: 1.5 } });
+  const both = await verifyLiveAnchor({
+    network: EVM, transactionHash: honest.hash, expectedCommitment: COMMITMENT, providers: [provider('pa', EVM), provider('pb', EVM)],
+    transport: (request) => (request.providerId === 'pa' ? honest : evil).transport(request),
+  });
+  assert.deepEqual(both.providers.map((p) => p.outcome), ['OBSERVED', 'INVALID_RESPONSE']);
+  assert.equal(both.outcome, 'FAIL');
+});
+
+test('F3: a byte order mark is refused', () => {
+  assert.throws(() => parseRpcJson(Uint8Array.from([0xef, 0xbb, 0xbf, 0x7b, 0x7d]), 100), { code: 'RNLO_INVALID_JSON' });
+});
+
+test('F4/F5: a capture must fit exactly and carry well-formed provider metadata', async () => {
+  const fake = fakeXrpl();
+  const exchanges = [];
+  await verifyLiveAnchor({ network: XRPL, transactionHash: fake.hash, expectedCommitment: COMMITMENT, providers: [provider('pa', XRPL)], transport: recordingTransport(fake.transport, exchanges) });
+  const capture = { format: 'rnnet.rpc-capture.v1', network: XRPL, transactionHash: fake.hash, providers: [{ id: 'pa', operator: 'Operator A', origin: 'https://pa.example.org' }], exchanges };
+  const extra = replayTransport(structuredClone({ ...capture, exchanges: [...exchanges, exchanges[0]] }));
+  await verifyLiveAnchor({ network: XRPL, transactionHash: fake.hash, expectedCommitment: COMMITMENT, providers: [provider('pa', XRPL)], transport: extra });
+  assert.throws(() => extra.assertConsumed(), ReplayMismatch);
+  for (const bad of [{ operator: 'CHAIN_PROVEN\n<script>' }, { operator: '' }, { operator: 'x'.repeat(65) }, { origin: 'https://pa.example.org/v3/key' }, { origin: 'http://pa.example.org' }, { origin: 'https://127.0.0.1' }]) {
+    assert.throws(() => checkCapture({ ...capture, providers: [{ ...capture.providers[0], ...bad }] }), TypeError, JSON.stringify(bad));
+  }
+  assert.throws(() => loadEndpointConfig({ format: 'rnnet.rpc-endpoints.v1', providers: [{ id: 'p', network: XRPL, url: 'https://a.example.org/', operator: 'CHAIN_PROVEN\n' }] }), TypeError);
+});

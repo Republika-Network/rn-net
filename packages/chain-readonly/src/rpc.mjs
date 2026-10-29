@@ -3,6 +3,7 @@
 // production, a mock or a capture replay in tests). Every request is built here, from an exact
 // allowlist of read-only methods; nothing in this package can construct a write or signing call.
 import { canonicalBytes } from '../../canonical/src/index.mjs';
+import { OPERATOR } from './capture.mjs';
 import { JsonError, parseRpcJson } from './json.mjs';
 
 export const Network = Object.freeze({ XRPL_TESTNET: 'xrpl:testnet', SEPOLIA: 'evm:11155111' });
@@ -58,7 +59,7 @@ export function loadEndpointConfig(config) {
     const { id, network, url, operator } = entry ?? {};
     if (typeof id !== 'string' || !PROVIDER_ID.test(id) || ids.has(id)) fail(`bad or duplicate provider id ${JSON.stringify(id)}`);
     if (!Object.hasOwn(READ_ONLY_METHODS, network)) fail(`${id}: network not allowed`);
-    if (typeof operator !== 'string' || operator.length === 0 || operator.length > 64) fail(`${id}: operator required`);
+    if (typeof operator !== 'string' || !OPERATOR.test(operator)) fail(`${id}: operator must be 1 to 64 letters, digits, spaces or ().&,'-`);
     const parsed = checkEndpointUrl(url, fail, id);
     if (urls.has(parsed.href)) fail(`${id}: duplicate url`);
     ids.add(id);
@@ -98,7 +99,13 @@ export function requestBytes(network, method, params) {
  */
 export async function call(context, method, params) {
   const { provider, transport, budget } = context;
-  const body = requestBytes(provider.network, method, params);
+  let body;
+  try {
+    body = requestBytes(provider.network, method, params);
+  } catch (error) {
+    if (error instanceof TypeError && /allowed read-only method/.test(error.message)) throw error;
+    throw new ReadError('RNLO_INVALID_RESPONSE', 'a provider value cannot be sent back in a request');
+  }
   let lastError;
   for (let attempt = 1; attempt <= LIMITS.maxAttempts; attempt++) {
     if (budget.remaining <= 0) throw new ReadError('RNLO_REQUEST_BUDGET');
