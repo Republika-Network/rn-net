@@ -1,0 +1,367 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.anchor-record.v1",
+  "kind": "anchor-evm",
+  "note": "Synthetic. Every transaction record, hash, ledger, block and account here is derived from a label and does not exist on any network.",
+  "vectors": [
+    {
+      "id": "valid",
+      "description": "An included, successful type-2 transaction whose input is the anchor payload.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "PASS",
+      "expectedFindings": [],
+      "expectedRecord": "{\"assurance\":\"CONSISTENT_WITH_SUPPLIED_DATA\",\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:8e940e5480e92eaefd9c7bdc7349d1d8f14566cb7bc3ab8b02b3455f254f59fd\"},\"network\":\"evm:11155111\",\"outcome\":\"PASS\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[{\"basis\":\"Decoded from the supplied transaction data and equal to the payload of the expected commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"anchorPayload\"},{\"basis\":\"Named by the supplier of the record and consistent with the transaction's own network fields; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"network\"},{\"basis\":\"Stated by the supplied transaction data; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"transactionStatus\"},{\"basis\":\"The supplied data names the ledger or block that includes the transaction; no inclusion proof was checked.\",\"classification\":\"CLAIMED\",\"subject\":\"inclusion\"},{\"basis\":\"The supplied data shows inclusion in a block, not finality.\",\"classification\":\"UNRESOLVED\",\"subject\":\"finality\"},{\"basis\":\"Not recomputed from the signed transaction, so not bound to the data that was checked.\",\"classification\":\"UNRESOLVED\",\"subject\":\"transactionHash\"},{\"basis\":\"The sending account as stated by the supplied data.\",\"classification\":\"CLAIMED\",\"subject\":\"submitter\"}],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "valid-legacy-type",
+      "description": "A type-0 transaction with a chainId.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x0\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "PASS",
+      "expectedFindings": [],
+      "expectedRecord": "{\"assurance\":\"CONSISTENT_WITH_SUPPLIED_DATA\",\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:916bc9b30a290ee9aeaa3973f623675a732a8ccc42a6917eafd14bd2d0fb66b0\"},\"network\":\"evm:11155111\",\"outcome\":\"PASS\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[{\"basis\":\"Decoded from the supplied transaction data and equal to the payload of the expected commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"anchorPayload\"},{\"basis\":\"Named by the supplier of the record and consistent with the transaction's own network fields; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"network\"},{\"basis\":\"Stated by the supplied transaction data; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"transactionStatus\"},{\"basis\":\"The supplied data names the ledger or block that includes the transaction; no inclusion proof was checked.\",\"classification\":\"CLAIMED\",\"subject\":\"inclusion\"},{\"basis\":\"The supplied data shows inclusion in a block, not finality.\",\"classification\":\"UNRESOLVED\",\"subject\":\"finality\"},{\"basis\":\"Not recomputed from the signed transaction, so not bound to the data that was checked.\",\"classification\":\"UNRESOLVED\",\"subject\":\"transactionHash\"},{\"basis\":\"The sending account as stated by the supplied data.\",\"classification\":\"CLAIMED\",\"subject\":\"submitter\"}],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "empty-input",
+      "description": "Input 0x.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_MISSING_ANCHOR"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_MISSING_ANCHOR\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:afd07c9f33dd2b9a1a9a44f734e27d27444a8a9abce474de2e86d955d0140ab0\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "malformed-payload",
+      "description": "Input that is not an anchor payload.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0xa9059cbb\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAP_NOT_ANCHOR_PAYLOAD"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAP_NOT_ANCHOR_PAYLOAD\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:1b8e68890a34c1fbefd2cea579bcf42621775776b93719d5ba5e16edfc3375f4\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "payload-with-prefix",
+      "description": "A 4-byte selector before the payload.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0xa9059cbb524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAP_NOT_ANCHOR_PAYLOAD"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAP_NOT_ANCHOR_PAYLOAD\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:ad657ea5ea69fcdc97370be669d293682b12d991a3c4f94900a201f6b9f31ff0\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "duplicate-payload-in-input",
+      "description": "The payload twice in one input: ambiguous, rejected by length.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAP_INVALID_LENGTH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAP_INVALID_LENGTH\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:7865deece476f65b92aec890a5a8503ba0e7c75ece431dc696a18cd02c9a87d5\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "input-uppercase-hex",
+      "description": "Input in uppercase hex.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524E4E4554414E430101FF8CC6F9C6D9C71C8F25C7C5C7D89DEB089922C347F9EBA499888773EACBFFFD\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_INPUT"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_INPUT\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:9e190e16bf70859a7053912a7aa318b9a3005ce834c0610482a15d2f61a26a07\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "input-odd-length",
+      "description": "Input with an odd number of hex digits.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd0\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_INPUT"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_INPUT\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:682cc77775fe9c59b28a54280f0a5e6a1e679dd9b23b5eeb5bd7f96e4ac809de\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "reverted",
+      "description": "Receipt status 0x0; the payload is correct.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x0\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_TRANSACTION_REVERTED"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_TRANSACTION_REVERTED\",\"severity\":\"error\",\"subject\":\"receipt.status\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:0e4c3fc088468c6c672a99250440a2bba2e714d46be4277830f913a9cf0b45a0\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "status-spoofed",
+      "description": "Receipt status \"0x01\": not a canonical quantity.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x01\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_STATUS"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_STATUS\",\"severity\":\"error\",\"subject\":\"receipt.status\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:77f590e9e19794a0323207a4cb22b27481f66654cbfcba9ce62ad0654583c57f\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "pending",
+      "description": "No block, no receipt; the payload is correct.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null},\"receipt\":null}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_PENDING"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_PENDING\",\"severity\":\"error\",\"subject\":\"receipt\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:0d577892db77bf6c9069169ffdfbed6155309a9751425d5f6844defdba3c5b5a\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[],\"transaction\":{\"blockHash\":null,\"blockNumber\":null,\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":null}}"
+    },
+    {
+      "id": "receipt-without-block",
+      "description": "A receipt for a transaction whose block fields are null.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_CONFLICTING_BLOCK_REFERENCE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_CONFLICTING_BLOCK_REFERENCE\",\"severity\":\"error\",\"subject\":\"receipt.blockHash\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:7d733161d83b27ebd1bcef8399214f5f91f0918b09a5c970131ca628f695b6f2\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "incorrect-chain-id-mainnet",
+      "description": "chainId 0x1 (Ethereum Mainnet).",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_WRONG_NETWORK"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_WRONG_NETWORK\",\"severity\":\"error\",\"subject\":\"transaction.chainId\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:c5fdd396dc062fbf5b7e0f9f6315decfeeec7d1baba62ee96ff3d695f33dc68a\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "incorrect-chain-id-holesky",
+      "description": "chainId 0x4268 (Holesky).",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0x4268\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_WRONG_NETWORK"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_WRONG_NETWORK\",\"severity\":\"error\",\"subject\":\"transaction.chainId\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:3ae9a43251da557c6fb95bf50ebc89c8e02007ca92b8d52b61d8d35b8115cdb8\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "chain-id-decimal",
+      "description": "chainId as a decimal string.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"11155111\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_FIELD_TYPE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_FIELD_TYPE\",\"severity\":\"error\",\"subject\":\"transaction.chainId\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:a466db5e1d61cefa5c2168651cf7df5e0e93802e807862d91b2e6e724433a02d\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "chain-id-leading-zero",
+      "description": "chainId 0x0aa36a7: not a canonical quantity.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0x0aa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_FIELD_TYPE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_FIELD_TYPE\",\"severity\":\"error\",\"subject\":\"transaction.chainId\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:3d143c914146f0f19ea60d4f62f14fc4612ba108ca53bbf9f46d11a91da5dd57\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "missing-chain-id",
+      "description": "A transaction without chainId.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_MISSING_FIELD"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_MISSING_FIELD\",\"severity\":\"error\",\"subject\":\"transaction.chainId\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:782e260b424e307963169bf24fb54c5ff8999b762a313c8616609bb4109194ce\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "wrong-network-observation",
+      "description": "An observation labelled XRPL given as Sepolia.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAO_WRONG_NETWORK"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAO_WRONG_NETWORK\",\"severity\":\"error\",\"subject\":\"network\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:b90e7afb76cd54f5f972ea413c8b0eac06670bcee72c94300323c441ca2dc622\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "incorrect-transaction-hash",
+      "description": "A transaction hash of 31 bytes.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0x15d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0x15d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_HASH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_HASH\",\"severity\":\"error\",\"subject\":\"transaction.hash\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:0c46c275fe7efcdcb61f2c858f89c6910441ebd94e28f0611eaecc0fdf854afe\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "transaction-hash-uppercase",
+      "description": "A transaction hash in uppercase hex.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xF515D245662686FD4F0C3FC5BFE15F263068AB92FB91A759BE24C4023BAC5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xF515D245662686FD4F0C3FC5BFE15F263068AB92FB91A759BE24C4023BAC5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_HASH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_HASH\",\"severity\":\"error\",\"subject\":\"transaction.hash\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:b771b5c73d9a66bfb237ab6493ddbd9ccbe2491ff47563b01f25c0bf5455182a\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "receipt-for-other-transaction",
+      "description": "A receipt whose transactionHash is another transaction.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0x2221371dd4d5351a18386bbf07d417c7a4b616ecdf700ba56f111e6031172cc7\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_RECEIPT_MISMATCH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_RECEIPT_MISMATCH\",\"severity\":\"error\",\"subject\":\"receipt.transactionHash\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:c0599626443b490b58e51cde5779389290ede8912e669cfd3517f537772a0f47\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "receipt-other-sender",
+      "description": "A receipt naming another sender.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xd7ed417ffff0eb6f1724ac49ff464a17caa07435\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_RECEIPT_MISMATCH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_RECEIPT_MISMATCH\",\"severity\":\"error\",\"subject\":\"receipt.from\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:964f024dd450ee1e9de45f83045428f124694dc1c24154b5db7e2127c6f35f81\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "conflicting-block-hash",
+      "description": "Receipt and transaction name different blocks.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x4f8a268e3903e779da2d0040f3e8164840047f5364b0238a24a23ad3094f8455\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_CONFLICTING_BLOCK_REFERENCE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_CONFLICTING_BLOCK_REFERENCE\",\"severity\":\"error\",\"subject\":\"receipt.blockHash\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:761e8460ed8d26f0f52d7a1a7ecaf266832152808703a7521d632e7e0182a341\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "conflicting-block-number",
+      "description": "Receipt and transaction name different block numbers.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2b\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_CONFLICTING_BLOCK_REFERENCE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_CONFLICTING_BLOCK_REFERENCE\",\"severity\":\"error\",\"subject\":\"receipt.blockNumber\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:60cb13d457a249d715ecd9c2d30680c2970914b8fa0715e5f2734cad55a6a722\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "conflicting-transaction-index",
+      "description": "Receipt and transaction name different positions.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x6\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_CONFLICTING_BLOCK_REFERENCE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_CONFLICTING_BLOCK_REFERENCE\",\"severity\":\"error\",\"subject\":\"receipt.transactionIndex\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:00e1b7d6c153727223ec520b15c63909820a224311cdf6e9c5eff480e049fc87\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "partial-block-reference",
+      "description": "A blockHash with no blockNumber.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":null,\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":null,\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_BLOCK_REFERENCE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_BLOCK_REFERENCE\",\"severity\":\"error\",\"subject\":\"transaction\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:dca3f59d2c10ccab631ade0cf8d639c233740891b0e851b566cc66ea19cd80d1\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "incorrect-payload-digest",
+      "description": "A well-formed anchor for another commitment.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAP_COMMITMENT_MISMATCH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba5e59ff\",\"findings\":[{\"code\":\"RNAP_COMMITMENT_MISMATCH\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:8e940e5480e92eaefd9c7bdc7349d1d8f14566cb7bc3ab8b02b3455f254f59fd\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":false},\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "tampered-input-one-bit",
+      "description": "One bit of the digest flipped.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffc\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAP_COMMITMENT_MISMATCH"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAP_COMMITMENT_MISMATCH\",\"severity\":\"error\",\"subject\":\"transaction.input\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:9ef9846e4ee5a5fa007e7c3ce9badc220c370e12eaa53dbbe3ef41f824131de4\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffc\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffc\",\"matchesExpected\":false},\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "contract-creation",
+      "description": "to: null (contract creation).",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":null,\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":null,\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_CONTRACT_CREATION"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_CONTRACT_CREATION\",\"severity\":\"error\",\"subject\":\"transaction.to\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:aa2896fab5cb3146d02c76ce4c938193a402d466f63e15e1449033ac96542dc6\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "receipt-contract-address",
+      "description": "A receipt reporting a created contract.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_CONTRACT_CREATION"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_CONTRACT_CREATION\",\"severity\":\"error\",\"subject\":\"receipt.contractAddress\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:9441e9e16d5c5e808c3cb092a9e6754556bcfe4035418a4a46ef044fe700fdf4\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"payload\":{\"commitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"hex\":\"524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"matchesExpected\":true},\"statements\":[],\"transaction\":{\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"transactionIndex\":\"0x5\"}}"
+    },
+    {
+      "id": "blob-transaction",
+      "description": "A type-3 (blob) transaction: an unsupported transport.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x3\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "UNSUPPORTED",
+      "expectedFindings": [
+        "RNAE_UNSUPPORTED_TRANSACTION_TYPE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_UNSUPPORTED_TRANSACTION_TYPE\",\"severity\":\"unsupported\",\"subject\":\"transaction.type\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:e9e6c9ebfe91ef656646bb33153011b808956cae66ea68f958b8ae6b659c9fe5\"},\"network\":\"evm:11155111\",\"outcome\":\"UNSUPPORTED\",\"statements\":[]}"
+    },
+    {
+      "id": "checksummed-address",
+      "description": "A mixed-case (checksummed) address, which JSON-RPC does not return.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xFBDAEF48B302E5021F023B0BDDE462CFAB56E65B\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xFBDAEF48B302E5021F023B0BDDE462CFAB56E65B\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":\"0x1\",\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_INVALID_ADDRESS"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_INVALID_ADDRESS\",\"severity\":\"error\",\"subject\":\"transaction.from\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:cb6229e0f1099bb44ab9c354f2e1b725dcec3a90c54b6c99dd23e52bc7e4b319\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    },
+    {
+      "id": "receipt-status-number",
+      "description": "A receipt status given as the number 1.",
+      "input": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"chainId\":\"0xaa36a7\",\"type\":\"0x2\",\"nonce\":\"0x7\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"value\":\"0x0\",\"gas\":\"0x5a3c\",\"input\":\"0x524e4e4554414e430101ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\"},\"receipt\":{\"transactionHash\":\"0xf515d245662686fd4f0c3fc5bfe15f263068ab92fb91a759be24c4023bac5691\",\"blockHash\":\"0x1c77457bbd9c7b71e4c364cd0171abc2fa15f735fe495000cb435c55b8110c54\",\"blockNumber\":\"0x6d4c2a\",\"transactionIndex\":\"0x5\",\"from\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"to\":\"0xfbdaef48b302e5021f023b0bdde462cfab56e65b\",\"status\":1,\"contractAddress\":null,\"gasUsed\":\"0x5a3c\",\"logs\":[]}}",
+      "expectedCommitment": "sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd",
+      "expectedOutcome": "FAIL",
+      "expectedFindings": [
+        "RNAE_FIELD_TYPE"
+      ],
+      "expectedRecord": "{\"expectedCommitment\":\"sha256:ff8cc6f9c6d9c71c8f25c7c5c7d89deb089922c347f9eba499888773eacbfffd\",\"findings\":[{\"code\":\"RNAE_FIELD_TYPE\",\"severity\":\"error\",\"subject\":\"receipt.status\"}],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:bebc31770d6c470ec3a88fc2de588ef1bd859a21dfbf6027c8d689b8bdcdb492\"},\"network\":\"evm:11155111\",\"outcome\":\"FAIL\",\"statements\":[]}"
+    }
+  ]
+}

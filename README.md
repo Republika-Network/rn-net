@@ -7,16 +7,20 @@ that evidence on public test networks.
 
 ## Status
 
-**Early implementation (RN-NET-01, RN-NET-02).** This repository contains:
+**Early implementation (RN-NET-01, RN-NET-02, RN-NET-03A).** This repository contains:
 
 - the canonical JSON profile and the evidence commitment format;
 - an independent, offline evidence verifier for one original, synthetic evidence
   format (`rnnet.synthetic-evidence.v1`), with Ed25519 signature checks and a
   deterministic verification report;
+- an offline anchoring foundation: a 42-byte anchor payload for a commitment, and checks of
+  *supplied* XRPL Testnet and Ethereum Sepolia transaction data, with a dual-chain report;
 - their specifications, conformance vectors and second implementations;
 - repository security guards.
 
-It contains no anchoring code and no real evidence; all test inputs are synthetic.
+It submits no transactions, holds no keys and contacts no network: the anchoring checks
+establish consistency of supplied data only (`CHAIN_INCLUSION_UNVERIFIED`), never chain
+inclusion. All test inputs, including every transaction record, are synthetic.
 The verifier establishes integrity and signature consistency under keys the
 evidence carries. It does **not** establish signer identity, policy enforcement or
 that any described event happened (see the
@@ -68,6 +72,8 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 | [`rnnet.verification-taxonomy.v1`](spec/rnnet.verification-taxonomy.v1.md) | [`packages/commitment/`](packages/commitment/) |
 | [`rnnet.synthetic-evidence.v1`](spec/rnnet.synthetic-evidence.v1.md) | [`packages/verifier/`](packages/verifier/README.md) |
 | [`rnnet.verification-report.v1`](spec/rnnet.verification-report.v1.md) | [`packages/verifier/`](packages/verifier/README.md) |
+| [`rnnet.anchor-payload.v1`](spec/rnnet.anchor-payload.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
+| [`rnnet.anchor-record.v1`](spec/rnnet.anchor-record.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
 
 Conformance vectors live in [`vectors/`](vectors/) (format described in
 [`vectors/README.md`](vectors/README.md)) and are checked by two implementations:
@@ -90,6 +96,13 @@ node tools/verify-evidence.mjs evidence.json \
 
 Exit codes: 0 `PASS`, 1 `FAIL`, 2 `UNSUPPORTED`, 64 usage error, 66 unreadable input. See
 [`packages/verifier/README.md`](packages/verifier/README.md) for the API.
+
+To check supplied anchoring data for a commitment on both test networks (offline; same exit
+codes; see [`packages/anchor/README.md`](packages/anchor/README.md)):
+
+```sh
+node tools/verify-anchors.mjs --commitment sha256:<hex> --xrpl xrpl-observation.json --evm sepolia-observation.json
+```
 
 Behaviour changes to the JavaScript API, and what consumers can rely on, are recorded in
 [`docs/api-compatibility.md`](docs/api-compatibility.md).
@@ -115,7 +128,7 @@ defense in depth by making common Node network, worker and subprocess APIs throw
 it is not a sandbox. Likewise the dependency guard is a source lint, not a sandbox. Without `unshare`, the
 tests can be run directly with
 `node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"`
-and `python3 -I -B tools/reference/rnnet_reference.py` (and `rnnet_evidence_reference.py`), but then nothing
+and `python3 -I -B tools/reference/rnnet_reference.py` (and `rnnet_evidence_reference.py`, `rnnet_anchor_reference.py`), but then nothing
 enforces that they stay offline.
 
 To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
