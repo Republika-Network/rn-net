@@ -18,7 +18,6 @@ trap 'rm -rf "$work"' EXIT
 real_ip=$(command -v ip)
 real_timeout=$(command -v timeout)
 real_python=$(command -v python3)
-export real_ip real_timeout real_python
 
 if unshare -rn true 2>/dev/null; then
   sudo_namespace=false
@@ -34,17 +33,20 @@ fi
 passed=0
 failed=0
 
-# shim <case> <name> <body>: a stand-in command for one case.
+# shim <case> <name> <body>: a stand-in command for one case. Everything a stand-in needs is
+# written into it, because sudo and the script's own privilege drop reset the environment.
 shim() {
   mkdir -p "$work/$1/bin"
-  printf '#!/usr/bin/env bash\n%s\n' "$3" >"$work/$1/bin/$2"
+  printf '#!/usr/bin/env bash\nreal_ip=%q real_timeout=%q real_python=%q\n%s\n' \
+    "$real_ip" "$real_timeout" "$real_python" "$3" >"$work/$1/bin/$2"
   chmod +x "$work/$1/bin/$2"
 }
 
-# Fast stand-ins for the checks themselves, so the cases test the script and not the suite.
+# check_shims <case> <syntax exit> <test exit> <reference exit>: fast stand-ins for the checks
+# themselves, so the cases test the script and not the suite.
 check_shims() {
-  shim "$1" node 'case "$1" in --check) exit "${NODE_CHECK_EXIT:-0}";; *) echo "node-test-stand-in"; exit "${NODE_TEST_EXIT:-0}";; esac'
-  shim "$1" python3 'case "$*" in *rnnet_reference.py*) echo "reference-stand-in"; exit "${REFERENCE_EXIT:-0}";; *) exec "$real_python" "$@";; esac'
+  shim "$1" node "case \"\$1\" in --check) exit $2;; *) echo node-test-stand-in; exit $3;; esac"
+  shim "$1" python3 "case \"\$*\" in *rnnet_reference.py*) echo reference-stand-in; exit $4;; *) exec \"\$real_python\" \"\$@\";; esac"
 }
 
 # run <case> <ns|host> [env assignments...] -- <script args...>: runs the script, stores output and status.
@@ -149,23 +151,26 @@ expect 'external address reachable: run fails' fail 'reachable from inside the n
 
 # --- Checks stage --------------------------------------------------------------------------------
 
-for name in checks-pass checks-test-fails checks-reference-fails checks-syntax-fails; do check_shims "$name"; done
+check_shims checks-pass 0 0 0
+check_shims checks-test-fails 0 1 0
+check_shims checks-reference-fails 0 0 1
+check_shims checks-syntax-fails 1 0 0
 
 run checks-pass ns --
 expect 'all checks pass: run passes' pass 'reference-stand-in'
 expect 'effective uid is logged' pass 'offline-checks: checks run as uid'
 
-run checks-test-fails ns NODE_TEST_EXIT=1 --
+run checks-test-fails ns --
 expect 'a failing test fails the run' fail 'node-test-stand-in'
 
-run checks-reference-fails ns REFERENCE_EXIT=1 --
+run checks-reference-fails ns --
 expect 'a failing Python reference fails the run' fail 'reference-stand-in'
 
-run checks-syntax-fails ns NODE_CHECK_EXIT=1 --
+run checks-syntax-fails ns --
 expect 'a syntax error fails the run' fail 'isolation proven'
 
 if $sudo_namespace; then
-  check_shims checks-as-root
+  check_shims checks-as-root 0 0 0
   set +e
   output=$(sudo env "PATH=$work/checks-as-root/bin:$PATH" RNNET_OFFLINE_STAGE=checks unshare --net -- "$script" 2>&1)
   status=$?
