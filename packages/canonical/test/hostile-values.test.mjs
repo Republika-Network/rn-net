@@ -99,3 +99,56 @@ test('bytes at exactly the size limit are accepted, one more byte is not', () =>
   assert.equal(parse(at).length, LIMITS.maxBytes - 2);
   rejects(() => parse(new TextEncoder().encode(`"${'a'.repeat(LIMITS.maxBytes - 1)}"`)), E.SIZE_EXCEEDED);
 });
+
+// RN-NET-01J, N1: a Proxy array can report any value for its `length` descriptor.
+const lyingLength = (target, length) =>
+  new Proxy(target, {
+    getOwnPropertyDescriptor(t, key) {
+      const descriptor = Reflect.getOwnPropertyDescriptor(t, key);
+      if (key === 'length') descriptor.value = length;
+      return descriptor;
+    },
+  });
+
+test('N1: an array length whose valueOf changes between uses is rejected, not used twice', () => {
+  // The independent review's reproduction: 2 for the loop bound, 3 for the extra-property check,
+  // so the named property was dropped silently. Nested inside objects and arrays as well.
+  let reads = 0;
+  const length = { valueOf: () => (++reads <= 3 ? 2 : 3) };
+  const array = lyingLength(Object.assign([1, 2], { evil: 'dropped' }), length);
+  rejects(() => canonicalize({ a: array }), E.UNSUPPORTED_VALUE);
+  rejects(() => canonicalize({ outer: { inner: [array] } }), E.UNSUPPORTED_VALUE);
+  rejects(() => canonicalize(array), E.UNSUPPORTED_VALUE);
+  assert.equal(reads, 0, 'the length object is never coerced');
+});
+
+test('N1: only an integer length from 0 to 2^32-1 is accepted', () => {
+  for (const length of ['2', 2.5, -1, NaN, Infinity, 2 ** 32, 2n, null, undefined, { valueOf: () => 2 }]) {
+    rejects(() => canonicalize({ a: lyingLength([1, 2], length) }), E.UNSUPPORTED_VALUE);
+  }
+  // A length that disagrees with the indices is a sparse array or an array with extra properties.
+  rejects(() => canonicalize(lyingLength([1, 2], 3)), E.UNSUPPORTED_VALUE);
+  rejects(() => canonicalize(lyingLength([1, 2], 1)), E.UNSUPPORTED_VALUE);
+  rejects(() => canonicalize(lyingLength([1, 2], 2 ** 32 - 1)), E.UNSUPPORTED_VALUE);
+  // An honest Proxy is serialized from its snapshot.
+  assert.equal(canonicalize({ a: lyingLength([1, 2], 2) }), '{"a":[1,2]}');
+});
+
+test('N1: canonical bytes match the snapshot even when the get trap lies about every element', () => {
+  const array = new Proxy([1, [2, 3]], { get: () => 'LIE' });
+  assert.equal(canonicalize({ a: array }), '{"a":[1,[2,3]]}');
+  const object = new Proxy({ a: 1, b: { c: 2 } }, { get: () => 'LIE' });
+  assert.equal(canonicalize(object), '{"a":1,"b":{"c":2}}');
+});
+
+test('N3: string size counts U+0800 as three UTF-8 bytes, exactly at the limit', () => {
+  // The first three-byte code point: an off-by-one at the two-byte boundary would undercount it.
+  const count = Math.floor((LIMITS.maxBytes - 2) / 3);
+  const pad = LIMITS.maxBytes - 2 - count * 3;
+  assert.equal(parse(`"${'\u0800'.repeat(count)}${'a'.repeat(pad)}"`).length, count + pad);
+  rejects(() => parse(`"${'\u0800'.repeat(count)}${'a'.repeat(pad + 1)}"`), E.SIZE_EXCEEDED);
+  // And U+07FF, the last two-byte code point, as two.
+  const two = (LIMITS.maxBytes - 2) / 2;
+  assert.equal(parse(`"${'\u07ff'.repeat(two)}"`).length, two);
+  rejects(() => parse(`"${'\u07ff'.repeat(two)}a"`), E.SIZE_EXCEEDED);
+});

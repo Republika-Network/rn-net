@@ -51,6 +51,10 @@ workerThreads.Worker = deny('worker_threads.Worker');
 for (const name of ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork']) {
   childProcess[name] = deny(`child_process.${name}`);
 }
+// Every asynchronous subprocess, including `new ChildProcess().spawn(...)`, starts through this
+// method. The synchronous functions are replaced above, and their native binding is reachable
+// from user code only through process.binding, which is refused.
+childProcess.ChildProcess.prototype.spawn = deny('ChildProcess.spawn');
 
 globalThis.fetch = deny('fetch');
 if (globalThis.WebSocket) globalThis.WebSocket = deny('WebSocket');

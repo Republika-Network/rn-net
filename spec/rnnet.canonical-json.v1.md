@@ -134,7 +134,8 @@ accessor, a proxy) can then never pass the checks with one value and be written 
 
 It MUST reject, not coerce, any value that has no JSON representation under this profile:
 undefined, functions, symbols, big integers, dates, maps, typed arrays, class instances,
-sparse arrays, arrays with own properties other than their indices and `length`, accessor or
+sparse arrays, arrays whose `length` is not an integer from 0 to 2^32 - 1, arrays with own
+properties other than their indices and `length`, accessor or
 non-enumerable properties (including array elements), and symbol keys
 (`RNCJ_UNSUPPORTED_VALUE`). Non-finite numbers are `RNCJ_UNSUPPORTED_VALUE`; finite
 non-integers are `RNCJ_NUMBER_NOT_INTEGER`.

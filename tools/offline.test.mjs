@@ -11,7 +11,7 @@ import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
 import workerThreads from 'node:worker_threads';
-import { spawn } from 'node:child_process';
+import { ChildProcess, spawn } from 'node:child_process';
 import { connect } from 'node:net';
 import { Worker } from 'node:worker_threads';
 import { Resolver } from 'node:dns';
@@ -54,4 +54,11 @@ test('named ES-module imports are blocked too, not only default exports (RN-NET-
   assert.throws(() => spawn(process.execPath, ['-e', '0']), offline);
   assert.throws(() => new Worker('process.exit()', { eval: true }), offline);
   assert.throws(() => new Resolver().resolve4('example.org', () => {}), offline);
+});
+
+test('a ChildProcess constructed directly cannot spawn (RN-NET-01J, N5)', () => {
+  const child = new ChildProcess();
+  assert.throws(() => child.spawn({ file: process.execPath, args: [process.execPath, '-e', '0'], stdio: 'ignore' }), offline);
+  assert.equal(child.pid, undefined);
+  assert.throws(() => new childProcess.ChildProcess().spawn({ file: process.execPath, args: [process.execPath] }), offline);
 });
