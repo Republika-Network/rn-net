@@ -192,7 +192,7 @@ For each tag, `finalized` and then `safe`, the reader:
    block height, for at most 256 steps.
 
 Each link must lead to a block with exactly the expected hash and a number one lower. Otherwise the
-result is `RNLO_BLOCK_MISMATCH`.
+result is `RNLO_BLOCK_MISMATCH`. Block numbers are compared exactly, at any size.
 
 | Result | When |
 |---|---|
@@ -320,7 +320,7 @@ existing file.
 | `network`, `transactionHash` | The verification's inputs |
 | `providers` | `{id, operator, origin}` for each provider. The URL path is not recorded. |
 | `retrieval` | `{startedAt, finishedAt, tool}`, the only place time appears |
-| `exchanges` | At most 2,000 entries, in order |
+| `exchanges` | In order; at most 600 per provider, the attempt budget (§3), so every capture a verification can produce can be replayed |
 
 **Each exchange** has `providerId` and the exact request bytes (`request`, base64). It also has
 exactly one of:

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { encodeAnchorPayload } from '../../anchor/src/index.mjs';
 import {
-  checkCapture, encodeLiveReport, loadEndpointConfig, parseRpcJson, RawNumber, READ_ONLY_METHODS,
+  checkCapture, encodeLiveReport, LIMITS, loadEndpointConfig, MAX_EXCHANGES_PER_PROVIDER, parseRpcJson, RawNumber, READ_ONLY_METHODS,
   recordingTransport, replayTransport, ReplayMismatch, requestBytes, verifyLiveAnchor,
 } from '../src/index.mjs';
 import { COMMITMENT, fakeEvm, fakeXrpl, PAYLOAD, provider } from './fake-chains.mjs';
@@ -325,4 +325,39 @@ test('N2: a number with no canonical form is never copied as an object', async (
   const xrpl = await run(XRPL, fakeXrpl({ fail: { tx: raw('{"result":{"status":"success","x":-0}}') } }));
   assert.notEqual(xrpl.providers[0].outcome, 'OBSERVED');
   assert.equal(xrpl.outcome, 'FAIL');
+});
+
+// --- RN-NET-03B1 fourth review --------------------------------------------------------------------
+
+test('F-A: block heights above 2^53 are compared exactly', async () => {
+  const base = fakeEvm();
+  const target = 0xfffffffffffff00n;
+  const hashAt = (n, label) => `0x${n.toString(16).padStart(16, '0')}${label.repeat(48)}`;
+  const parse = (hash) => ({ n: BigInt(`0x${hash.slice(2, 18)}`), label: hash[18] });
+  // An honest chain: numbers drop by exactly 1; the transaction is in block `target`.
+  const honest = (hash) => {
+    if (!/^0x[0-9a-f]{16}([ae])\1{47}$/.test(hash)) return undefined;
+    const { n, label } = parse(hash);
+    return { hash, number: `0x${n.toString(16)}`, parentHash: hashAt(n - 1n, label), transactions: n === target ? [`0x${'1'.repeat(64)}`, base.hash] : [] };
+  };
+  const tx = { blockHash: hashAt(target, 'a'), blockNumber: `0x${target.toString(16)}` };
+  const ok = await run(EVM, fakeEvm({ transaction: tx, blockOverride: honest, finalized: honest(hashAt(target + 256n, 'a')), safe: honest(hashAt(target + 300n, 'a')) }));
+  assert.deepEqual(ok.providers[0].finality, { finalized: 'IN_ANCESTRY', safe: 'IN_ANCESTRY' });
+  // A "stuck" chain whose parents repeat the child's number is inconsistent, not unresolved.
+  const stuck = (hash) => {
+    const block = honest(hash);
+    return block && parse(hash).n !== target ? { ...block, number: `0x${(parse(hash).n + 1n).toString(16)}` } : block;
+  };
+  const head = { ...honest(hashAt(target + 256n, 'a')), number: `0x${(target + 256n).toString(16)}` };
+  const bad = await run(EVM, fakeEvm({ transaction: tx, blockOverride: stuck, finalized: head, safe: head }));
+  assert.equal(bad.providers[0].outcome, 'INCONSISTENT');
+  assert.equal(bad.outcome, 'FAIL');
+});
+
+test('F-B: a capture holds at most the attempt budget per provider', () => {
+  assert.equal(MAX_EXCHANGES_PER_PROVIDER, LIMITS.maxRequestsPerProvider);
+  const exchange = { providerId: 'pa', request: '', error: 'RNLO_TIMEOUT' };
+  const capture = (n) => ({ format: 'rnnet.rpc-capture.v1', network: XRPL, transactionHash: 'A'.repeat(64), providers: [{ id: 'pa', operator: 'A', origin: 'https://pa.example.org' }, { id: 'pb', operator: 'B', origin: 'https://pb.example.org' }], exchanges: Array(n).fill(exchange) });
+  assert.doesNotThrow(() => checkCapture(capture(600)));
+  assert.throws(() => checkCapture(capture(601)), TypeError);
 });

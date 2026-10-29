@@ -5,7 +5,8 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 
 export const CAPTURE_FORMAT = 'rnnet.rpc-capture.v1';
-const MAX_EXCHANGES = 2_000;
+/** Equal to LIMITS.maxRequestsPerProvider: a capture holds at most what one verification can send. */
+export const MAX_EXCHANGES_PER_PROVIDER = 600;
 const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
 /** Thrown when a replayed verification asks for something the capture does not contain. */
@@ -72,13 +73,16 @@ export function checkCapture(capture) {
   for (const p of capture.providers) {
     if (typeof p?.id !== 'string' || !PROVIDER_ID.test(p.id) || typeof p.operator !== 'string' || !OPERATOR.test(p.operator) || typeof p.origin !== 'string' || !ORIGIN.test(p.origin) || !URL.canParse(p.origin)) fail('bad provider');
   }
-  if (!Array.isArray(capture.exchanges) || capture.exchanges.length > MAX_EXCHANGES) fail('exchanges missing or too many');
+  if (!Array.isArray(capture.exchanges) || capture.exchanges.length > capture.providers.length * MAX_EXCHANGES_PER_PROVIDER) fail('exchanges missing or too many');
   for (const e of capture.exchanges) {
     if (!capture.providers.some((p) => p.id === e?.providerId) || typeof e.request !== 'string' || !BASE64.test(e.request)) fail('bad exchange');
     const hasResponse = e.response !== undefined;
     if (hasResponse === (e.error !== undefined)) fail('an exchange has exactly one of response and error');
     if (hasResponse && (!Number.isInteger(e.response.status) || typeof e.response.body !== 'string' || !BASE64.test(e.response.body) || typeof e.response.sha256 !== 'string')) fail('bad response');
     if (!hasResponse && typeof e.error !== 'string') fail('bad error');
+  }
+  for (const p of capture.providers) {
+    if (capture.exchanges.filter((e) => e.providerId === p.id).length > MAX_EXCHANGES_PER_PROVIDER) fail(`too many exchanges for ${p.id}`);
   }
   return capture;
 }

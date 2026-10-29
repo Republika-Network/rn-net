@@ -134,7 +134,8 @@ export async function readEvm(context, hash) {
 
 /** For each tag: IN_ANCESTRY, NOT_REACHED, CONFLICT or UNRESOLVED (spec §6.2). */
 async function assessFinality(context, block) {
-  const height = Number.parseInt(block.number, 16);
+  // Heights are BigInts: block numbers are not bounded by 2^53, and every link must be exactly one lower.
+  const height = BigInt(block.number);
   const result = {};
   for (const tag of ['finalized', 'safe']) {
     // The safe head descends from the finalized one, so a finalized IN_ANCESTRY or CONFLICT holds
@@ -158,19 +159,20 @@ async function walk(context, tag, targetHash, targetHeight) {
   }
   if (kind(head) !== 'object' || typeof head.number !== 'string' || !QUANTITY.test(head.number) || typeof head.hash !== 'string' || !EVM_HASH.test(head.hash)) return 'UNRESOLVED';
   let current = head;
-  let height = Number.parseInt(head.number, 16);
+  let height = BigInt(head.number);
   if (height < targetHeight) return 'NOT_REACHED';
   // Too far to walk: refused, not inferred. The number only decides that no walk is attempted.
-  if (height - targetHeight > ANCESTRY_LIMIT) return 'UNRESOLVED';
+  if (height - targetHeight > BigInt(ANCESTRY_LIMIT)) return 'UNRESOLVED';
   for (let steps = 0; height > targetHeight; steps++) {
-    if (steps >= ANCESTRY_LIMIT) return 'UNRESOLVED';
+    // Unreachable while every link is exactly one lower; kept as a hard stop.
+    if (steps >= ANCESTRY_LIMIT) throw new ReadError('RNLO_BLOCK_MISMATCH', 'ancestry too long');
     if (typeof current.parentHash !== 'string' || !EVM_HASH.test(current.parentHash)) throw new ReadError('RNLO_BLOCK_MISMATCH', 'parentHash');
     const parent = await call(context, 'eth_getBlockByHash', [current.parentHash, false]);
-    if (kind(parent) !== 'object' || parent.hash !== current.parentHash || parent.number !== `0x${(height - 1).toString(16)}`) {
+    if (kind(parent) !== 'object' || parent.hash !== current.parentHash || parent.number !== `0x${(height - 1n).toString(16)}`) {
       throw new ReadError('RNLO_BLOCK_MISMATCH', 'ancestry');
     }
     current = parent;
-    height -= 1;
+    height -= 1n;
   }
   return current.hash === targetHash ? 'IN_ANCESTRY' : 'CONFLICT';
 }
