@@ -168,8 +168,15 @@ this profile, including on the edge cases where Ed25519 libraries are known to d
 
 ## 6. Validation order
 
-A verifier validates the document in this order and stops at the first failure. Field names
-in errors use dotted paths, for example `body.issuer` or `signatures[2].keyId`.
+A verifier validates the document in this order and stops at the first failure.
+
+**Field names in errors.** They use dotted paths, for example `body.issuer` or
+`signatures[2].keyId`. An unknown member is reported by the object that contains it, never by
+its name, because member names are input text:
+
+- `""` for the document;
+- `body`;
+- `signatures[i]`.
 
 | Step | Check | Error |
 |---|---|---|
@@ -180,7 +187,7 @@ in errors use dotted paths, for example `body.issuer` or `signatures[2].keyId`.
 | 4 | `format` is a string | `RNSE_FIELD_TYPE` |
 | 5 | `format` starts with `rnnet.synthetic-evidence.` but is not the v1 identifier | `RNSE_UNSUPPORTED_VERSION` |
 | 5 | `format` is any other value other than the v1 identifier | `RNSE_UNSUPPORTED_FORMAT` |
-| 6 | No member outside §2 (the first unknown key in UTF-16 order) | `RNSE_UNKNOWN_FIELD` |
+| 6 | No member outside §2 | `RNSE_UNKNOWN_FIELD` |
 | 7 | Every member of §2 present, in table order | `RNSE_MISSING_FIELD` |
 | 8 | Types, in table order | `RNSE_FIELD_TYPE` |
 | 9 | `canonicalization` is exactly `rnnet.canonical-json.v1` | `RNSE_UNSUPPORTED_CANONICALIZATION` |

@@ -28,6 +28,10 @@ It verifies an `rnnet.synthetic-evidence.v1` document and returns a frozen
   - `envelope` holds the bytes of an `rnnet.evidence-commitment.v1` envelope.
   - `digest` is the commitment presented for it.
 
+**Input size.** Input over the 262,144-byte limit is rejected (`RNSE_EVIDENCE_TOO_LARGE`), but it is
+still copied once and hashed for `input.sha256` first, so its cost grows with its size. Callers
+that accept untrusted files should bound what they read; the CLI reads the whole named file.
+
 **Errors.** Every defect in the evidence or the commitment is reported in the report. A
 `TypeError` is thrown only for invalid arguments, which are programming errors.
 
@@ -88,7 +92,7 @@ node tools/verify-evidence.mjs <evidence-file> [--commitment <envelope-file> --c
 
 ## Conformance
 
-**Vectors.** `vectors/evidence/evidence.json` holds 57 cases with the full expected reports.
+**Vectors.** `vectors/evidence/evidence.json` holds 69 cases with the full expected reports.
 They are checked by:
 
 - `packages/conformance/test/evidence-vectors.test.mjs`;

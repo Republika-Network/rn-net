@@ -65,9 +65,9 @@ def is_ident(s):
 
 
 def members(obj, fields, path):
-    unknown = sorted((k for k in obj if k not in fields), key=utf16)
-    if unknown:
-        raise Invalid("RNSE_UNKNOWN_FIELD", path + unknown[0])
+    # An unknown member is reported by its containing object, never by its (input) name.
+    if any(k not in fields for k in obj):
+        raise Invalid("RNSE_UNKNOWN_FIELD", path[:-1] if path.endswith(".") else path)
     for f in fields:
         if f not in obj:
             raise Invalid("RNSE_MISSING_FIELD", path + f)

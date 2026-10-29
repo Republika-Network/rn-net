@@ -473,6 +473,10 @@ test('the verifier may verify signatures but no production code may sign or hold
     assert.deepEqual(rules('packages/verifier/test/x.test.mjs', `import { ${name} } from 'node:crypto';`), [], `test: ${name}`);
   }
   assert.deepEqual(rules('packages/conformance/test/x.test.mjs', "import { verifyEvidence } from '../../verifier/src/index.mjs';"), []);
+  // Only the verifier package may verify signatures.
+  for (const name of ['createPublicKey', 'verify']) {
+    assert.ok(rules('packages/commitment/src/x.mjs', `import { ${name} } from 'node:crypto';`).includes(`builtin-export-not-allowed:node:crypto#${name}`), name);
+  }
   assert.ok(rules('packages/verifier/src/x.mjs', "import x from '../../conformance/src/vectors.mjs';").includes('package-not-allowed:conformance'));
   assert.ok(rules('packages/verifier/src/x.mjs', "import { readFileSync } from 'node:fs';").includes('builtin-not-allowed:node:fs'));
 });

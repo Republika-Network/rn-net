@@ -34,11 +34,15 @@ const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:c
 export const ALLOWED_BUILTIN_EXPORTS = {
   'node:assert/strict': ['default'],
   'node:buffer': ['Buffer'],
-  // createPublicKey and verify check Ed25519 signatures (RN-NET-02); they cannot sign.
-  'node:crypto': ['createHash', 'createPublicKey', 'verify'],
+  'node:crypto': ['createHash'],
   'node:fs': ['readFileSync'],
   'node:test': ['test'],
   'node:url': ['fileURLToPath'],
+};
+// Further exports allowed in one package's production code only.
+export const PACKAGE_BUILTIN_EXPORTS = {
+  // createPublicKey and verify check Ed25519 signatures (RN-NET-02); they cannot sign.
+  verifier: { 'node:crypto': ['createPublicKey', 'verify'] },
 };
 // Further exports allowed in test code only. Signing exists only to build test inputs, so
 // production code can never hold or use a private key.
@@ -315,7 +319,11 @@ export function check(files) {
     for (const problem of new Set(analysis.problems)) add(path, problem);
     const area = rest.startsWith('test/') ? 'test' : 'src';
     for (const { source, name } of analysis.builtinImports) {
-      const allowed = [...(ALLOWED_BUILTIN_EXPORTS[source] ?? []), ...(area === 'test' ? (TEST_BUILTIN_EXPORTS[source] ?? []) : [])];
+      const allowed = [
+        ...(ALLOWED_BUILTIN_EXPORTS[source] ?? []),
+        ...(PACKAGE_BUILTIN_EXPORTS[pkg]?.[source] ?? []),
+        ...(area === 'test' ? (TEST_BUILTIN_EXPORTS[source] ?? []) : []),
+      ];
       if (!allowed.includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
     }
     const builtins = area === 'test' ? [...ALLOWED_BUILTINS[pkg], ...TEST_BUILTINS] : ALLOWED_BUILTINS[pkg];

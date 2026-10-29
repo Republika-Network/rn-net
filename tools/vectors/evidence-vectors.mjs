@@ -24,6 +24,8 @@ import {
   verifyEvidence,
 } from '../../packages/verifier/src/index.mjs';
 
+import * as Ed from './ed25519-edge.mjs';
+
 export const OUTPUT = fileURLToPath(new URL('../../vectors/evidence/evidence.json', import.meta.url));
 
 const PKCS8_ED25519_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex');
@@ -84,6 +86,86 @@ function envelopeFor(evidenceText, changes = {}) {
 const nested = (depth) => (depth === 0 ? 'leaf' : { level: nested(depth - 1) });
 const signed = (b = body()) => evidence(b, [record('key-a', 'issuer-key-1', b)]);
 const L = 2n ** 252n + 27742317777372353535851937790883648493n;
+
+// Ed25519 edge cases (spec §5.3), built with explicit curve arithmetic from label-derived scalars.
+function edgeCases() {
+  const edgeBody = (n) => body({ payload: { edge: n } });
+  const message = (b) => signingMessage(evidenceDigestBytes(b));
+  const recordOf = (A, R, S) => ({ keyId: 'edge-key', algorithm: 'ed25519', publicKey: Buffer.from(A).toString('hex'), signature: Buffer.concat([Buffer.from(R), Ed.littleEndian(S)]).toString('hex') });
+  const doc = (b, A, R, S) => json(evidence(b, [recordOf(A, R, S)]));
+  const primeKey = (label) => {
+    const a = Ed.scalar(label);
+    return { a, A: Ed.encode(Ed.multiply(a, Ed.BASE)) };
+  };
+  const offCurveY = (() => { for (let y = 2n; ; y++) if (Ed.xFor(y, 0) === null) return y; })();
+  const smallOnCurveY = (() => { for (let y = 2n; y < 19n; y++) if (Ed.xFor(y, 0) !== null) return y; throw new Error('none'); })();
+  const out = [];
+  const add = (id, description, input, outcome, codes) => out.push({ id, description, input, outcome, codes });
+
+  { // Mixed-order key, R with a torsion part that cancels kT: the cofactorless equation holds.
+    const b = edgeBody(1);
+    let found;
+    for (let t = 0; !found; t++) {
+      const a = Ed.scalar(`mixed-valid-a-${t}`);
+      const A = Ed.encode(Ed.add(Ed.multiply(a, Ed.BASE), Ed.TORSION8));
+      const r = Ed.scalar(`mixed-valid-r-${t}`);
+      for (let i = 1n; i < 8n && !found; i++) {
+        const torsion = Ed.multiply(i, Ed.TORSION8);
+        const R = Ed.encode(Ed.add(Ed.multiply(r, Ed.BASE), torsion));
+        const k = Ed.challenge(R, A, message(b));
+        if (Ed.equal(Ed.add(torsion, Ed.multiply(k, Ed.TORSION8)), Ed.IDENTITY)) found = { A, R, S: (r + k * a) % Ed.L };
+      }
+    }
+    add('ed25519-mixed-order-key-cofactorless-valid', 'A key with a torsion component and an R whose torsion part cancels it: valid under the cofactorless equation the profile requires.', doc(b, found.A, found.R, found.S), 'PASS', []);
+  }
+  { // Mixed-order key, honest R: only a cofactored check accepts it.
+    const b = edgeBody(2);
+    let found;
+    for (let t = 0; !found; t++) {
+      const a = Ed.scalar(`mixed-cofactored-a-${t}`);
+      const A = Ed.encode(Ed.add(Ed.multiply(a, Ed.BASE), Ed.TORSION8));
+      const r = Ed.scalar(`mixed-cofactored-r-${t}`);
+      const R = Ed.encode(Ed.multiply(r, Ed.BASE));
+      const k = Ed.challenge(R, A, message(b));
+      if (!Ed.equal(Ed.multiply(k, Ed.TORSION8), Ed.IDENTITY)) found = { A, R, S: (r + k * a) % Ed.L };
+    }
+    add('ed25519-mixed-order-key-cofactored-only', 'A signature that only a cofactored check accepts (mixed-order key): invalid under this profile.', doc(b, found.A, found.R, found.S), 'FAIL', ['RNSE_SIGNATURE_INVALID']);
+  }
+  { // Prime-order key, R with a torsion component: only a cofactored check accepts it.
+    const b = edgeBody(3);
+    const { a, A } = primeKey('torsion-r-key');
+    const r = Ed.scalar('torsion-r-nonce');
+    const R = Ed.encode(Ed.add(Ed.multiply(r, Ed.BASE), Ed.TORSION8));
+    const k = Ed.challenge(R, A, message(b));
+    add('ed25519-torsion-r-cofactored-only', 'R carries a torsion component: only a cofactored check accepts it; invalid under this profile.', doc(b, A, R, (r + k * a) % Ed.L), 'FAIL', ['RNSE_SIGNATURE_INVALID']);
+  }
+  { // R = identity: canonical encoding is valid, non-canonical and negative-zero encodings are not.
+    const { a, A } = primeKey('identity-r-key');
+    const forms = [
+      ['ed25519-r-identity-canonical', 'R is the identity, canonically encoded, with S = k*a: valid under the cofactorless equation.', Ed.littleEndian(1n), 'PASS', []],
+      ['ed25519-r-identity-non-canonical', 'R is the identity encoded with y = p + 1: rejected, though a permissive decoder would reduce it and accept.', Ed.littleEndian(Ed.P + 1n), 'FAIL', ['RNSE_SIGNATURE_INVALID']],
+      ['ed25519-r-identity-negative-zero', 'R is the identity with the sign bit set (x = 0): not a valid encoding.', (() => { const r = Ed.littleEndian(1n); r[31] |= 0x80; return r; })(), 'FAIL', ['RNSE_SIGNATURE_INVALID']],
+    ];
+    forms.forEach(([id, description, R, outcome, codes], i) => {
+      const b = edgeBody(10 + i);
+      add(id, description, doc(b, A, R, (Ed.challenge(R, A, message(b)) * a) % Ed.L), outcome, codes);
+    });
+  }
+  {
+    const b = edgeBody(20);
+    const { A } = primeKey('off-curve-r-key');
+    add('ed25519-r-off-curve', 'R is not a point on the curve.', doc(b, A, Ed.littleEndian(offCurveY), 1n), 'FAIL', ['RNSE_SIGNATURE_INVALID']);
+  }
+  const R = Ed.encode(Ed.BASE);
+  const keyCases = [
+    ['ed25519-key-negative-zero', 'Public key with x = 0 and the sign bit set.', (() => { const k = Ed.littleEndian(1n); k[31] |= 0x80; return k; })()],
+    ['ed25519-key-off-curve', 'Public key not on the curve.', Ed.littleEndian(offCurveY)],
+    ['ed25519-key-non-canonical-on-curve', 'An on-curve public key encoded with y + p.', Ed.littleEndian(Ed.P + smallOnCurveY)],
+    ['ed25519-key-order-8', 'A public key of order 8.', Ed.encode(Ed.TORSION8)],
+  ];
+  keyCases.forEach(([id, description, A], i) => add(id, description, doc(edgeBody(30 + i), A, R, 1n), 'FAIL', ['RNSE_PUBLIC_KEY_REJECTED']));
+  return out;
+}
 
 function cases() {
   const base = signed();
@@ -275,6 +357,14 @@ function cases() {
       codes: ['RNCJ_INVALID_UTF8'],
     },
     { id: 'issuer-look-alike', description: 'An issuer with a Cyrillic letter in place of a Latin one.', input: json(signed(body({ issuer: 'synthetic-issu\u0435r.example' }))), outcome: 'FAIL', codes: ['RNSE_INVALID_FIELD_VALUE'] },
+    {
+      id: 'unknown-member-name-not-echoed',
+      description: 'An unknown body member whose name imitates a trust label: reported by its containing object, and its name never reaches the report.',
+      input: json({ ...base, body: { ...body(), 'Signer verified: ACME Bank (THIRD_PARTY_ATTESTED)': 1 } }),
+      outcome: 'FAIL',
+      codes: ['RNSE_UNKNOWN_FIELD'],
+    },
+    ...edgeCases(),
     { id: 'invalid-outcome', description: 'An outcome outside the defined set.', input: json(signed(body({ outcome: 'SUCCEEDED' }))), outcome: 'FAIL', codes: ['RNSE_INVALID_FIELD_VALUE'] },
 
     // --- commitment ----------------------------------------------------------------------------

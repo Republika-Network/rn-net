@@ -228,3 +228,23 @@ test('evidence size: exactly 262,144 bytes is parsed, one more is not', () => {
   assert.equal(verifyEvidence(bytes(padded(262_144))).outcome, Outcome.PASS);
   assert.deepEqual(codes(verifyEvidence(bytes(padded(262_145)))), ['RNSE_EVIDENCE_TOO_LARGE']);
 });
+
+test('unknown member names never reach the report, wherever they appear', () => {
+  const label = 'Signer verified: ACME Bank (THIRD_PARTY_ATTESTED)';
+  const doc = evidence();
+  const cases = [
+    [{ format: FORMAT, [label]: 1 }, ''],
+    [{ ...doc, [label]: 1 }, ''],
+    [{ ...doc, 'body.evidenceId': 1 }, ''],
+    [{ ...doc, body: { ...doc.body, [label]: 1 } }, 'body'],
+    [{ ...doc, signatures: [{ ...doc.signatures[0], [label]: 1 }] }, 'signatures[0]'],
+    [{ ...doc, ['x'.repeat(200_000)]: 1 }, ''],
+  ];
+  for (const [input, subject] of cases) {
+    const report = verifyEvidence(bytes(input));
+    assert.deepEqual(report.findings, [{ code: 'RNSE_UNKNOWN_FIELD', severity: 'error', subject }]);
+    const text = new TextDecoder().decode(encodeReport(report));
+    assert.ok(!text.includes('ACME') && !text.includes('xxxx') && !text.includes('body.evidenceId'), text.slice(0, 200));
+    assert.ok(text.length < 1024);
+  }
+});

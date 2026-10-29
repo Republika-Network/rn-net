@@ -41,10 +41,14 @@ const fail = (code, message, subject) => {
   throw new EvidenceError(code, message, subject);
 };
 
-/** Unknown members (first in UTF-16 order), then missing members, in table order. */
+/**
+ * Unknown members, then missing members in table order. An unknown member is reported by the
+ * object that contains it, never by its name: names are input text (report spec §3).
+ */
 function checkMembers(object, fields, path) {
-  const unknown = Object.keys(object).filter((key) => !fields.includes(key)).sort();
-  if (unknown.length > 0) fail(E.UNKNOWN_FIELD, 'Member outside the closed schema.', `${path}${unknown[0]}`);
+  if (Object.keys(object).some((key) => !fields.includes(key))) {
+    fail(E.UNKNOWN_FIELD, 'Member outside the closed schema.', path.replace(/\.$/, ''));
+  }
   for (const field of fields) {
     if (!Object.hasOwn(object, field)) fail(E.MISSING_FIELD, 'Required member is absent.', `${path}${field}`);
   }

@@ -75,7 +75,9 @@ free text from the input:
 - `code` is an `RNSE_*`, `RNEC_*` or `RNCJ_*` code.
 - `severity` is `error`, or `unsupported` for the `RNSE_UNSUPPORTED_*` codes.
 - `subject` names what the finding concerns:
-  - a dotted field path;
+  - a dotted field path naming a member the specification defines, or the containing object
+    (`""`, `body` or `signatures[<i>]`) for an unknown member. A member name from the input is
+    never echoed;
   - `digest`;
   - `signatures[<i>]`;
   - `commitment`, `commitment.presentedDigest` or `commitment.<envelope member>`.
