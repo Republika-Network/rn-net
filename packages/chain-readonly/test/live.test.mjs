@@ -291,3 +291,31 @@ test('F4/F5: a capture must fit exactly and carry well-formed provider metadata'
   }
   assert.throws(() => loadEndpointConfig({ format: 'rnnet.rpc-endpoints.v1', providers: [{ id: 'p', network: XRPL, url: 'https://a.example.org/', operator: 'CHAIN_PROVEN\n' }] }), TypeError);
 });
+
+// --- RN-NET-03B1 re-review findings ---------------------------------------------------------------
+
+test('N1: a deep finalized conflict is reported as CONFLICT, never lost to the request budget', async () => {
+  // A competing chain from block 109 up to 110 + 200, synthesized on demand; safe is 64 above that.
+  const base = fakeEvm();
+  const forkHash = (n) => `0x${n.toString(16).padStart(8, '0')}${'f'.repeat(56)}`;
+  const forkBlock = (n) => ({ hash: forkHash(n), number: `0x${n.toString(16)}`, parentHash: n === 110 ? base.byNumber.get(109).hash : forkHash(n - 1), transactions: [] });
+  const byHash = (hash) => (/^0x[0-9a-f]{8}f{56}$/.test(hash) ? forkBlock(Number.parseInt(hash.slice(2, 10), 16)) : undefined);
+  const deep = fakeEvm({ finalized: forkBlock(310), safe: forkBlock(374), blockOverride: byHash });
+  const report = await run(EVM, deep);
+  assert.deepEqual(report.providers[0].finality, { finalized: 'CONFLICT', safe: 'CONFLICT' });
+  assert.equal(report.outcome, 'FAIL');
+  assert.ok(codes(report).includes('RNLO_FINALITY_CONFLICT'));
+  assert.ok(deep.calls.length < 300, `${deep.calls.length} requests`);
+  assert.equal(deep.calls.filter((m) => m === 'eth_getBlockByNumber').length, 1, 'safe is not walked after a conflict');
+});
+
+test('N2: a number with no canonical form is never copied as an object', async () => {
+  const raw = (text) => () => ({ status: 200, body: new TextEncoder().encode(text) });
+  for (const [method, text] of [['eth_getTransactionReceipt', '1.5'], ['eth_getTransactionByHash', '1e400']]) {
+    const report = await run(EVM, fakeEvm({ fail: { [method]: raw(`{"jsonrpc":"2.0","id":1,"result":${text}}`) } }));
+    assert.equal(report.providers[0].outcome, 'INVALID_RESPONSE', method);
+  }
+  const xrpl = await run(XRPL, fakeXrpl({ fail: { tx: raw('{"result":{"status":"success","x":-0}}') } }));
+  assert.notEqual(xrpl.providers[0].outcome, 'OBSERVED');
+  assert.equal(xrpl.outcome, 'FAIL');
+});

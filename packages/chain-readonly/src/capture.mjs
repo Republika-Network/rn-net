@@ -70,7 +70,7 @@ export function checkCapture(capture) {
   for (const field of ['network', 'transactionHash']) if (typeof capture[field] !== 'string') fail(`${field} missing`);
   if (!Array.isArray(capture.providers) || capture.providers.length === 0) fail('providers missing');
   for (const p of capture.providers) {
-    if (typeof p?.id !== 'string' || !PROVIDER_ID.test(p.id) || typeof p.operator !== 'string' || !OPERATOR.test(p.operator) || typeof p.origin !== 'string' || !ORIGIN.test(p.origin)) fail('bad provider');
+    if (typeof p?.id !== 'string' || !PROVIDER_ID.test(p.id) || typeof p.operator !== 'string' || !OPERATOR.test(p.operator) || typeof p.origin !== 'string' || !ORIGIN.test(p.origin) || !URL.canParse(p.origin)) fail('bad provider');
   }
   if (!Array.isArray(capture.exchanges) || capture.exchanges.length > MAX_EXCHANGES) fail('exchanges missing or too many');
   for (const e of capture.exchanges) {

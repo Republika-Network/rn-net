@@ -29,6 +29,7 @@ export function isBlockedAddress(address) {
     if ((first & 0xff00) === 0xff00) return true; // ff00::/8 multicast
     if (lower.startsWith('64:ff9b:') || lower.startsWith('2001:db8:') || lower.startsWith('100::')) return true;
     if (first === 0x2002) return true; // 6to4: embeds an IPv4 address
+    if ((first & 0xfff0) === 0x3ff0) return true; // 3fff::/20 documentation
     const second = Number.parseInt(lower.split(':')[1] || '0', 16);
     if (first === 0x2001 && second === 0) return true; // Teredo 2001::/32
     if (first === 0x2001 && second === 0x2) return true; // 2001:2::/48 benchmarking

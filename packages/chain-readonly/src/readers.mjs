@@ -2,9 +2,11 @@
 // Each reads one transaction from one provider, cross-checks what the provider says, and
 // normalizes the result into an RN-NET-03A observation without adding or inventing any field.
 import { canonicalBytes } from '../../canonical/src/index.mjs';
+import { RawNumber } from './json.mjs';
 import { call, Network, ReadError } from './rpc.mjs';
 
-const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+// A RawNumber (a number with no canonical form) is its own kind, never an object to copy.
+const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : v instanceof RawNumber ? 'raw-number' : typeof v);
 const OBSERVATION_FORMAT = 'rnnet.anchor-observation.v1';
 const XRPL_TESTNET_NETWORK_ID = 1;
 const SEPOLIA_CHAIN_ID = '0xaa36a7';
@@ -42,6 +44,7 @@ export async function readXrpl(context, hash) {
   if (networkId !== XRPL_TESTNET_NETWORK_ID) throw new ReadError('RNLO_WRONG_NETWORK');
 
   const tx = await call(context, 'tx', { transaction: hash, binary: false, api_version: 2 });
+  if (kind(tx) !== 'object') throw new ReadError('RNLO_INVALID_RESPONSE', 'tx');
   if (kind(tx.tx_json) !== 'object') throw new ReadError('RNLO_UNSUPPORTED_API_VERSION');
   if (tx.hash !== hash) throw new ReadError('RNLO_HASH_MISMATCH');
   if (kind(tx.meta) !== 'object') throw new ReadError('RNLO_INVALID_RESPONSE', 'meta');
@@ -134,9 +137,10 @@ async function assessFinality(context, block) {
   const height = Number.parseInt(block.number, 16);
   const result = {};
   for (const tag of ['finalized', 'safe']) {
-    // A transaction in the finalized ancestry is also in the safe one; no second walk is needed.
-    if (tag === 'safe' && result.finalized === 'IN_ANCESTRY') {
-      result.safe = 'IN_ANCESTRY';
+    // The safe head descends from the finalized one, so a finalized IN_ANCESTRY or CONFLICT holds
+    // for safe as well; no second walk is needed (and a conflict cannot be lost to the budget).
+    if (tag === 'safe' && (result.finalized === 'IN_ANCESTRY' || result.finalized === 'CONFLICT')) {
+      result.safe = result.finalized;
       continue;
     }
     result[tag] = await walk(context, tag, block.hash, height);

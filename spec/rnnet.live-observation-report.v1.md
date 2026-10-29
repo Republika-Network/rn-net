@@ -201,9 +201,12 @@ result is `RNLO_BLOCK_MISMATCH`.
 | `NOT_REACHED` | The tagged block is below the transaction's block |
 | `UNRESOLVED` | The tag is unsupported or malformed, or its block is more than 256 above the transaction's block. In that case no walk is attempted: the number is used only to decide not to walk, never to infer finality. |
 
+`finalized` is walked first. When it is `IN_ANCESTRY` or `CONFLICT`, `safe` takes the same result
+without a walk, since the safe head descends from the finalized one. So a conflict is never lost to
+the request budget.
+
 **Block numbers alone are never used.** A transaction is not treated as final because its number
-is lower than the finalized number. If the transaction is in the finalized ancestry, `safe` is
-also `IN_ANCESTRY`, because the safe head descends from the finalized one.
+is lower than the finalized number.
 
 **What this result is.** It is still the provider's account of its own chain: the walk checks that
 the provider's answers are consistent with each other, not that the chain is authentic.
