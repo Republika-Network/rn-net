@@ -7,10 +7,20 @@ that evidence on public test networks.
 
 ## Status
 
-**Early implementation (RN-NET-01).** This repository contains the canonical
-JSON profile, the evidence commitment format, their specifications and
-conformance vectors, and repository security guards. It contains no evidence
-verifier, no anchoring code and no real evidence; all test inputs are synthetic.
+**Early implementation (RN-NET-01, RN-NET-02).** This repository contains:
+
+- the canonical JSON profile and the evidence commitment format;
+- an independent, offline evidence verifier for one original, synthetic evidence
+  format (`rnnet.synthetic-evidence.v1`), with Ed25519 signature checks and a
+  deterministic verification report;
+- their specifications, conformance vectors and second implementations;
+- repository security guards.
+
+It contains no anchoring code and no real evidence; all test inputs are synthetic.
+The verifier establishes integrity and signature consistency under keys the
+evidence carries. It does **not** establish signer identity, policy enforcement or
+that any described event happened (see the
+[report specification](spec/rnnet.verification-report.v1.md)).
 
 - **No operating network exists.** There are no nodes, no federation and no
   service to connect to.
@@ -56,6 +66,8 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 | [`rnnet.canonical-json.v1`](spec/rnnet.canonical-json.v1.md) | [`packages/canonical/`](packages/canonical/) |
 | [`rnnet.evidence-commitment.v1`](spec/rnnet.evidence-commitment.v1.md) | [`packages/commitment/`](packages/commitment/) |
 | [`rnnet.verification-taxonomy.v1`](spec/rnnet.verification-taxonomy.v1.md) | [`packages/commitment/`](packages/commitment/) |
+| [`rnnet.synthetic-evidence.v1`](spec/rnnet.synthetic-evidence.v1.md) | [`packages/verifier/`](packages/verifier/README.md) |
+| [`rnnet.verification-report.v1`](spec/rnnet.verification-report.v1.md) | [`packages/verifier/`](packages/verifier/README.md) |
 
 Conformance vectors live in [`vectors/`](vectors/) (format described in
 [`vectors/README.md`](vectors/README.md)) and are checked by two implementations:
@@ -67,6 +79,17 @@ built-ins only. The runtime packages have no dependencies; repository tooling ha
 development dependency, the Acorn parser used by the dependency-boundary guard
 ([ADR-RN-005](docs/adr/ADR-RN-005-guard-parser-dependency.md)). Install it with
 `npm ci --ignore-scripts` before running the tests or guards.
+
+To verify an evidence file locally (offline; it reads only the paths given and holds no keys):
+
+```sh
+node tools/verify-evidence.mjs evidence.json                     # report on stdout
+node tools/verify-evidence.mjs evidence.json \
+  --commitment envelope.json --commitment-digest sha256:<hex>     # also check a commitment
+```
+
+Exit codes: 0 `PASS`, 1 `FAIL`, 2 `UNSUPPORTED`, 64 usage error, 66 unreadable input. See
+[`packages/verifier/README.md`](packages/verifier/README.md) for the API.
 
 Behaviour changes to the JavaScript API, and what consumers can rely on, are recorded in
 [`docs/api-compatibility.md`](docs/api-compatibility.md).
@@ -92,7 +115,7 @@ defense in depth by making common Node network, worker and subprocess APIs throw
 it is not a sandbox. Likewise the dependency guard is a source lint, not a sandbox. Without `unshare`, the
 tests can be run directly with
 `node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"`
-and `python3 -I -B tools/reference/rnnet_reference.py`, but then nothing
+and `python3 -I -B tools/reference/rnnet_reference.py` (and `rnnet_evidence_reference.py`), but then nothing
 enforces that they stay offline.
 
 To report a vulnerability, see [`SECURITY.md`](SECURITY.md).

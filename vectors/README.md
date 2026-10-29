@@ -26,3 +26,21 @@ Every vector has exactly one of:
 
 Vectors whose id starts with `first-error-` contain several defects at once and pin the
 error precedence the specifications define.
+
+## Evidence verification (`evidence/evidence.json`)
+
+Profile `rnnet.synthetic-evidence.v1`, kind `evidence-verification`. Each vector has an input
+(as above), optionally a `commitment` (`envelope` text and presented `digest`), and:
+
+| Field | Meaning |
+|---|---|
+| `expectedOutcome` | `PASS`, `FAIL` or `UNSUPPORTED` (`rnnet.verification-report.v1` §2), stated by hand |
+| `expectedFindings` | The finding codes in report order, stated by hand |
+| `expectedReport` | The full report as canonical JSON text |
+
+These vectors contain Ed25519 signatures, so they are generated rather than written by hand:
+`node tools/vectors/evidence-vectors.mjs --write` rebuilds the file from test keys derived from
+public labels, and stops if the verifier disagrees with any hand-stated outcome or code. A test
+checks the committed file is exactly what the generator builds. The Python reference
+(`tools/reference/rnnet_evidence_reference.py`, with its own RFC 8032 Ed25519) rebuilds every
+`expectedReport` independently.

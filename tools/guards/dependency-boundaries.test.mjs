@@ -461,3 +461,18 @@ test('a line comment ends at every line terminator, including U+2028 and U+2029'
     assert.deepEqual(importsOf(source), ['node:net'], JSON.stringify(terminator));
   }
 });
+
+// RN-NET-02: the verifier package checks signatures with built-in crypto, and can never sign.
+test('the verifier may verify signatures but no production code may sign or hold a private key', () => {
+  assert.deepEqual(rules('packages/verifier/src/x.mjs', "import { createHash, createPublicKey, verify } from 'node:crypto';\nimport { Buffer } from 'node:buffer';"), []);
+  assert.deepEqual(rules('packages/verifier/src/x.mjs', "import { parse } from '../../canonical/src/index.mjs';\nimport { verifyCommitment } from '../../commitment/src/index.mjs';"), []);
+  for (const name of ['sign', 'generateKeyPairSync', 'createPrivateKey']) {
+    for (const pkg of ['verifier', 'commitment']) {
+      assert.ok(rules(`packages/${pkg}/src/x.mjs`, `import { ${name} } from 'node:crypto';`).includes(`builtin-export-not-allowed:node:crypto#${name}`), `${pkg}: ${name}`);
+    }
+    assert.deepEqual(rules('packages/verifier/test/x.test.mjs', `import { ${name} } from 'node:crypto';`), [], `test: ${name}`);
+  }
+  assert.deepEqual(rules('packages/conformance/test/x.test.mjs', "import { verifyEvidence } from '../../verifier/src/index.mjs';"), []);
+  assert.ok(rules('packages/verifier/src/x.mjs', "import x from '../../conformance/src/vectors.mjs';").includes('package-not-allowed:conformance'));
+  assert.ok(rules('packages/verifier/src/x.mjs', "import { readFileSync } from 'node:fs';").includes('builtin-not-allowed:node:fs'));
+});
