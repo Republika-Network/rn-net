@@ -63,7 +63,10 @@ the JavaScript packages ([`packages/conformance/`](packages/conformance/)) and a
 Python reference ([`tools/reference/`](tools/reference/)) written from the
 specifications. The two share a similar structure, so agreement between them is
 evidence, not proof, of correctness. Everything runs on Node.js 22 and Python 3
-built-ins only; there are no third-party dependencies.
+built-ins only. The runtime packages have no dependencies; repository tooling has one pinned
+development dependency, the Acorn parser used by the dependency-boundary guard
+([ADR-RN-005](docs/adr/ADR-RN-005-guard-parser-dependency.md)). Install it with
+`npm ci --ignore-scripts` before running the tests or guards.
 
 Behaviour changes to the JavaScript API, and what consumers can rely on, are recorded in
 [`docs/api-compatibility.md`](docs/api-compatibility.md).
@@ -77,6 +80,7 @@ Required checks are not a substitute for independent review; see
 Run the same checks as CI locally, in a network namespace without network access:
 
 ```sh
+npm ci --ignore-scripts                  # the guard's parser, before going offline
 unshare -rn tools/ci/offline-checks.sh   # syntax, tests, Python reference; proves isolation first
 tools/ci/offline-checks.test.sh          # the isolation script fails closed
 node tools/guards/run.mjs

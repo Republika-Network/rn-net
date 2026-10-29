@@ -1,18 +1,19 @@
-// Shared helpers for the repository guards. Zero dependencies: Node.js 22 built-ins only.
+// Shared helpers for the repository guards. Node.js 22 built-ins only; the dependency-boundary
+// guard alone also uses Acorn (ADR-RN-005).
 import { execFileSync } from 'node:child_process';
-import { readFileSync, statSync } from 'node:fs';
+import { lstatSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
-/** Tracked files as { path, content }. Binary and oversized files get content null. */
+/** Tracked files as { path, content, symlink }. Binary and oversized files get content null. */
 export function trackedFiles(root = process.cwd()) {
   const out = execFileSync('git', ['ls-files', '-z'], { cwd: root });
   return out
     .toString('utf8')
     .split('\0')
     .filter(Boolean)
-    .map((path) => ({ path, content: readText(join(root, path)) }));
+    .map((path) => ({ path, content: readText(join(root, path)), symlink: lstatSync(join(root, path)).isSymbolicLink() }));
 }
 
 function readText(file) {

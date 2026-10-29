@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { check, importsOf } from './dependency-boundaries.mjs';
+import { check, DEV_DEPENDENCIES, importsOf } from './dependency-boundaries.mjs';
 
 const rules = (path, content) => check([{ path, content }]).map((f) => f.rule);
 
@@ -24,7 +24,10 @@ test('allows declared built-ins and public entry points', () => {
 });
 
 test('rejects network built-ins, third-party packages and wrong-direction imports', () => {
-  assert.deepEqual(rules('packages/canonical/src/a.mjs', "import net from 'node:net';"), ['builtin-not-allowed:node:net']);
+  assert.deepEqual(rules('packages/canonical/src/a.mjs', "import net from 'node:net';"), [
+    'builtin-export-not-allowed:node:net#default',
+    'builtin-not-allowed:node:net',
+  ]);
   assert.deepEqual(rules('packages/commitment/src/a.mjs', "import { Client } from 'xrpl';"), ['third-party-import:xrpl']);
   assert.deepEqual(rules('packages/commitment/src/a.mjs', "const v = await import('viem');"), ['third-party-import:viem']);
   assert.deepEqual(rules('packages/canonical/src/a.mjs', "import x from '../../commitment/src/index.mjs';"), ['package-not-allowed:commitment']);
@@ -37,6 +40,41 @@ test('rejects declared dependencies in any package.json', () => {
   assert.deepEqual(rules('packages/canonical/package.json', '{"dependencies":{"left-pad":"1.3.0"}}'), ['undeclared-dependencies']);
   assert.deepEqual(rules('package.json', '{"devDependencies":{"typescript":"5.0.0"}}'), ['undeclared-devDependencies']);
   assert.deepEqual(rules('package.json', '{"private":true}'), []);
+});
+
+test('only the root manifest may declare the allowed development dependency, at its exact version (RN-NET-01K)', () => {
+  assert.deepEqual(rules('package.json', '{"devDependencies":{"acorn":"8.19.0"}}'), []);
+  assert.deepEqual(rules('package.json', '{"devDependencies":{"acorn":"^8.19.0"}}'), ['undeclared-devDependencies']);
+  assert.deepEqual(rules('package.json', '{"devDependencies":{"acorn":"8.19.0","acorn-walk":"8.3.4"}}'), ['undeclared-devDependencies']);
+  assert.deepEqual(rules('package.json', '{"dependencies":{"acorn":"8.19.0"}}'), ['undeclared-dependencies']);
+  assert.deepEqual(rules('packages/canonical/package.json', '{"devDependencies":{"acorn":"8.19.0"}}'), ['undeclared-devDependencies']);
+  assert.deepEqual(rules('tools/package.json', '{"devDependencies":{"acorn":"8.19.0"}}'), ['undeclared-devDependencies']);
+  // Packages may never import it.
+  assert.deepEqual(rules('packages/canonical/src/x.mjs', "import { parse } from 'acorn';"), ['third-party-import:acorn']);
+});
+
+test('the lockfile holds exactly the allowed development dependency', () => {
+  const lock = (packages) => JSON.stringify({ lockfileVersion: 3, packages });
+  const root = { '': { devDependencies: { acorn: '8.19.0' } } };
+  const acorn = { ...DEV_DEPENDENCIES.acorn, dev: true };
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': acorn })), []);
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, version: '8.18.0' } })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, dev: undefined } })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, resolved: 'https://example.org/acorn-8.19.0.tgz' } })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, integrity: 'sha512-AAAA' } })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(rules('package-lock.json', lock({ 'node_modules/acorn': acorn, x: {} })), ['undeclared-lockfile-packages']);
+  assert.deepEqual(
+    rules('package-lock.json', lock({ ...root, 'node_modules/acorn': { ...acorn, dependencies: { 'is-number': '7.0.0' } } })),
+    ['undeclared-lockfile-packages'],
+  );
+  assert.deepEqual(
+    rules('package-lock.json', lock({ ...root, 'node_modules/acorn': acorn, 'node_modules/x': { version: '1.0.0', dev: true } })),
+    ['undeclared-lockfile-packages'],
+  );
+  assert.deepEqual(rules('packages/canonical/package-lock.json', lock({ ...root, 'node_modules/acorn': acorn })), [
+    'undeclared-lockfile-packages',
+    'non-module-file',
+  ]);
 });
 
 // RN-NET-01H, finding F6: the bypasses reported by the RN-NET-01 independent review.
@@ -72,7 +110,10 @@ test('only ES modules (and a README) may live in a package, in any directory', (
   assert.deepEqual(rules('packages/canonical/src/x.js', ''), ['non-module-file']);
   assert.deepEqual(rules('packages/canonical/data.json', '{}'), ['non-module-file']);
   assert.deepEqual(rules('packages/canonical/README.md', '# x'), []);
-  assert.deepEqual(rules('packages/canonical/lib/x.mjs', "import net from 'node:net';"), ['builtin-not-allowed:node:net']);
+  assert.deepEqual(rules('packages/canonical/lib/x.mjs', "import net from 'node:net';"), [
+    'builtin-export-not-allowed:node:net#default',
+    'builtin-not-allowed:node:net',
+  ]);
 });
 
 test('ordinary code is not flagged', () => {
@@ -141,23 +182,27 @@ test('flags aliased, optional, indirect and constructor routes to code loading',
   }
 });
 
-test('fails closed on source outside the supported language', () => {
-  const cases = {
-    "import net from 'node:net": 'unsupported-syntax', // unterminated string
-    '/* unterminated': 'unsupported-syntax',
-    'const a = `x${1}': 'unsupported-syntax',
-    '\\u0065val("1");': 'unsupported-syntax', // escaped identifier
-    "const s = '\\101';": 'unsupported-syntax', // legacy octal escape
-    'const a = `${ 1': 'unsupported-syntax', // unterminated substitution
-    'import net, 5 from "node:net";': 'unrecognized-import',
-    'import { a b } from "node:net";': 'unrecognized-import',
-    'export { a } from net;': 'unrecognized-export',
-    'export * as a;': 'unrecognized-export',
-    'const o = { import: 1 };': 'unrecognized-import',
-  };
-  for (const [source, rule] of Object.entries(cases)) {
-    assert.ok(rules('packages/canonical/src/x.mjs', source).includes(rule), `${source} -> ${rule}`);
-  }
+test('fails closed on source the parser rejects', () => {
+  const cases = [
+    "import net from 'node:net", // unterminated string
+    '/* unterminated',
+    'const a = `x${1}',
+    "const s = '\\101';", // legacy octal escape, not allowed in modules
+    'const a = `${ 1', // unterminated substitution
+    'import net, 5 from "node:net";',
+    'import { a b } from "node:net";',
+    'export { a } from net;',
+    'export * as a;',
+    "<!-- x\nimport net from 'node:net';", // HTML-like comments are not allowed in modules
+    'with (a) {}', // not allowed in strict code
+  ];
+  for (const source of cases) assert.ok(rules('packages/canonical/src/x.mjs', source).includes('unsupported-syntax'), source);
+});
+
+test('escaped identifiers are read as the names they spell', () => {
+  assert.ok(rules('packages/canonical/src/x.mjs', '\\u0065val("1");').includes('forbidden-identifier:eval'));
+  assert.ok(rules('packages/canonical/src/x.mjs', 'const g = glob\\u0061lThis;').includes('forbidden-identifier:globalThis'));
+  assert.ok(rules('packages/canonical/src/x.mjs', "import net from 'node:\\u006eet';").includes('builtin-not-allowed:node:net'));
 });
 
 test('imports in comments, strings and regular expressions are not imports', () => {
@@ -178,80 +223,207 @@ test('imports in comments, strings and regular expressions are not imports', () 
     'const isFunction = (f) => typeof f === "function";',
     'class A { constructor() {} }',
     'const n = process.hrtime.bigint();',
-    'export const a = 1; export function b() {} export { a as c, b, };',
+    'export const a = 1; export function b() {} export { a as c, };',
   ];
   for (const source of ok) assert.deepEqual(rules('packages/canonical/test/x.test.mjs', source), [], source);
 });
 
-test('regular expressions are told from divisions by context, failing closed where ambiguous', () => {
-  // A regular expression read as a division would let a fake template literal hide the import
-  // below from the tokens; the line comment hides it from simple raw patterns.
+test('regular expressions and divisions are read by the parser, whatever surrounds them', () => {
+  // A regular expression read as a division (or the reverse) could let a fake template literal
+  // hide the import below; the line comment hides it from simple raw patterns.
   const hidden = (prefix) => `${prefix}/\`/.test('');\nimport net from // c\n  'node:net'; // \``;
-  for (const prefix of ['if (a) ', 'while (a) ', 'function f() {}\n', 'x: {}\n', 'switch (a) { case 1: {}\n']) {
+  for (const prefix of ['if (a) ', 'while (a) ', 'function f() {}\n', 'x: {}\n', 'switch (a) { case 1: {}\n}\n', 'export default ']) {
+    assert.deepEqual(importsOf(hidden(prefix)), ['node:net'], prefix);
     assert.ok(rules('packages/canonical/src/x.mjs', hidden(prefix)).includes('builtin-not-allowed:node:net'), prefix);
   }
-  assert.deepEqual(importsOf(hidden('if (a) ')), ['node:net']);
-  // Where only a parser could tell, the file is reported.
-  const ambiguous = [
-    'x: {}\n/a/.test(s);',
-    'const of = 4; const y = of / 2;',
-    'function f() {}\n/x/.test(s);',
-    'let i = 0; i++ / 2;',
-    'let i = 0; i-- / 2;',
-    'const f = () => {}\n/x/.test(s);',
-    'const o = {} / 1;',
-  ];
-  for (const source of ambiguous) assert.ok(rules('packages/canonical/src/x.mjs', source).includes('unsupported-syntax'), source);
-  // Ordinary divisions and regular expressions.
+  // Code the earlier tokenizer had to reject is now read and accepted.
   const ok = [
     'const m = (a + b) / 2 / c;',
     'const r = x.return / 2 / y;',
     "const r = x.of / 2; const s = '/';",
-    "const r = x.typeof / 2; const s = '/';",
+    'const of = 4; const y = of / 2;',
+    'let i = 0; const j = i++ / 2 + i-- / 2;',
+    'x: {}\n/a/.test(s);',
+    'function f() {}\n/x/.test(s);',
+    'const g = function () {} / 1;',
+    'const k = class {} / 1;',
+    'for (; {} / 1; ) break;',
     'if (a) /x/.test(s);',
-    'if (a) {}\n/x/.test(s);',
-    'try {} finally {}\n/x/.test(s);',
-    'switch (a) {}\n/x/.test(s);',
-    'for (const x of y) /x/.test(x);',
-    'const d = x.default / 2 / y;',
-    'const o = { a: [1] }; const q = o.a[0] / 2;',
+    'for await (const x of y) /x/.test(x);',
+    'const o = { import: 1, if: 2, for: 3 };',
     'const t = `${a / 2}`; const u = /`/;',
   ];
   for (const source of ok) assert.deepEqual(rules('packages/canonical/test/x.test.mjs', source), [], source);
 });
 
-// RN-NET-01J, N2: the seven bypasses found by the independent review of 9521fff, kept verbatim in
-// fixtures/dependency-bypasses/. Each is a valid module that loads node:net (or reaches
-// process.getBuiltinModule and eval) while the guard at 9521fff reported nothing.
+// RN-NET-01J and RN-NET-01K: the bypasses found by independent reviews, kept verbatim in
+// fixtures/dependency-bypasses/. Each is a valid module that, run from packages/canonical/src/,
+// loads node:net or acorn, or reaches eval, process or the Function constructor, while an earlier
+// guard reported nothing: b01-b07 at 9521fff, b08 at a4b2e30 (merged as 0b32565), b09-b15 at
+// f416539 (the first AST-based guard), b16-b19 at fbb0064 (through allowed built-ins; each is
+// checked where that built-in is allowed).
 const fixtures = new URL('./fixtures/dependency-bypasses/', import.meta.url);
-const bypasses = readdirSync(fixtures).filter((name) => name.endsWith('.mjs')).sort();
+const read = (name) => readFileSync(new URL(name, fixtures), 'utf8');
+const EXPECTED = {
+  'b01-export-default.mjs': 'builtin-not-allowed:node:net',
+  'b02-postfix.mjs': 'builtin-not-allowed:node:net',
+  'b03-fnexpr.mjs': 'builtin-not-allowed:node:net',
+  'b04-forawait.mjs': 'builtin-not-allowed:node:net',
+  'b05-classexpr.mjs': 'builtin-not-allowed:node:net',
+  'b06-extends.mjs': 'builtin-not-allowed:node:net',
+  'b07-hidden-process.mjs': 'process-access',
+  'b08-for-head.mjs': 'builtin-not-allowed:node:net',
+  'b09-percent-dotdot.mjs': 'unsupported-specifier:./%2e%2e/%2e%2e/%2e%2e/tools/x/evil.mjs',
+  'b10-percent-acorn.mjs': 'unsupported-specifier:./%2e%2e/%2e%2e/%2e%2e/node_modules/acorn/dist/acorn.mjs',
+  'b11-backslash.mjs': 'unsupported-specifier:./..\\..\\..\\tools/x/evil.mjs',
+  'b12-destructured-constructor.mjs': 'constructor-access',
+  'b13-shorthand-constructor.mjs': 'constructor-access',
+  'b14-percent-dynamic.mjs': 'unsupported-specifier:./%2e%2e/%2e%2e/%2e%2e/tools/x/evil.mjs',
+  'b15-param-default-constructor.mjs': 'constructor-access',
+  'b16-node-test-run.mjs': ['packages/canonical/test/x.test.mjs', 'builtin-export-not-allowed:node:test#run'],
+  'b17-crypto-setengine.mjs': ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#setEngine'],
+  'b18-fs-symlink.mjs': ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#symlinkSync'],
+  'b19-fs-copy.mjs': ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#copyFileSync'],
+};
 
-test('the seven reviewed bypasses are all present', () => {
-  assert.deepEqual(bypasses, [
-    'b1-export-default.mjs', 'b2-postfix.mjs', 'b3-fnexpr.mjs', 'b4-forawait.mjs', 'b5-classexpr.mjs', 'b6-extends.mjs',
-    'b7-hidden-process.mjs',
-  ]);
+test('every reviewed bypass is present and has an expectation', () => {
+  const present = readdirSync(fixtures).filter((name) => name.endsWith('.mjs')).sort();
+  assert.deepEqual(present, Object.keys(EXPECTED).sort());
 });
 
-test('each reviewed bypass is caught by the token layer and by the raw layer independently', () => {
-  const tokenLayer = /^(?:builtin-not-allowed:|unsupported-syntax$|process-access$|forbidden-identifier:)/;
-  const rawLayer = /^(?:string-named-import-clause$|forbidden-word:)/;
-  for (const name of bypasses) {
-    const found = rules('packages/canonical/src/x.mjs', readFileSync(new URL(name, fixtures), 'utf8'));
-    assert.ok(found.some((rule) => tokenLayer.test(rule)), `${name}: token layer: ${found}`);
-    assert.ok(found.some((rule) => rawLayer.test(rule)), `${name}: raw layer: ${found}`);
+test('each reviewed bypass is reported from the syntax tree', () => {
+  for (const [name, expected] of Object.entries(EXPECTED)) {
+    const [path, rule] = Array.isArray(expected) ? expected : ['packages/canonical/src/x.mjs', expected];
+    assert.ok(rules(path, read(name)).includes(rule), `${name} -> ${rule}`);
   }
-});
-
-test('the token layer reads each bypass the way JavaScript does', () => {
-  const read = (name) => readFileSync(new URL(name, fixtures), 'utf8');
-  // Where the grammar settles the regular expression, the hidden import is found.
-  for (const name of ['b1-export-default.mjs', 'b4-forawait.mjs', 'b6-extends.mjs']) {
+  for (const name of ['b01-export-default.mjs', 'b02-postfix.mjs', 'b03-fnexpr.mjs', 'b04-forawait.mjs', 'b05-classexpr.mjs',
+    'b06-extends.mjs', 'b08-for-head.mjs']) {
     assert.deepEqual(importsOf(read(name)), ['node:net'], name);
   }
-  // Where only a parser could tell, the file is rejected.
-  for (const name of ['b2-postfix.mjs', 'b3-fnexpr.mjs', 'b5-classexpr.mjs']) {
-    assert.throws(() => importsOf(read(name)), { name: 'Error', message: /ambiguous/ }, name);
+});
+
+test('b01-b07 are also caught by the raw layer; b08 shows why it is only a second layer', () => {
+  const rawLayer = /^(?:string-named-import-clause$|forbidden-word:|forbidden-construct:)/;
+  for (const name of Object.keys(EXPECTED).filter((n) => n < 'b09')) {
+    const raw = rules('packages/canonical/src/x.mjs', read(name)).filter((rule) => rawLayer.test(rule));
+    if (name === 'b08-for-head.mjs') assert.deepEqual(raw, [], 'a quote in a comment defeats the raw specifier pattern');
+    else assert.ok(raw.length > 0, name);
+  }
+});
+
+test('relative specifiers must resolve the same way as in Node, or are reported', () => {
+  const unsupported = [
+    "import x from './%2e%2e/a.mjs';",
+    "import x from './a%2Emjs';",
+    "import x from '.\\\\a.mjs';",
+    "import x from './a.mjs?x';",
+    "import x from './a.mjs#x';",
+    "import x from './/a.mjs';",
+    "import x from '.';",
+    "import x from '../';",
+    "await import('./%2e%2e/a.mjs');",
+    "export * from './%2e%2e/a.mjs';",
+  ];
+  for (const source of unsupported) {
+    assert.ok(rules('packages/canonical/src/x.mjs', source).some((r) => r.startsWith('unsupported-specifier:')), source);
+  }
+  assert.deepEqual(rules('packages/commitment/src/x.mjs', "import { parse } from '../../canonical/src/index.mjs';"), []);
+  assert.deepEqual(rules('packages/canonical/src/x.mjs', "import x from './a-b_c.d.mjs';"), []);
+  assert.deepEqual(rules('packages/canonical/test/x.test.mjs', "import x from '../src/index.mjs';"), []);
+});
+
+test('constructor is reported in every form except a class constructor method', () => {
+  const cases = [
+    'const { constructor: F } = () => {};',
+    'const { constructor } = () => {};',
+    'function f({ constructor: F } = () => {}) { return F; }',
+    '({ constructor: F } = () => {});',
+    'const o = { constructor: 1 };',
+    'const c = f.constructor;',
+    'const c = f?.constructor;',
+    'class A { static constructor() {} }',
+    'const \\u0063onstructor = 1;',
+  ];
+  for (const source of cases) assert.ok(rules('packages/canonical/src/x.mjs', source).includes('constructor-access'), source);
+  assert.deepEqual(rules('packages/canonical/src/x.mjs', 'class A { constructor() { this.a = 1; } }'), []);
+  assert.deepEqual(rules('packages/canonical/src/x.mjs', 'class A extends Error { constructor(m) { super(m); } }'), []);
+});
+
+// An allowed built-in still has exports that load code or reach outside the package; the
+// independent review of fbb0064 ran each of these (node:test run with isolation 'none' imported
+// a file outside packages/, setEngine loaded a shared object, symlinkSync and copyFileSync made a
+// same-package path that a literal import then loaded).
+test('only allowlisted exports of allowed built-ins may be imported', () => {
+  const cases = {
+    "import { run } from 'node:test';": ['packages/canonical/test/x.test.mjs', 'builtin-export-not-allowed:node:test#run'],
+    "import { setEngine } from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#setEngine'],
+    "import { symlinkSync } from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#symlinkSync'],
+    "import { copyFileSync } from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#copyFileSync'],
+    "import { writeFileSync as w } from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-export-not-allowed:node:fs#writeFileSync'],
+    "import { 'setEngine' as e } from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#setEngine'],
+    "import * as crypto from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#*'],
+    "import crypto from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-export-not-allowed:node:crypto#default'],
+    "import t, { test } from 'node:test';": ['packages/canonical/test/x.test.mjs', 'builtin-export-not-allowed:node:test#default'],
+    "const fs = await import('node:fs');": ['packages/conformance/src/x.mjs', 'builtin-dynamic-import:node:fs'],
+    "export { setEngine } from 'node:crypto';": ['packages/commitment/src/x.mjs', 'builtin-reexport:node:crypto'],
+    "export * from 'node:fs';": ['packages/conformance/src/x.mjs', 'builtin-reexport:node:fs'],
+  };
+  for (const [source, [path, rule]] of Object.entries(cases)) assert.ok(rules(path, source).includes(rule), `${source} -> ${rule}`);
+  // Exactly what the packages use today.
+  assert.deepEqual(rules('packages/conformance/src/x.mjs', "import { readFileSync } from 'node:fs';\nimport { fileURLToPath } from 'node:url';"), []);
+  assert.deepEqual(rules('packages/canonical/test/x.test.mjs', "import assert from 'node:assert/strict';\nimport { test } from 'node:test';"), []);
+  assert.deepEqual(rules('packages/commitment/src/x.mjs', "import { Buffer } from 'node:buffer';\nimport { createHash } from 'node:crypto';"), []);
+});
+
+// RN-NET-01K: the independent review of 43dc44c showed production code borrowing test-only
+// built-ins through a same-package test helper (canonical/src has no allowed built-ins).
+test('production code cannot import test files or helpers of its own package', () => {
+  const helper = "import { test } from 'node:test';\nimport { Buffer } from 'node:buffer';\nexport { test, Buffer };\n";
+  const reviewed = check([
+    { path: 'packages/canonical/test/helper.mjs', content: helper },
+    { path: 'packages/canonical/src/y.mjs', content: "import { test, Buffer } from '../test/helper.mjs';\n" },
+  ]);
+  assert.deepEqual(reviewed, [{ path: 'packages/canonical/src/y.mjs', rule: 'production-imports-non-production:test/helper.mjs' }]);
+  const cases = {
+    'packages/canonical/src/a.mjs': "export { test } from '../test/helper.mjs';",
+    'packages/commitment/src/a.mjs': "export * from '../test/helper.mjs';",
+    'packages/conformance/src/a.mjs': "const h = await import('../test/helper.mjs');",
+    'packages/canonical/src/sub/a.mjs': "import { test } from '../../test/helper.mjs';",
+    'packages/canonical/src/b.mjs': "import x from './../test/a.test.mjs';",
+    'packages/canonical/lib/a.mjs': "import { test } from '../test/helper.mjs';", // outside test/ is production
+    'packages/canonical/src/c.mjs': "import x from '../helpers/h.mjs';", // a helper anywhere outside src/
+  };
+  for (const [path, source] of Object.entries(cases)) {
+    assert.ok(rules(path, source).some((r) => r.startsWith('production-imports-non-production:')), `${path}: ${source}`);
+  }
+  // A re-export chain inside src/ is reported where it first leaves src/.
+  const chain = check([
+    { path: 'packages/canonical/src/a.mjs', content: "export * from './b.mjs';" },
+    { path: 'packages/canonical/src/b.mjs', content: "export { test } from '../test/helper.mjs';" },
+  ]);
+  assert.deepEqual(chain, [{ path: 'packages/canonical/src/b.mjs', rule: 'production-imports-non-production:test/helper.mjs' }]);
+});
+
+test('test code keeps its imports and the accepted node:test capabilities', () => {
+  const ok = {
+    'packages/canonical/test/a.test.mjs': "import { canonicalize } from '../src/index.mjs';\nimport { helper } from './helper.mjs';",
+    'packages/commitment/test/a.test.mjs': "import { parse } from '../../canonical/src/index.mjs';",
+    'packages/canonical/test/b.test.mjs':
+      "import { test } from 'node:test';\ntest('x', async (t) => { t.mock.fn(); await t.test('y', () => {}); });\nconst s = test.run({ files: [] });\ntest.mock.fn();\ntest.snapshot.setResolveSnapshotPath(() => 'x');",
+    'packages/canonical/src/a.mjs': "import { b } from './b.mjs';\nimport { c } from './sub/c.mjs';",
+  };
+  for (const [path, source] of Object.entries(ok)) assert.deepEqual(rules(path, source), [], path);
+});
+
+test('symlinks, shrinkwrap files, .npmrc and install-changing manifest fields are reported', () => {
+  for (const path of ['packages/canonical/src/s.mjs', 'packages/canonical', 'packages']) {
+    assert.deepEqual(check([{ path, content: null, symlink: true }]).map((f) => f.rule), ['symlink-in-package'], path);
+  }
+  assert.deepEqual(rules('npm-shrinkwrap.json', '{}'), ['not-allowed:npm-shrinkwrap.json']);
+  assert.deepEqual(rules('.npmrc', 'registry=https://example.org/'), ['not-allowed:.npmrc']);
+  assert.deepEqual(rules('tools/.npmrc', ''), ['not-allowed:.npmrc']);
+  for (const field of ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies']) {
+    assert.deepEqual(rules('package.json', JSON.stringify({ [field]: {} })), [`manifest-field-not-allowed:${field}`]);
   }
 });
 

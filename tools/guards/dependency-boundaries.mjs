@@ -4,24 +4,61 @@
 //
 // This is a source-code lint and a defense-in-depth control that catches honest mistakes and
 // makes evasion visible in review. It is not a sandbox: JavaScript can always reach a module
-// through constructions no static scan can follow (a property name assembled at run time, for
-// example). Network isolation of tests is enforced separately (tools/ci/offline-checks.sh).
+// through constructions no static analysis can follow (a property name assembled at run time,
+// for example). Network isolation of tests is enforced separately (tools/ci/offline-checks.sh).
 //
-// Sources are read as tokens (js-tokens.mjs), so comments, strings, template literals and
-// regular expressions are separated out before imports and names are read; the tokenizer's known
-// limits are described there. The supported language is deliberately narrow and fails closed: a
-// file the tokenizer cannot read, or an import or export it does not recognize, is reported. The
-// earlier raw-text patterns still run over the whole file as a second, more conservative layer.
-// Only packages/** is checked; tools/ is repository tooling and may use any built-in.
-import { tokenize, UnsupportedSyntax } from './js-tokens.mjs';
+// Sources are parsed into a syntax tree by Acorn (a maintained ECMAScript parser, the only
+// development dependency; see docs/adr/ADR-RN-005-guard-parser-dependency.md), so comments,
+// strings, template literals and regular expressions are told apart the way the language does.
+// A file Acorn cannot parse as a module is reported (`unsupported-syntax`), never skipped. The
+// raw-text patterns run over the whole file as a second, more conservative layer. Only
+// packages/** is checked; tools/ is repository tooling and may use any built-in.
+import { parse } from 'acorn';
 
-// Built-in modules each package may import. Tests may also use the test-only modules.
+// Built-in modules each package may import. Tests (packages/*/test/) may also use the test-only
+// modules; everything else in a package is production code and may import, within its own
+// package, only files under src/.
 export const ALLOWED_BUILTINS = {
   canonical: [],
   commitment: ['node:buffer', 'node:crypto'],
   conformance: ['node:buffer', 'node:fs', 'node:url'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
+
+// The only exports of those built-ins that may be imported, by name ('default' for a default
+// import). An allowed module still has exports that load code or reach outside the package
+// (node:test `run`, node:crypto `setEngine`, node:fs `symlinkSync`), so the allowlist is per
+// export: namespace imports, other names, re-exports and dynamic imports of built-ins are
+// reported.
+export const ALLOWED_BUILTIN_EXPORTS = {
+  'node:assert/strict': ['default'],
+  'node:buffer': ['Buffer'],
+  'node:crypto': ['createHash'],
+  'node:fs': ['readFileSync'],
+  'node:test': ['test'],
+  'node:url': ['fileURLToPath'],
+};
+
+// The only third-party packages in the repository: development tooling, never imported by
+// packages/** (docs/adr/ADR-RN-005-guard-parser-dependency.md). Exact versions.
+export const DEV_DEPENDENCIES = {
+  acorn: {
+    version: '8.19.0',
+    resolved: 'https://registry.npmjs.org/acorn/-/acorn-8.19.0.tgz',
+    integrity: 'sha512-oJlA3XiRm7Cyk6qFD2Jn8ak9B7jSy0qy00ADO3+8dpT0LSjFihQYv4C02LFCSYJV3Q37xYwwRy5m+IpIiUzqWw==',
+  },
+};
+// Fields a pinned lockfile entry may have; anything else (nested dependencies, for example) is
+// reported.
+const LOCKFILE_ENTRY_FIELDS = ['version', 'resolved', 'integrity', 'dev', 'license', 'bin', 'engines'];
+// Manifest fields that change what npm installs or links, beyond the dependency lists.
+const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
+
+// A relative specifier the guard can resolve exactly as Node does: `./` or `../` followed by
+// plain path segments. Node resolves specifiers as URLs, so percent-encoding (`%2e%2e` is `..`),
+// backslashes (`\` is `/` in file URLs), queries and fragments could reach a file other than
+// the one the specifier appears to name; such specifiers are reported, not resolved.
+const RELATIVE_SPECIFIER = /^\.\.?(?:\/[A-Za-z0-9_.-]+)+$/;
 
 // Packages each package may depend on.
 export const ALLOWED_PACKAGES = {
@@ -67,104 +104,100 @@ const FORBIDDEN_STRINGS = new Set([
   ...FORBIDDEN_IDENTIFIERS, 'constructor', 'process', 'binding', '_linkedBinding', 'dlopen',
 ]);
 
-const isPunctuator = (token, value) => token?.type === 'punctuator' && token.value === value;
-const isName = (token, value) => token?.type === 'identifier' && token.value === value;
-const isMemberAccess = (token) => isPunctuator(token, '.') || isPunctuator(token, '?.');
+const PARSE_OPTIONS = { ecmaVersion: 'latest', sourceType: 'module', allowHashBang: true };
+
+/** Child nodes of an ESTree node, with the key that holds each. */
+function* children(node) {
+  for (const [key, value] of Object.entries(node)) {
+    if (Array.isArray(value)) {
+      for (const item of value) if (item && typeof item.type === 'string') yield [key, item];
+    } else if (value && typeof value.type === 'string') {
+      yield [key, value];
+    }
+  }
+}
+
+// Whether an Identifier is only a property or member name here, not a reference to a binding.
+function isPropertyName(node, parent, key) {
+  if (!parent) return false;
+  if (parent.type === 'MemberExpression') return key === 'property' && !parent.computed;
+  if (parent.type === 'Property') return key === 'key' && !parent.computed && !parent.shorthand;
+  if (parent.type === 'MethodDefinition' || parent.type === 'PropertyDefinition') return key === 'key' && !parent.computed;
+  if (parent.type === 'ImportSpecifier') return key === 'imported';
+  if (parent.type === 'ExportSpecifier') return key === 'exported';
+  return false;
+}
 
 /**
- * Reads the module specifiers of a tokenized source and reports constructions outside the
- * supported language. Returns { specifiers, problems }.
+ * Reads the module specifiers of a parsed module and reports code-loading constructions.
+ * Returns { specifiers, problems }.
  */
-function analyze(tokens) {
+function analyze(program) {
   const specifiers = [];
   const problems = [];
-
-  // Reads `{ a, b as c, 'd' as e, }` from tokens[i] (the `{`); returns the index after `}`, or -1.
-  const isModuleName = (token) => token?.type === 'identifier' || token?.type === 'string';
-  const namedClause = (i) => {
-    i += 1;
-    while (!isPunctuator(tokens[i], '}')) {
-      if (!isModuleName(tokens[i])) return -1;
-      i += 1;
-      if (isName(tokens[i], 'as')) {
-        if (!isModuleName(tokens[i + 1])) return -1;
-        i += 2;
-      }
-      if (isPunctuator(tokens[i], ',')) i += 1;
-      else if (!isPunctuator(tokens[i], '}')) return -1;
-    }
-    return i + 1;
-  };
-  // Expects `from '<specifier>'` at tokens[i]; returns the index after it, or -1.
-  const fromClause = (i) => {
-    if (!isName(tokens[i], 'from') || tokens[i + 1]?.type !== 'string') return -1;
-    specifiers.push(tokens[i + 1].value);
-    return i + 2;
-  };
-
-  for (let i = 0; i < tokens.length; i++) {
-    const token = tokens[i];
-    const previous = tokens[i - 1];
-    if (token.type !== 'identifier' || isMemberAccess(previous)) {
-      if (token.type === 'identifier' && token.value === 'constructor') problems.push('constructor-access');
-      if ((token.type === 'string' || token.type === 'template') && FORBIDDEN_STRINGS.has(token.value)) {
-        problems.push(`forbidden-string:${token.value}`);
-      }
-      continue;
-    }
-    if (FORBIDDEN_IDENTIFIERS.includes(token.value)) problems.push(`forbidden-identifier:${token.value}`);
-    if (token.value === 'process') {
-      if (!isPunctuator(tokens[i + 1], '.') || !PROCESS_PROPERTIES.includes(tokens[i + 2]?.value)) problems.push('process-access');
-    }
-
-    if (token.value === 'import') {
-      const next = tokens[i + 1];
-      if (isPunctuator(next, '(')) {
-        // import('<specifier>') or import('<specifier>', options); anything else is computed.
-        const argument = tokens[i + 2];
-        if (argument?.type === 'string' && (isPunctuator(tokens[i + 3], ')') || isPunctuator(tokens[i + 3], ','))) {
-          specifiers.push(argument.value);
+  const builtinImports = []; // { source, name } for each binding imported from a built-in
+  const isBuiltin = (source) => typeof source === 'string' && source.startsWith('node:');
+  const moduleName = (node) => (node.type === 'Identifier' ? node.name : node.value);
+  const visit = (node, parent, key) => {
+    switch (node.type) {
+      case 'ImportDeclaration':
+        specifiers.push(node.source.value);
+        if (isBuiltin(node.source.value)) {
+          for (const binding of node.specifiers) {
+            const name =
+              binding.type === 'ImportDefaultSpecifier' ? 'default' : binding.type === 'ImportNamespaceSpecifier' ? '*' : moduleName(binding.imported);
+            builtinImports.push({ source: node.source.value, name });
+          }
+        }
+        break;
+      case 'ExportAllDeclaration':
+      case 'ExportNamedDeclaration':
+        if (node.source) {
+          specifiers.push(node.source.value);
+          if (isBuiltin(node.source.value)) problems.push(`builtin-reexport:${node.source.value}`);
+        }
+        break;
+      case 'ImportExpression':
+        // import('<specifier>') with a string literal; anything else is computed. A built-in
+        // imported dynamically arrives as a whole namespace, so it is reported.
+        if (node.source.type === 'Literal' && typeof node.source.value === 'string') {
+          specifiers.push(node.source.value);
+          if (isBuiltin(node.source.value)) problems.push(`builtin-dynamic-import:${node.source.value}`);
         } else {
           problems.push('dynamic-import-non-literal');
         }
-      } else if (isPunctuator(next, '.')) {
-        if (!isName(tokens[i + 2], 'meta')) problems.push('unrecognized-import');
-      } else if (next?.type === 'string') {
-        specifiers.push(next.value); // import '<specifier>'
-      } else {
-        // import a from, import * as a from, import { ... } from, import a, { ... } from
-        let j = i + 1;
-        if (next?.type === 'identifier' && !isName(next, 'from')) j += 1;
-        else if (isName(next, 'from') && isName(tokens[i + 2], 'from')) j += 1; // a binding named `from`
-        if (isPunctuator(tokens[j], ',')) j += 1;
-        if (isPunctuator(tokens[j], '*') && isName(tokens[j + 1], 'as') && tokens[j + 2]?.type === 'identifier') j += 3;
-        else if (isPunctuator(tokens[j], '{')) j = namedClause(j);
-        if (j === -1 || j === i + 1 || fromClause(j) === -1) problems.push('unrecognized-import');
-      }
-    } else if (token.value === 'export') {
-      const next = tokens[i + 1];
-      if (isPunctuator(next, '*')) {
-        // export * from, export * as a from
-        let j = i + 2;
-        if (isName(tokens[j], 'as') && (tokens[j + 1]?.type === 'identifier' || tokens[j + 1]?.type === 'string')) j += 2;
-        if (fromClause(j) === -1) problems.push('unrecognized-export');
-      } else if (isPunctuator(next, '{')) {
-        // export { ... } with an optional from clause
-        const j = namedClause(i + 1);
-        if (j === -1) problems.push('unrecognized-export');
-        else if (isName(tokens[j], 'from')) {
-          if (fromClause(j) === -1) problems.push('unrecognized-export');
+        break;
+      case 'Identifier':
+        // `constructor` reaches the Function constructor from any function (`f.constructor`,
+        // `const { constructor } = f`); only a class's own constructor method may use the name.
+        if (node.name === 'constructor' && !(parent?.type === 'MethodDefinition' && parent.kind === 'constructor')) {
+          problems.push('constructor-access');
         }
-      }
-      // Any other export is a declaration, which declares no specifier.
+        if (isPropertyName(node, parent, key)) break;
+        if (FORBIDDEN_IDENTIFIERS.includes(node.name)) problems.push(`forbidden-identifier:${node.name}`);
+        if (node.name === 'process') {
+          const allowed =
+            parent?.type === 'MemberExpression' && key === 'object' && !parent.computed &&
+            PROCESS_PROPERTIES.includes(parent.property.name);
+          if (!allowed) problems.push('process-access');
+        }
+        break;
+      case 'Literal':
+        if (typeof node.value === 'string' && FORBIDDEN_STRINGS.has(node.value)) problems.push(`forbidden-string:${node.value}`);
+        break;
+      case 'TemplateElement':
+        if (FORBIDDEN_STRINGS.has(node.value.cooked ?? node.value.raw)) problems.push(`forbidden-string:${node.value.cooked ?? node.value.raw}`);
+        break;
     }
-  }
-  return { specifiers, problems };
+    for (const [childKey, child] of children(node)) visit(child, node, childKey);
+  };
+  visit(program, null, null);
+  return { specifiers, problems, builtinImports };
 }
 
-/** Module specifiers of a source: every token-level import and re-export, in order. */
+/** Module specifiers of a source: every import, re-export and literal dynamic import, in order. */
 export function importsOf(content) {
-  return analyze(tokenize(content)).specifiers;
+  return analyze(parse(content, PARSE_OPTIONS)).specifiers;
 }
 
 // The earlier raw-text extraction, kept as a conservative second layer.
@@ -173,7 +206,7 @@ function rawImportsOf(content) {
 }
 
 // Raw-text rules that do not depend on tokenizing correctly: they match anywhere in the file,
-// comments and strings included, so code the tokenizer misreads is still seen. They are
+// comments and strings included, so they hold even where the parse is somehow wrong. They are
 // deliberately broad; reword a comment rather than weaken them.
 const RAW_WORD = (word) => new RegExp(String.raw`(?<![\w$])${word}(?![\w$])`);
 const RAW_RULES = [
@@ -186,25 +219,59 @@ const RAW_RULES = [
   { id: 'string-named-import-clause', pattern: new RegExp(String.raw`(?<![\w$.])(?:import|export)${GAP}(?:[\w$]+${GAP},${GAP})?\{[^}]*['"\x60]`) },
 ];
 
+/** Repository path a relative specifier names, or null where Node's URL resolution differs. */
 function resolve(fromPath, specifier) {
+  if (!RELATIVE_SPECIFIER.test(specifier)) return null;
   const parts = fromPath.split('/').slice(0, -1);
   for (const segment of specifier.split('/')) {
     if (segment === '..') parts.pop();
     else if (segment !== '.') parts.push(segment);
   }
-  return parts.join('/');
+  const resolved = parts.join('/');
+  // Cross-check against URL resolution, the way Node resolves module specifiers.
+  const viaUrl = new URL(specifier, `file:///repository/${fromPath}`).pathname;
+  return viaUrl === `/repository/${resolved}` ? resolved : null;
 }
 
 export function check(files) {
   const findings = [];
   const add = (path, rule) => findings.push({ path, rule });
 
-  for (const { path, content } of files) {
-    if (path.endsWith('package.json') && content !== null) {
+  for (const { path, content, symlink } of files) {
+    const name = path.split('/').at(-1);
+    if (name === 'npm-shrinkwrap.json' || name === '.npmrc') add(path, `not-allowed:${name}`);
+    if (name === 'package.json' && content !== null) {
       const manifest = JSON.parse(content);
       for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-        if (manifest[key] && Object.keys(manifest[key]).length > 0) add(path, `undeclared-${key}`);
+        const declared = Object.entries(manifest[key] ?? {});
+        const allowed = path === 'package.json' && key === 'devDependencies' ? DEV_DEPENDENCIES : {};
+        if (declared.some(([dependency, version]) => allowed[dependency]?.version !== version)) add(path, `undeclared-${key}`);
       }
+      for (const field of MANIFEST_FIELDS_NOT_ALLOWED) if (Object.hasOwn(manifest, field)) add(path, `manifest-field-not-allowed:${field}`);
+    }
+    if (name === 'package-lock.json' && content !== null) {
+      // Exactly the root project and the allowed development dependencies, pinned by version,
+      // source and integrity.
+      const entries = Object.entries(JSON.parse(content).packages ?? {});
+      const expected = new Map(Object.entries(DEV_DEPENDENCIES).map(([dependency, pin]) => [`node_modules/${dependency}`, pin]));
+      const matches = ([where, entry]) => {
+        if (where === '') return true;
+        const pin = expected.get(where);
+        return (
+          pin !== undefined &&
+          entry.dev === true &&
+          ['version', 'resolved', 'integrity'].every((field) => entry[field] === pin[field]) &&
+          Object.keys(entry).every((field) => LOCKFILE_ENTRY_FIELDS.includes(field))
+        );
+      };
+      const valid = path === 'package-lock.json' && entries.length === expected.size + 1 && Object.hasOwn(Object.fromEntries(entries), '') && entries.every(matches);
+      if (!valid) add(path, 'undeclared-lockfile-packages');
+    }
+    // Node resolves a symlinked module's imports from its real path, not from where it is linked;
+    // a linked package directory moves everything under it.
+    if (symlink && (path === 'packages' || path.startsWith('packages/'))) {
+      add(path, 'symlink-in-package');
+      continue;
     }
     const match = /^packages\/([^/]+)\/(.+)$/.exec(path);
     if (!match) continue;
@@ -231,13 +298,16 @@ export function check(files) {
     }
     let analysis;
     try {
-      analysis = analyze(tokenize(content));
+      analysis = analyze(parse(content, PARSE_OPTIONS));
     } catch (error) {
-      if (!(error instanceof UnsupportedSyntax)) throw error;
+      if (!(error instanceof SyntaxError)) throw error;
       add(path, 'unsupported-syntax');
-      analysis = { specifiers: [], problems: [] };
+      analysis = { specifiers: [], problems: [], builtinImports: [] };
     }
     for (const problem of new Set(analysis.problems)) add(path, problem);
+    for (const { source, name } of analysis.builtinImports) {
+      if (!(ALLOWED_BUILTIN_EXPORTS[source] ?? []).includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
+    }
     const area = rest.startsWith('test/') ? 'test' : 'src';
     const builtins = area === 'test' ? [...ALLOWED_BUILTINS[pkg], ...TEST_BUILTINS] : ALLOWED_BUILTINS[pkg];
     for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
@@ -250,13 +320,22 @@ export function check(files) {
         continue;
       }
       const target = resolve(path, specifier);
+      if (target === null) {
+        add(path, `unsupported-specifier:${specifier}`);
+        continue;
+      }
       const targetMatch = /^packages\/([^/]+)\/(.+)$/.exec(target);
       if (!targetMatch) {
         add(path, 'import-outside-packages');
         continue;
       }
       const [, targetPkg, targetRest] = targetMatch;
-      if (targetPkg === pkg) continue;
+      if (targetPkg === pkg) {
+        // Production code (everything outside test/) imports only production code: never a test
+        // file or helper, which may use test-only built-ins and capabilities.
+        if (area === 'src' && !targetRest.startsWith('src/')) add(path, `production-imports-non-production:${targetRest}`);
+        continue;
+      }
       if (!ALLOWED_PACKAGES[pkg].includes(targetPkg)) add(path, `package-not-allowed:${targetPkg}`);
       else if (targetRest !== 'src/index.mjs') add(path, `private-import:${targetPkg}/${targetRest}`);
     }
