@@ -169,14 +169,17 @@ tools/reference/rnnet_tx_reference.py
   reads only `packages/`, so this is new.
 - `signer/` is a separate npm project with its own lockfile. It is **not** an npm `workspaces`
   entry; ADR-RN-005 refuses that field.
-- `tools/**` stays exempt from import checks: it is trusted repository tooling and may import
-  `signer/`, for tests and fixture generation only.
+- `tools/**` stays exempt from the import allowlists: it is trusted repository tooling. The guard
+  adds one narrower rule: **only named `tools/` files may import `signer/`**, namely the B1
+  fixture generator and its tests. This is a raw-text check, a defense in depth.
 - **No route for a real key in B1** (finding 10 of the PR #13 review):
   - `signer/` has no `bin`;
   - it may not use `node:fs`, `readline`, `process.argv` or stdin.
 
   So the B1 signing functions can be called only from code, with key bytes the caller already
-  holds; in B1 that means only label-derived test keys.
+  holds. The guard limits which repository files may do that, and review checks that those
+  files pass only label-derived test keys. This is **a review control, not a guarantee**:
+  code outside the repository, or a new file a reviewer accepts, could still pass a real key.
 - `signer/` may not import anything that reaches the network: no `node:net`, `node:tls`,
   `node:http(s)`, `node:dgram` or `fetch`, and not the `chain-readonly` transport.
 - `chain-submit` may not import `signer/`, `node:fs` key paths, or any private-key API. Its
@@ -227,8 +230,10 @@ is consistent with that: the signer signs only RN-NET's own testnet anchor trans
   the same time.
 - **Testnet binding.** A key file is bound to one network:
   - the signer refuses an intent whose network differs from the key file's;
-  - **before signing**, it refuses an intent whose `Account` (and `SigningPubKey`) or `from`
-    differs from the key's own address;
+  - **before signing**, it refuses an intent whose `Account` or `from` differs from the key's
+    own address. On XRPL, `SigningPubKey` is bound into the intent at gate D from the key's public
+    key, before approval, so the approved digest covers it. The signer also checks that it
+    equals the key;
   - there is no Mainnet value anywhere in the network enumeration;
   - no import, mnemonic, seed or derivation path is supported. Only fresh keys can exist.
 - **Retirement.** The founder chooses either destruction (shredding the file) or retention for
@@ -383,8 +388,11 @@ budget.
   double-anchor risk is a second, different intent. The signer refuses any intent:
   - that uses a nonce or `Sequence` beyond one that was signed and is still unresolved;
   - on Sepolia, that reuses a signed nonce other than as a gate-D same-nonce replacement;
-  - on XRPL, that uses a new `Sequence` before a validated ledger past the first transaction's
-    `LastLedgerSequence` shows the first transaction absent.
+  - on XRPL, that re-signs a `Sequence` already signed. An expired XRPL transaction does not
+    consume its `Sequence`, so a retry after expiry reuses the **same** `Sequence`. That retry is
+    a new gate-D intent, allowed only when the input includes a recorded, validated-ledger
+    observation past `LastLedgerSequence` that shows the first transaction absent. The signer is
+    offline, so that observation must be given to it; it cannot look.
 
   In B1 the log exists **in memory only**. The persistent log belongs to the milestone before
   gate D.
@@ -515,7 +523,7 @@ B1 also includes:
 
 - `rnnet_tx_reference.py`;
 - the guard extensions;
-- the §9 negative tests;
+- the §9 negative tests not marked *(later)*;
 - an independent review.
 
 It creates no real key, makes no RPC call, and has no write path. ADR-RN-018 and ADR-RN-019
