@@ -38,7 +38,7 @@ is for development only.
 
 **The founder approved exactly `@noble/hashes@2.4.0` and `@noble/curves@2.4.0`** on 2026-11-01,
 for RN-NET-03B2-B1 only. That milestone is the offline, test-only signing toolchain within gate
-A. Both versions are pinned exactly, with no `^` or `~` ranges. ADR-RN-017 records the
+A. Both versions are pinned exactly, with no `^` or `~` ranges. ADR-RN-017 will record the
 decision.
 
 **What the approval does not cover.** It does not authorize:
@@ -48,7 +48,7 @@ decision.
 - any Mainnet access.
 
 **Testnet only, not production custody.** These libraries are approved only for testnet keys
-that are single-use and hold no value. Nothing in RN-NET makes them suitable for custody of
+that are single-purpose and hold no value. Nothing in RN-NET makes them suitable for custody of
 value: JavaScript gives no constant-time or memory-erasure guarantees (below). Any production
 or Mainnet use needs a new ADR and a new review.
 
@@ -59,6 +59,8 @@ RN-NET uses only these functions:
   returns the recovery bit together with `r` and `s`, and the library produces low-s signatures.
 - **Recovery:** `secp256k1.Signature.fromBytes(sig, 'recovered')` and its recovery method. These
   serve **only** as the signer's self-check; independent checks are in §9.
+- **The recovery byte** is the first byte of the 65-byte `recovered` format and can be 0–3. The
+  signer refuses 2 or 3. It writes y-parity = the recovery byte, and a test pins that mapping.
 
 **Why 2.4.0 rather than 2.3.0:**
 - **Both contain the Trail of Bits fixes.** The 2.3.0 release notes list them, including
@@ -74,8 +76,17 @@ RN-NET uses only these functions:
 **the report has not been published**. On 2026-11-01 the project's `audit/` folder held only the
 2023 Trail of Bits, 2023 Kudelski and 2024 Cure53 reports. The README links only to the Trail of
 Bits website, not to a report. RN-NET therefore treats the 2026 audit as **an unverified claim** and does not rely on
-it. The supporting evidence that was checked:
-- the earlier published audits, whose scope included `secp256k1` and `weierstrass`;
+it.
+
+**No published audit covers the 2.x `secp256k1` or `weierstrass` code.** The published audits
+and their scope:
+- **Trail of Bits, 0.7.3 (2023):** covered `secp256k1` and `weierstrass`, three major versions
+  before 2.4.0.
+- **Kudelski, 1.2.0 (2023):** a Starknet audit that included `weierstrass`, not `secp256k1`.
+- **Cure53, 1.6.0 (2024):** covered neither.
+
+The supporting evidence that was checked:
+- those earlier published audits, with the version gap above;
 - the release notes;
 - the reviewed 2.3.0 → 2.4.0 diff;
 - RN-NET's own known-answer tests (§9).
@@ -98,14 +109,16 @@ it. The supporting evidence that was checked:
   `signer/package-lock.json`, with exact versions and integrity hashes, and installed with
   `npm ci --ignore-scripts`. The root lockfile still contains only `acorn`. The `dependency-boundaries`
   guard is extended so that only the signer workspace (§3) may import them, and nothing under
-  `packages/` may.
+  `packages/` may. This **amends ADR-RN-005**, under which `acorn` was the only third-party
+  package and the guard read only `packages/`. ADR-RN-017 must record that amendment.
 - **Constant time.** The noble README states that JavaScript cannot be relied on to run in
-  constant time. That risk is accepted only because these keys are testnet keys, used once,
-  holding no value, and signing runs once, offline, on the founder's machine.
+  constant time. That risk is accepted only because these keys are single-purpose testnet
+  keys holding no value, and signing runs once, offline, on the founder's machine.
 - **Memory.** Key bytes in JavaScript cannot be reliably erased. The signer runs as a
   short-lived process that holds the key for one signature, then exits.
 - **Rejected route: writing secp256k1 ourselves.** It is possible against test vectors, but an
-  original ECDSA signer is a larger and riskier review than a pinned, audited one. That matches
+  original ECDSA signer is a larger and riskier review than a pinned, widely used library
+  with published (if older) audits. That matches
   this milestone's instruction to prefer established libraries.
 
 ## 2. XRPL Testnet Ed25519 compatibility
@@ -152,6 +165,18 @@ tools/reference/rnnet_tx_reference.py
 ### Rules, enforced by extending `dependency-boundaries`
 
 - `packages/**` stays dependency-free. Only `signer/` may import `@noble/*`.
+- The guard parses `signer/**` itself, with its own allowlist of built-ins and exports. Today it
+  reads only `packages/`, so this is new.
+- `signer/` is a separate npm project with its own lockfile. It is **not** an npm `workspaces`
+  entry; ADR-RN-005 refuses that field.
+- `tools/**` stays exempt from import checks: it is trusted repository tooling and may import
+  `signer/`, for tests and fixture generation only.
+- **No route for a real key in B1** (finding 10 of the PR #13 review):
+  - `signer/` has no `bin`;
+  - it may not use `node:fs`, `readline`, `process.argv` or stdin.
+
+  So the B1 signing functions can be called only from code, with key bytes the caller already
+  holds; in B1 that means only label-derived test keys.
 - `signer/` may not import anything that reaches the network: no `node:net`, `node:tls`,
   `node:http(s)`, `node:dgram` or `fetch`, and not the `chain-readonly` transport.
 - `chain-submit` may not import `signer/`, `node:fs` key paths, or any private-key API. Its
@@ -172,24 +197,38 @@ is consistent with that: the signer signs only RN-NET's own testnet anchor trans
     secp256k1);
   - prints only the public key and address.
 - **Key file.** A new format, `rnnet.testnet-key-file.v1`, holding:
-  - network, purpose and creation time;
+  - format, network, purpose and creation time;
   - public key and address;
-  - the encryption parameters: scrypt (N=2^17, r=8, p=1, random 16-byte salt) and
-    AES-256-GCM, both built in to Node;
+  - the encryption parameters:
+    - **KDF:** scrypt, N=2^17, r=8, p=1, a 16-byte random salt. This needs about 128 MiB, so
+      Node's `maxmem` must be raised above its 32 MiB default.
+    - **Cipher:** AES-256-GCM, with a 12-byte (96-bit) random IV and a 16-byte tag.
+
+    Both are built in to Node.
   - the ciphertext.
 
-  The network, purpose and public key are bound as the encryption's additional authenticated
-  data, so changing any of them makes decryption fail.
+  **Additional authenticated data:** the canonical JSON of **every field except the ciphertext
+  and the tag**, so changing any of them makes decryption fail.
+
+  **After decryption** the signer re-derives the public key and address from the secret and
+  refuses the file unless both match.
 - **Location.** `$XDG_DATA_HOME/rn-net-keys/genesis-01/` (by default
   `~/.local/share/rn-net-keys/…`):
   - directory mode `0700`, file mode `0600`;
   - written with `wx`, so an existing key is never overwritten;
-  - the signer refuses a key file inside any git worktree, and refuses wider permissions.
+  - the signer refuses a key file inside any git worktree, and refuses wider permissions;
+  - on WSL2 it refuses paths under `/mnt/*` (Windows drives mounted through drvfs), where
+    `0600` is not enforced. The Windows host can still read the WSL filesystem, a residual risk
+    accepted only for testnet keys.
 - **Passphrase.** Entered by the founder at a terminal prompt, never through an argument, an
-  environment variable, a file or a CI secret. An agent session therefore cannot sign:
-  **the founder runs gate B and gate D personally.**
+  environment variable, a file or a CI secret. A terminal prompt does not prove that a person is
+  present; an agent can allocate a terminal too. The control is that **no agent session ever
+  has the passphrase**. The founder runs gates B and D personally, and no agent session runs at
+  the same time.
 - **Testnet binding.** A key file is bound to one network:
   - the signer refuses an intent whose network differs from the key file's;
+  - **before signing**, it refuses an intent whose `Account` (and `SigningPubKey`) or `from`
+    differs from the key's own address;
   - there is no Mainnet value anywhere in the network enumeration;
   - no import, mnemonic, seed or derivation path is supported. Only fresh keys can exist.
 - **Retirement.** The founder chooses either destruction (shredding the file) or retention for
@@ -219,7 +258,14 @@ The broadcaster accepts a blob only when it comes with a verification record (§
 - gives the blob's SHA-256 and the approved intent digest;
 - reports `PASS` from both the JavaScript and the Python verifiers.
 
-It recomputes the blob hash itself.
+A record is a file anyone can write, an agent at gate E included, so the broadcaster does not
+trust it alone:
+- it recomputes the blob hash;
+- it decodes the blob itself with `tx-intent`;
+- it checks every field against the approved intent;
+- it recomputes the intent digest and compares it with the approved one.
+
+Only the signature check stays with the two verifiers, because `packages/` has no Keccak.
 
 ## 6. Read-only RPC methods for preparation
 
@@ -228,7 +274,7 @@ them writes.
 
 | Network | Method | Used for |
 |---|---|---|
-| XRPL | `account_info` (`ledger_index: "validated"`) | The account exists. Its `Sequence`. Its balance against the reserve plus the fee. No `RegularKey` or signer list |
+| XRPL | `account_info` (`ledger_index: "validated"`, `signer_lists: true`) | The account exists. Its `Sequence`. Its balance against the reserve plus the fee. No `RegularKey` or signer list |
 | XRPL | `server_info` (already allowed) | `network_id` = 1 from **both** reviewed providers. The validated ledger index, used for `LastLedgerSequence`. The base and load fee, which must be ≤ 12 drops |
 | Sepolia | `eth_chainId` (already allowed) | `0xaa36a7` from both providers |
 | Sepolia | `eth_getTransactionCount` (`latest` and `pending`) | The nonce. The two must be equal (nothing pending) |
@@ -252,7 +298,9 @@ budget.
    - the preparation observations: provider ids, ledger or block numbers, request digests.
 
    Its digest is SHA-256(`rnnet:unsigned-tx-intent:v1\0` ‖ canonical JSON).
-3. **Founder approval (gate D).** The founder approves the printed intent **by its digest**.
+3. **Founder approval (gate D).** Before the passphrase prompt, the signer prints the full
+   intent, its decoded fields and its digest. The founder approves the printed intent **by its
+   digest**.
 4. **Signing.** The signer:
    - recomputes the digest, which must equal the approved one;
    - re-runs the check;
@@ -260,7 +308,7 @@ budget.
    - writes the blob.
 
    Signing exactly the canonical JSON of the checked object (ADR-RN-016 §3) closes the gap that
-   review finding 1 found between what is checked and what is signed.
+   [PR #10 review](https://github.com/Republika-Network/rn-net/pull/10#issuecomment-6562299674) finding 1 found between what is checked and what is signed.
 5. **Independent verification** of the blob against the intent, in JavaScript (`tx-intent`
    decode) and Python (§9):
    - The blob decodes. It has no trailing bytes and no fields beyond the allowed set.
@@ -305,12 +353,21 @@ budget.
   - both providers must report `0xaa36a7`;
   - the signer refuses any other value.
 - **XRPL.** Testnet omits `NetworkID` (network ID 1 is at most 1024), so an identical blob is
-  also valid on Mainnet if the same account and `Sequence` exist there. That replay is prevented
-  by:
-  - a fresh key whose account is funded **only** by the Testnet faucet;
-  - `LastLedgerSequence` set to the validated ledger + 20;
-  - both providers reporting `network_id` = 1 before signing;
-  - submitting only to the reviewed Testnet endpoints.
+  also valid on Mainnet if the same account and `Sequence` exist there. That replay is
+  **mitigated, not prevented**. Once the blob is public on Testnet, anyone could relay it to
+  Mainnet. It would succeed only if:
+  - the account exists on Mainnet;
+  - its next `Sequence` is the signed one (a new account's first `Sequence` is the ledger index
+    at which it was created);
+  - the Mainnet ledger is still at or below `LastLedgerSequence`.
+
+  The mitigations: a fresh key that is never funded on Mainnet, and an expiry 20 ledgers after
+  the Testnet validated ledger. **Residual risk:** the address is public, and anyone can fund it
+  on Mainnet. For a zero-value `AccountSet` anchor, the consequence would be a duplicate anchor
+  on Mainnet, not a loss.
+
+  `network_id` = 1 from both providers, and submitting only to the reviewed Testnet endpoints,
+  bind *our* submission to Testnet. They do not stop a third party from relaying.
 
 ### Replay and double-anchoring
 
@@ -321,6 +378,16 @@ budget.
   - the transaction has no expiry, so a retry is a gate-D **same-nonce replacement**, never a
     new nonce;
   - signing the same intent digest twice is refused, using the sign log.
+- **The sign log is keyed on (key, nonce or `Sequence`)**, not only on the intent digest.
+  Re-signing the same digest is harmless: RFC 6979 gives the same transaction. The real
+  double-anchor risk is a second, different intent. The signer refuses any intent:
+  - that uses a nonce or `Sequence` beyond one that was signed and is still unresolved;
+  - on Sepolia, that reuses a signed nonce other than as a gate-D same-nonce replacement;
+  - on XRPL, that uses a new `Sequence` before a validated ledger past the first transaction's
+    `LastLedgerSequence` shows the first transaction absent.
+
+  In B1 the log exists **in memory only**. The persistent log belongs to the milestone before
+  gate D.
 - **Cross-network:** the two networks use different curves and different keys, and every key
   file is bound to one network.
 
@@ -337,7 +404,7 @@ Ed25519 reference, using the Python standard library and RN-NET-written code onl
 - RLP and XRPL binary decoders.
 - Ed25519 verification reused from `rnnet_evidence_reference.py`.
 
-It also closes review follow-up 10: it re-implements the ADR-RN-016 checks.
+It also closes [PR #10 review](https://github.com/Republika-Network/rn-net/pull/10#issuecomment-6562299674) follow-up 10: it re-implements the ADR-RN-016 checks.
 
 **Vectors.**
 - Public Keccak-256 known-answer values, and the empty-input digest.
@@ -346,27 +413,35 @@ It also closes review follow-up 10: it re-implements the ADR-RN-016 checks.
   never funded.
 - Golden signed blobs that **both** implementations decode and verify.
 
-**Negative tests.** Each asserts its specific failure reason, which closes review follow-up 7.
+**Negative tests.** Each asserts its specific failure reason, which closes review follow-up 7
+([PR #10 review record](https://github.com/Republika-Network/rn-net/pull/10#issuecomment-6562299674)).
+
+**Milestone.** Tests marked *(later)* need the file system, a persistent sign log or the
+broadcaster, all of which the founder excluded from B1. They belong to the milestone before gate B
+(key files on disk), before gate D (persistent sign log) or B3 (broadcaster), and **are not part
+of B1**. Everything else is in B1.
 
 - **Intent and approval:**
   - the approval digest doesn't match;
   - the intent fails its check;
   - a template field is still `null`;
   - the data is non-plain (Proxy, getter, prototype);
-  - the same intent is signed twice.
+  - the same intent, or another intent for an unresolved nonce or `Sequence`, is signed again
+    (B1: in-memory log; persistent log *(later)*).
 - **Key file:**
   - wrong network;
   - wrong purpose;
   - tampered additional authenticated data;
   - wrong passphrase;
-  - the file is inside a worktree;
-  - mode wider than `0600`;
-  - an existing file would be overwritten.
+  - the file is inside a worktree *(later)*;
+  - mode wider than `0600` *(later)*;
+  - an existing file would be overwritten *(later)*.
 - **XRPL blob:**
   - an extra or reordered field, or a `NetworkID`;
   - a second memo, or a `MemoFormat`;
   - fee above 12 or above 1,000;
   - a missing `LastLedgerSequence`;
+  - `Flags` other than 0;
   - a flipped signature bit;
   - an `Account` that doesn't match the key;
   - trailing bytes.
@@ -388,7 +463,7 @@ It also closes review follow-up 10: it re-implements the ADR-RN-016 checks.
   - `chain-submit` imports `signer/` or a private-key API;
   - `packages/**` imports `@noble/*`;
   - the lockfile contains a package outside the pins.
-- **Broadcaster:**
+- **Broadcaster** *(later, B3)*:
   - a blob without a PASS record;
   - a record whose blob hash doesn't match;
   - a forbidden method;
@@ -404,9 +479,9 @@ This proposal changes none of them; it only says which tooling each gate needs.
 
 | Gate | Needs, beyond the authorization doc | Run by |
 |---|---|---|
-| B-XRPL, B-SEP | ADR-RN-017 accepted; `signer keygen` merged and reviewed; key location agreed | Founder, at the terminal (passphrase) |
+| B-XRPL, B-SEP | ADR-RN-017 accepted; `signer keygen` merged and reviewed; key location agreed; **for B-SEP, a renewed founder approval of the noble dependency**, since the current one covers B1 only | Founder, at the terminal (passphrase) |
 | C-XRPL, C-SEP | A faucet the founder names; a read-only balance check (`account_info`, `eth_getBalance`) | Founder |
-| D-XRPL, D-SEP | ADR-RN-009 to 012 and 016 accepted; ADR-RN-018 accepted; preparation reads authorized; intent approved by digest; dual verification PASS | Founder, at the terminal (passphrase) |
+| D-XRPL, D-SEP | ADR-RN-009 to 012 and 016 accepted; ADR-RN-018 accepted; for D-SEP, the renewed noble approval; preparation reads authorized; intent approved by digest; dual verification PASS | Founder, at the terminal (passphrase) |
 | E-XRPL, E-SEP | ADR-RN-019 (write path) accepted; `chain-submit` merged and reviewed | Agent or founder; the broadcaster holds no key |
 | F | Both E gates done; live read-only verification | Agent, read-only |
 
@@ -420,7 +495,7 @@ This proposal changes none of them; it only says which tooling each gate needs.
 
 | ADR | Subject |
 |---|---|
-| ADR-RN-017 | Signing dependencies (`@noble/curves` and `@noble/hashes` 2.4.0, exact), the `signer/` workspace and its guard rules, the testnet key file and storage |
+| ADR-RN-017 | Signing dependencies (`@noble/curves` and `@noble/hashes` 2.4.0, exact; approval limited to B1), the ADR-RN-005 amendment, the `signer/` project and its guard rules, the testnet key-file format |
 | ADR-RN-018 | Transaction-preparation reads: an ADR-RN-013 amendment for the §6 methods |
 | ADR-RN-019 | Write path: the keyless broadcaster and its method allowlist |
 
