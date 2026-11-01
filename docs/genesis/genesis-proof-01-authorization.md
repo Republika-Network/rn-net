@@ -1,6 +1,7 @@
 # Genesis Proof 01: authorization gates and execution security
 
-- Status: Proposed (RN-NET-03B2-A). **Only gate A is authorized.**
+- Status: Accepted with ADR-RN-016 (founder approval of PR #10). **Only gate A is authorized;**
+  accepting this document authorizes none of gates B to F.
 - Decision record: [ADR-RN-016](../adr/ADR-RN-016-genesis-anchoring-transactions.md)
 
 Every action that creates or uses a key, creates or funds an account, signs, or writes to a

@@ -2,7 +2,7 @@
 
 - Status: **Preflight only (RN-NET-03B2-A).** Nothing has been signed, submitted or anchored. No
   wallet, key or account exists.
-- Decision record: [ADR-RN-016](../adr/ADR-RN-016-genesis-anchoring-transactions.md) (Proposed)
+- Decision record: [ADR-RN-016](../adr/ADR-RN-016-genesis-anchoring-transactions.md) (Accepted)
 - Authorization gates: [genesis-proof-01-authorization.md](genesis-proof-01-authorization.md)
 - Fixture and golden values: [`fixtures/genesis-proof-01/`](../../fixtures/genesis-proof-01/)
 - Code:
@@ -112,7 +112,7 @@ python3 -I -B tools/reference/rnnet_genesis_reference.py
 The read-only tool reads the transaction:
 
 ```sh
-node tools/verify-live-anchor.mjs --network xrpl-testnet --tx <hash> --commitment sha256:a20c… \
+node tools/verify-live-anchor.mjs --network xrpl-testnet --tx <hash> --commitment sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7 \
   --compare-providers --capture <file>
 ```
 
@@ -197,7 +197,7 @@ The SMOKE-02 finalized block carried post-Prague header fields (`blockAccessList
 ### 3.5 After submission: what verification must show
 
 ```sh
-node tools/verify-live-anchor.mjs --network sepolia --tx <hash> --commitment sha256:a20c… \
+node tools/verify-live-anchor.mjs --network sepolia --tx <hash> --commitment sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7 \
   --compare-providers --capture <file>
 ```
 
@@ -235,11 +235,11 @@ nothing about any network.
 
 | # | Blocker | Needed |
 |---|---|---|
-| 1 | No signer exists. **XRPL:** a binary serializer for this one `AccountSet` shape, plus Ed25519 signing; Node built-ins provide Ed25519, SHA-512 and RIPEMD-160. **Sepolia:** RLP, Keccak-256 and recoverable secp256k1 ECDSA, none of which Node's built-ins provide (no Keccak-256; `crypto.sign` always hashes its input). | RN-NET-03B2-B. Sepolia needs an ADR: an audited dependency or an original implementation with published test vectors. |
+| 1 | No signer exists. **XRPL:** a binary serializer for this one `AccountSet` shape, plus Ed25519 signing; Node built-ins provide Ed25519, SHA-512 and RIPEMD-160. **Sepolia:** RLP, Keccak-256 and recoverable secp256k1 ECDSA, none of which Node's built-ins provide (no Keccak-256; `crypto.sign` always hashes its input). | RN-NET-03B2-B. **Open decision, recorded in ADR-RN-016:** Sepolia needs an ADR: an audited dependency or an original implementation with published test vectors. |
 | 2 | No write path. `packages/chain-readonly` is read-only by design. | A separate broadcaster with no key access, and its own ADR (XRPL `submit`, Ethereum `eth_sendRawTransaction`) |
 | 3 | Read-only methods missing from the allowlist: XRPL `account_info`; Ethereum `eth_getTransactionCount`, `eth_estimateGas`, `eth_getBalance`, `eth_getCode` | A reviewed allowlist change |
 | 4 | No keys or accounts; no funding | Gates B and C |
-| 5 | ADR-RN-009 to ADR-RN-012 (payload and transports) and ADR-RN-016 are still **Proposed** | Founder acceptance before gate D |
-| 6 | SMOKE-01 raw evidence and its hashes are not available in this workspace, so they cannot be re-verified | Founder locates them, or accepts the recorded summary |
+| 5 | ADR-RN-009 to ADR-RN-012 (payload and transports) are still **Proposed** on `main`. ADR-RN-016 is Accepted. | Founder acceptance of ADR-RN-009 to 012 before gate D |
+| 6 | SMOKE-01 raw captures and their hashes could not be recovered, so SMOKE-01 has not been independently re-verified | Founder locates them, or accepts the recorded summary |
 | 7 | 1RPC finalized-block lag unresolved | A separately authorized read-only comparison of the finalized block on both providers |
 | 8 | The calldata gas rules of Sepolia's current fork are unconfirmed | `eth_estimateGas` at gate D |
