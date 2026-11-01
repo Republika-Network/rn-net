@@ -161,7 +161,7 @@ kept as soon as the transaction validates (gate F).
 
 | Property | Rule | Basis |
 |---|---|---|
-| Chain ID | `0xaa36a7` (11155111). It is signed into the type-2 envelope, so the transaction cannot be replayed on another chain. | rnnet.anchor-record.v1 §4.2 A3; EIP-1559/EIP-155 |
+| Chain ID | `0xaa36a7` (11155111). It is signed into the type-2 envelope, so the transaction cannot be replayed on another chain. | rnnet.anchor-record.v1 §4.2 A3; EIP-1559/EIP-2718 |
 | Type | `0x2`. Types 3 and 4 are refused (they are not anchor transports). | §4.2 A4 |
 | Input | Exactly the 42-byte payload, nothing before or after | §4.2 B2 |
 | Recipient | `to` = `from`: a self-send, never `null` (no contract creation), never a third party | ADR-RN-016 |
@@ -213,8 +213,8 @@ Then:
   the result is not a pass.
 - **Open issue:** the 1RPC finalized-block lag of about 67 minutes seen in SMOKE-02 is unresolved
   ([smoke summary](../operations/rn-net-03b1-smoke-tests.md#observation-1rpc-finalized-block-lag)).
-  Until it is understood, finality is judged by the *later* of the two providers' views, never by
-  a single provider.
+  Until it is understood, finality is judged by the **lower (older)** of the two providers'
+  finalized block numbers, never by a single provider.
 
 ## 4. Rehearsal
 

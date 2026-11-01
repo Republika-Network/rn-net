@@ -95,7 +95,7 @@ Possible causes, none of which has been established:
 What this means for anchoring:
 
 - A single provider's `finalized` tag is not used as the finality signal.
-- Genesis Proof 01 compares both reviewed Sepolia providers and uses the more conservative view
+- Genesis Proof 01 compares both reviewed Sepolia providers and uses the more conservative view: the lower (older) of the two finalized block numbers
   ([preflight §3.5](../genesis/genesis-proof-01-preflight.md#35-after-submission-what-verification-must-show)).
 - Resolving the lag needs a separately authorized, read-only comparison of the finalized block on
   `sepolia-publicnode` and `sepolia-1rpc` at the same moment.

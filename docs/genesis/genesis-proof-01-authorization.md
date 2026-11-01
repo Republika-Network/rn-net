@@ -29,7 +29,11 @@ An approval for a read-only RPC test does not authorize any of these gates.
    used only for Genesis Proof 01. They are never imported, reused or derived from material any
    other system uses. This rules out Frontera, Soberanía and personal wallets, mnemonics, seeds and
    API credentials.
-2. **Testnet only.** The tooling refuses Mainnet chain IDs and network IDs. The key is used for
+2. **Testnet only.** On Sepolia, the chain ID `0xaa36a7` is part of the signed transaction, and the
+   checks refuse any other. On XRPL, Testnet and Mainnet transactions look the same offline: both
+   omit `NetworkID`, so the checks **cannot** tell them apart. XRPL separation rests on two
+   things: submitting only to the reviewed Testnet endpoints, and a fresh key whose account
+   exists only on Testnet. The key is used for
    nothing else, before or after.
 3. **Generation.** Keys come from the operating system's random source, through reviewed RN-NET
    code run in a network namespace (`unshare -rn`). Only the public key and address are printed.
@@ -62,6 +66,10 @@ An approval for a read-only RPC test does not authorize any of these gates.
   write path, when approved, uses the same allowlist.
 - **One attempt per approval.** A failed or expired transaction is reported and stops the run. A
   new attempt is a new gate-D decision.
+  - **XRPL** expires at `LastLedgerSequence`.
+  - **Sepolia has no expiry.** An underpriced transaction can stay pending and still be included
+    later, until its nonce is used. A retry is therefore a gate-D **replacement with the same
+    nonce** (and higher fees), never a new nonce while the first transaction is pending.
 - **Evidence.** Captures and logs are written to a new local directory, without overwriting, and
   hashed. Raw captures stay local. Only sanitized summaries are published (gate F).
 - **Wording.** Public text follows ADR-RN-012:

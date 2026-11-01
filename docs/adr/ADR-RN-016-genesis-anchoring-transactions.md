@@ -42,14 +42,17 @@ are.
    - **Priority fee:** 1 gwei.
 
    **Why a self-send.** A self-send involves no third-party address. The recipient is an account
-   with no code, so nothing executes, and the sender alone proves who submitted the transaction.
+   with no code, so nothing executes, and the sender is the only address involved. As in
+   ADR-RN-012, the submitter stays a `CLAIMED` value.
    The sender must be a fresh key with no EIP-7702 delegation, so that it still has no code.
 3. **The checks are executable.** The construction is pinned as code in
    `tools/genesis/prepare.mjs`:
    - `checkXrplAnchorTx` and `checkSepoliaAnchorTx` refuse every other construction;
    - an unbound template fails them.
 
-   A transaction may be signed only if its check returns no problems.
+   A transaction may be signed only if its check returns no problems. The checks accept only
+   plain JSON data, and what is signed must be exactly the canonical JSON of the object that was
+   checked.
 4. **Separate decisions for keys, funding, signing and broadcasting.** Each step that touches a
    key, an account, funds or a network write needs its own founder decision (gates B–F of the
    authorization document). No approval carries over to another step or another network.
@@ -76,6 +79,6 @@ are.
   read-only.
 - **Gas rules can change.** A later Ethereum fork may reprice calldata. Gas use must be confirmed
   with `eth_estimateGas` before signing, and the 30,000 limit re-checked.
-- **What the anchor shows.** The anchors still prove only what ADR-RN-012 allows: the same
-  commitment payload on both networks. They say nothing about whether the synthetic evidence is
+- **What the anchor shows.** As ADR-RN-012 allows, the anchors show the same commitment payload
+  in the data reported for both networks. They say nothing about whether the synthetic evidence is
   true. `CHAIN_PROVEN` is still never produced.

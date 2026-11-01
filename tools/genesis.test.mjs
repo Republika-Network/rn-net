@@ -110,6 +110,34 @@ test('XRPL: the Memos field serializes to 73 bytes, under the 1 KB limit', () =>
   assert.equal(golden.xrpl.memosSerializedBytes, 73);
 });
 
+test('both checks refuse anything but plain JSON data (inherited fields, getters, proxies)', () => {
+  const x = xrplOk();
+  const e = rehearsalTransactions(COMMITMENT).evm;
+  const xrplCases = {
+    'every field inherited': Object.create(x),
+    'inherited NetworkID': Object.assign(Object.create({ NetworkID: 0 }), x),
+    'inherited memo': { ...x, Memos: [Object.create(x.Memos[0])] },
+    'getter memo': { ...x, Memos: [Object.defineProperty({}, 'Memo', { get: () => x.Memos[0].Memo, enumerable: true })] },
+    'proxy memo': { ...x, Memos: [new Proxy(x.Memos[0], {})] },
+    'proxy transaction': new Proxy(x, {}),
+    'symbol key': { ...x, [Symbol('extra')]: 1 },
+  };
+  for (const [name, tx] of Object.entries(xrplCases)) {
+    assert.deepEqual(checkXrplAnchorTx(tx, COMMITMENT), ['transaction must be plain JSON data (no inherited fields, accessors or proxies)'], name);
+  }
+  const evmCases = {
+    'inherited gasPrice': Object.assign(Object.create({ gasPrice: '0x1' }), e),
+    'getter input': Object.defineProperty({ ...e }, 'input', { get: () => e.input, enumerable: true }),
+    'proxy access list': { ...e, accessList: new Proxy([], {}) },
+  };
+  for (const [name, tx] of Object.entries(evmCases)) {
+    assert.deepEqual(checkSepoliaAnchorTx(tx, COMMITMENT), ['transaction must be plain JSON data (no inherited fields, accessors or proxies)'], name);
+  }
+  // A JSON round trip of the accepted transactions is still accepted.
+  assert.deepEqual(checkXrplAnchorTx(JSON.parse(JSON.stringify(x)), COMMITMENT), []);
+  assert.deepEqual(checkSepoliaAnchorTx(JSON.parse(JSON.stringify(e)), COMMITMENT), []);
+});
+
 // --- Sepolia ----------------------------------------------------------------------------------
 
 const evmOk = () => rehearsalTransactions(COMMITMENT).evm;

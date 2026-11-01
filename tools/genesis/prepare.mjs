@@ -11,6 +11,7 @@
 // rnnet.anchor-record.v1 §3.1 (XRPL) and §4.1 (Sepolia).
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
+import { types } from 'node:util';
 import { ANCHOR_MEMO_TYPE, encodeAnchorPayload, SEPOLIA_CHAIN_ID } from '../../packages/anchor/src/index.mjs';
 
 const COMMITMENT = /^sha256:[0-9a-f]{64}$/;
@@ -20,6 +21,30 @@ const checkCommitment = (c) => {
 };
 const kind = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
 const isUint32 = (v) => Number.isInteger(v) && v >= 1 && v <= 0xffff_ffff;
+
+/**
+ * Whether a value is plain JSON data: strings, numbers, booleans, null, and arrays and objects
+ * whose prototype is the default one (or null for objects), with only own, enumerable data
+ * properties, all plain, and no Proxy anywhere. The checks below refuse anything else, so an
+ * inherited field, a getter or a Proxy cannot show the checks one value and a signer another.
+ * What is signed must be exactly the canonical JSON of the object that was checked.
+ */
+export function isPlainData(value) {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object' || types.isProxy(value)) return false;
+  const array = Array.isArray(value);
+  const proto = Object.getPrototypeOf(value);
+  if (array ? proto !== Array.prototype : proto !== Object.prototype && proto !== null) return false;
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') return false;
+    if (array && key === 'length') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!Object.hasOwn(descriptor, 'value') || !descriptor.enumerable || !isPlainData(descriptor.value)) return false;
+  }
+  return true;
+}
+const NOT_PLAIN = 'transaction must be plain JSON data (no inherited fields, accessors or proxies)';
 
 /** The 42 payload bytes as lowercase hex. */
 export const payloadHex = (commitment) => Buffer.from(encodeAnchorPayload(checkCommitment(commitment))).toString('hex');
@@ -93,6 +118,7 @@ export function checkXrplAnchorTx(tx, commitment) {
   checkCommitment(commitment);
   const problems = [];
   if (kind(tx) !== 'object') return ['transaction is not an object'];
+  if (!isPlainData(tx)) return [NOT_PLAIN];
   for (const key of Object.keys(tx)) if (!XRPL_FIELDS.includes(key)) problems.push(key === 'NetworkID' ? 'NetworkID must be omitted on XRPL Testnet (network ID 1)' : `unexpected field ${key}`);
   if (tx.TransactionType !== 'AccountSet') problems.push('TransactionType must be AccountSet');
   if (typeof tx.Account !== 'string' || !XRPL_ACCOUNT.test(tx.Account)) problems.push('Account must be a classic address');
@@ -113,8 +139,7 @@ export function checkXrplAnchorTx(tx, commitment) {
       if (Object.keys(memo).sort().join(',') !== 'MemoData,MemoType') problems.push('the memo must have exactly MemoType and MemoData (no MemoFormat)');
       if (memo.MemoType !== expected.MemoType) problems.push('MemoType must be hex("rnnet.anchor-payload.v1") in upper case');
       if (memo.MemoData !== expected.MemoData) problems.push('MemoData must be the 42-byte payload of the commitment in upper case');
-      const length = memosSerializedLength([[expected.MemoType.length / 2, expected.MemoData.length / 2]]);
-      if (length > XRPL.maxMemosBytes) problems.push('Memos exceeds 1 KB');
+      // The only accepted memo is the expected one, whose Memos field is 73 bytes (golden.json), far under 1 KB.
     }
   }
   return problems;
@@ -177,7 +202,7 @@ export function sepoliaAnchorTemplate(commitment, bound = {}) {
 
 /**
  * maxFeePerGas from an observed base fee: twice the base fee plus the priority fee (headroom for
- * six full blocks of base-fee growth), never above the cap.
+ * five consecutive full blocks of 12.5% base-fee growth), never above the cap.
  */
 export function sepoliaMaxFee(baseFeePerGasHex) {
   if (typeof baseFeePerGasHex !== 'string' || !QUANTITY.test(baseFeePerGasHex)) throw new TypeError('baseFeePerGas must be a quantity');
@@ -190,6 +215,7 @@ export function checkSepoliaAnchorTx(tx, commitment) {
   checkCommitment(commitment);
   const problems = [];
   if (kind(tx) !== 'object') return ['transaction is not an object'];
+  if (!isPlainData(tx)) return [NOT_PLAIN];
   for (const key of Object.keys(tx)) if (!SEPOLIA_FIELDS.includes(key)) problems.push(`unexpected field ${key}`);
   for (const key of SEPOLIA_FIELDS) if (!Object.hasOwn(tx, key)) problems.push(`missing field ${key}`);
   if (tx.type !== SEPOLIA.type) problems.push('type must be 0x2 (EIP-1559)');
