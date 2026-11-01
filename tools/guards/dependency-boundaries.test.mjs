@@ -564,3 +564,8 @@ test('the signer lockfile root entry and top-level fields must match the manifes
     assert.deepEqual(rules('signer/package-lock.json', bad), ['undeclared-lockfile-packages']);
   }
 });
+
+test('destructured key-generation helpers and TypeScript files are reported (re-review)', () => {
+  assert.ok(rules('signer/src/a.mjs', 'const { randomSecretKey } = s.utils;\nrandomSecretKey();').includes('key-generation:randomSecretKey'));
+  assert.deepEqual(rules('tools/x.mts', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
+});

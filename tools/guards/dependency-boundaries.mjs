@@ -365,7 +365,7 @@ export function check(files) {
       checkSigner(path, content, add);
       continue;
     }
-    if (!path.startsWith('packages/') && /\.(mjs|js|cjs)$/.test(path) && content !== null) {
+    if (!path.startsWith('packages/') && /\.(mjs|js|cjs|mts|cts|ts)$/.test(path) && content !== null) {
       checkToolsSignerImports(path, content, add);
       if (path.startsWith('tools/')) continue;
     }
@@ -542,6 +542,8 @@ export function keyGenerationRoutes(content) {
     if (node.type === 'Identifier' && node.name === 'crypto' && !isPropertyName(node, parent, key)) found.add('global-crypto');
     if (node.type === 'MemberExpression' && !node.computed && KEYGEN_PROPERTIES.has(node.property.name)) found.add(`key-generation:${node.property.name}`);
     if (node.type === 'Literal' && typeof node.value === 'string' && KEYGEN_PROPERTIES.has(node.value)) found.add(`key-generation:${node.value}`);
+    // Destructuring, as in `const { randomSecretKey } = secp256k1.utils`.
+    if (node.type === 'Property' && !node.computed && node.key.type === 'Identifier' && KEYGEN_PROPERTIES.has(node.key.name)) found.add(`key-generation:${node.key.name}`);
     for (const [childKey, child] of children(node)) visit(child, node, childKey);
   };
   visit(program, null, null);

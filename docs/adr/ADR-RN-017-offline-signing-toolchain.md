@@ -75,8 +75,9 @@ The guard now reads `signer/**` with its own allowlist:
   - The guard also reports the global WebCrypto `crypto` and noble's key-generation helpers
     (`randomSecretKey`, `keygen`), in `signer/` and in `packages/*/src`.
 
-  This removes every key-generation route the guard can see. A name built at run time is beyond
-  a static lint, so review remains the control.
+  This removes the key-generation routes the guard checks for, including destructured names. A
+  name built at run time or passed through other objects is beyond a static lint, so review
+  remains the control.
   - Tests may add the usual test built-ins.
 - **Third-party:** only `@noble/hashes/sha3.js` and `@noble/curves/secp256k1.js`.
 - **RN-NET code:** only `packages/canonical` and `packages/tx-intent`, through their public
@@ -90,8 +91,9 @@ The guard now reads `signer/**` with its own allowlist:
     and one-line require-style loaders. It is a raw-text check: a defense in depth, with review
     as the control.
   - No file outside `signer/` may import `@noble/*`.
-  - **Not detected:** an import specifier built at run time, and a re-export of `signer/` through
-    one of the two allowed files. Review covers both.
+  - **Not detected:** an import specifier built at run time, a require-style loader spread over
+    several lines, and a re-export of `signer/` through one of the two allowed files. Review
+    covers these.
   - The signer lockfile's top-level fields and root entry must match the manifest exactly.
 - **New packages:**
   - `packages/tx-intent`: built-ins `Buffer`, `createHash` and `node:util` `types`; packages

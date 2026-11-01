@@ -42,6 +42,32 @@ class Fail(Exception):
         self.code = code
 
 
+SAFE = 2**53 - 1
+
+
+def canon_values_ok(value) -> bool:
+    """rnnet.canonical-json.v1 value rules the JavaScript side enforces: safe integers only, no
+    floats, no lone surrogates. (-0 and 1.0 written in JSON text are a parser matter: intents
+    must be given as canonical JSON text, spec §2.)"""
+    if isinstance(value, bool) or value is None:
+        return True
+    if isinstance(value, int):
+        return -SAFE <= value <= SAFE
+    if isinstance(value, float):
+        return False
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    if isinstance(value, list):
+        return all(canon_values_ok(v) for v in value)
+    if isinstance(value, dict):
+        return all(canon_values_ok(k) and canon_values_ok(v) for k, v in value.items())
+    return False
+
+
 def canon(value) -> bytes:
     return ref.canonicalize(value).encode("utf-8")
 
@@ -607,9 +633,9 @@ def check_signed(intent, data: bytes):
 def verify(intent, approved_digest, signed) -> dict:
     record = {"format": "rnnet.signed-tx-verification.v1", "network": None, "intentDigest": None, "blobSha256": None, "transactionHash": None, "outcome": "FAIL", "code": None}
     try:
-        canon(intent)  # values outside rnnet.canonical-json.v1 make the intent invalid
-        valid = intent_ok(intent)
-    except ref.RefError:
+        # Values outside rnnet.canonical-json.v1 make the intent invalid.
+        valid = canon_values_ok(intent) and intent_ok(intent)
+    except (ref.RefError, UnicodeEncodeError):
         valid = False
     if not valid:
         return {**record, "code": "RNTX_INTENT_INVALID"}

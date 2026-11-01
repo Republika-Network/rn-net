@@ -52,7 +52,9 @@ An intent is a JSON object with exactly these members:
 
 - **Sepolia:** `nonce` is below 2^64 (EIP-2681).
 - **JSON values:** every value is within `rnnet.canonical-json.v1`: safe integers only, no `-0`
-  and no lone surrogates.
+  and no lone surrogates. An intent is exchanged as its canonical JSON text. Text that is not
+  canonical (for example `1.0`, `1e6` or `-0`) may be parsed differently by different hosts, and
+  verifiers may refuse it.
 
 Anything else is `RNTX_INTENT_INVALID`.
 
@@ -116,7 +118,9 @@ Each step that fails stops verification with its code. The steps run in this ord
    - `RNTX_DECODE`: truncated or malformed bytes, or RLP lists nested more than 4 deep;
    - `RNTX_TRAILING_BYTES`;
    - `RNTX_NONCANONICAL_ENCODING`: field order, RLP form, leading zeros, an XRPL field ID below
-     16 in an extended form, or XRPL bytes that are not exactly the canonical re-serialization;
+     16 in an extended form, or XRPL bytes that are not exactly the canonical re-serialization
+     (this includes an XRPL `TransactionType` other than `AccountSet`, which the codec cannot
+     re-serialize);
    - `RNTX_UNKNOWN_FIELD`: an XRPL field outside §4.1, `MemoFormat` included;
    - `RNTX_WRONG_CHAIN`: XRPL `NetworkID`;
    - `RNTX_WRONG_TX_TYPE`: an EVM type byte other than `0x02`;
