@@ -1,0 +1,120 @@
+{
+  "format": "rnnet.genesis-preflight.v1",
+  "id": "genesis-proof-01",
+  "status": "PREFLIGHT: not signed, not submitted, not anchored",
+  "synthetic": "The evidence is synthetic. The rehearsal observations are synthetic and exist on no network.",
+  "evidence": {
+    "file": "evidence.json",
+    "fileSha256": "sha256:4a94ce939193dce631b1c0059c46dbfcbd7249885fe2e4ca330c87730ba6532f",
+    "evidenceDigest": "sha256:1551cf374a3abcdbd849663cc0b85033afc5b9a7e045ca211b6e724595f412f8",
+    "fixtureKey": {
+      "keyId": "genesis-fixture-key-1",
+      "publicKey": "326e4ddd1fcc24127c887673d368ad45c53a52c1daf974acc594e2ee632d408d",
+      "derivation": "Ed25519 seed = SHA-256(\"rnnet:synthetic-test-key:v1:genesis-proof-01\"); public, test-only, not an identity"
+    },
+    "verification": {
+      "outcome": "PASS",
+      "reportSha256": "sha256:f70ad0e745dbcb1c81bc425d24dc613c36ea9fa46e7946d64f1e372bf925b37c",
+      "report": "{\"commitment\":{\"presentedDigest\":\"sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"result\":\"MATCH\",\"sourceRef\":\"synthetic:fixtures/genesis-proof-01/evidence.json\"},\"evidence\":{\"computedDigest\":\"sha256:1551cf374a3abcdbd849663cc0b85033afc5b9a7e045ca211b6e724595f412f8\",\"declaredDigest\":\"sha256:1551cf374a3abcdbd849663cc0b85033afc5b9a7e045ca211b6e724595f412f8\",\"evidenceId\":\"genesis-proof-01\"},\"findings\":[],\"format\":\"rnnet.verification-report.v1\",\"input\":{\"sha256\":\"sha256:4a94ce939193dce631b1c0059c46dbfcbd7249885fe2e4ca330c87730ba6532f\"},\"outcome\":\"PASS\",\"profile\":\"rnnet.synthetic-evidence.v1\",\"signatures\":[{\"keyId\":\"genesis-fixture-key-1\",\"publicKey\":\"326e4ddd1fcc24127c887673d368ad45c53a52c1daf974acc594e2ee632d408d\",\"result\":\"VALID\"}],\"statements\":[{\"basis\":\"Recomputed from the supplied body under rnnet.synthetic-evidence.v1.\",\"classification\":\"VERIFIED\",\"subject\":\"evidenceDigest\"},{\"basis\":\"Stated in the evidence and bound by its digest; not checked against anything else.\",\"classification\":\"CLAIMED\",\"subject\":\"body.issuer\"},{\"basis\":\"Stated in the evidence and bound by its digest; not checked against anything else.\",\"classification\":\"CLAIMED\",\"subject\":\"body.subject\"},{\"basis\":\"Stated in the evidence and bound by its digest; not checked against anything else.\",\"classification\":\"CLAIMED\",\"subject\":\"body.action\"},{\"basis\":\"Stated in the evidence and bound by its digest; not checked against anything else.\",\"classification\":\"CLAIMED\",\"subject\":\"body.outcome\"},{\"basis\":\"Stated in the evidence and bound by its digest; not checked against anything else.\",\"classification\":\"CLAIMED\",\"subject\":\"body.payload\"},{\"basis\":\"Nothing in the evidence can show that the described event happened.\",\"classification\":\"UNRESOLVED\",\"subject\":\"eventOccurrence\"},{\"basis\":\"The signature verifies under a public key carried by the evidence itself.\",\"classification\":\"CONSISTENT_UNDER_EMBEDDED_KEYS\",\"subject\":\"signatures[0]\"},{\"basis\":\"No trust source binds this public key to an identity.\",\"classification\":\"UNRESOLVED\",\"subject\":\"signerIdentity[0]\"},{\"basis\":\"Recomputed from the supplied envelope and equal to the presented commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"commitment\"},{\"basis\":\"Equal to the value the verifier established from the supplied evidence.\",\"classification\":\"VERIFIED\",\"subject\":\"commitment.sourceFormat\"},{\"basis\":\"Equal to the value the verifier established from the supplied evidence.\",\"classification\":\"VERIFIED\",\"subject\":\"commitment.sourceCanonicalization\"},{\"basis\":\"Equal to the value the verifier established from the supplied evidence.\",\"classification\":\"VERIFIED\",\"subject\":\"commitment.sourceEvidenceDigest\"},{\"basis\":\"Equal to the value the verifier established from the supplied evidence.\",\"classification\":\"VERIFIED\",\"subject\":\"commitment.sourceFileSha256\"},{\"basis\":\"An identifier only; it was not dereferenced.\",\"classification\":\"UNRESOLVED\",\"subject\":\"commitment.sourceRef\"}],\"taxonomy\":\"rnnet.verification-taxonomy.v1\"}"
+    }
+  },
+  "envelope": {
+    "file": "envelope.json",
+    "fileSha256": "sha256:38c9ffcb39056e8177ec64ef88a389f1853e00410d4ffd1a2b8801ddd5c8323f",
+    "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7"
+  },
+  "anchorPayload": {
+    "length": 42,
+    "hex": "524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7"
+  },
+  "xrpl": {
+    "network": "xrpl:testnet",
+    "transactionType": "AccountSet",
+    "memoType": "726E6E65742E616E63686F722D7061796C6F61642E7631",
+    "memoData": "524E4E4554414E430101A20C2311EC1B1084409446FD3E78A49004328EE0521237647BB9E909B6A06EE7",
+    "memosSerializedBytes": 73,
+    "feeDrops": "12",
+    "maxFeeDrops": "1000",
+    "lastLedgerOffset": 20,
+    "unsignedTemplate": {
+      "TransactionType": "AccountSet",
+      "Account": null,
+      "Fee": "12",
+      "Sequence": null,
+      "LastLedgerSequence": null,
+      "Memos": [
+        {
+          "Memo": {
+            "MemoType": "726E6E65742E616E63686F722D7061796C6F61642E7631",
+            "MemoData": "524E4E4554414E430101A20C2311EC1B1084409446FD3E78A49004328EE0521237647BB9E909B6A06EE7"
+          }
+        }
+      ]
+    },
+    "boundAtSigning": [
+      "Account",
+      "Sequence",
+      "LastLedgerSequence",
+      "SigningPubKey"
+    ]
+  },
+  "sepolia": {
+    "network": "evm:11155111",
+    "chainId": "0xaa36a7",
+    "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+    "gas": {
+      "rules": "Prague: EIP-2028 calldata cost with the EIP-7623 floor",
+      "zeroBytes": 0,
+      "nonzeroBytes": 42,
+      "tokens": 168,
+      "standard": 21672,
+      "floor": 22680,
+      "gasUsed": 22680,
+      "gasLimit": 30000
+    },
+    "maxFeePerGasCapWei": "20000000000",
+    "maxPriorityFeePerGasWei": "1000000000",
+    "maxCostAtCapWei": "600000000000000",
+    "unsignedTemplate": {
+      "type": "0x2",
+      "chainId": "0xaa36a7",
+      "nonce": null,
+      "from": null,
+      "to": null,
+      "value": "0x0",
+      "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+      "gas": "0x7530",
+      "maxFeePerGas": null,
+      "maxPriorityFeePerGas": "0x3b9aca00",
+      "accessList": []
+    },
+    "boundAtSigning": [
+      "from",
+      "to",
+      "nonce",
+      "maxFeePerGas"
+    ]
+  },
+  "rehearsal": {
+    "values": {
+      "xrplAccount": "rGenesisRehearsaSyntheticAccount",
+      "xrplSigningPubKey": "EDF3D0A40A4CD855AD6013D318DC04FD8311AA6E64DD8D05BC7644164FAA5B3828",
+      "xrplSequence": 1000001,
+      "xrplLedger": 1000020,
+      "xrplTransactionIndex": 0,
+      "evmFrom": "0x0ff2c5b3120e7086397c33aa67e628e475ed3811",
+      "evmBlock": 12000000,
+      "evmTransactionIndex": 0,
+      "evmBaseFeePerGas": "0x11"
+    },
+    "xrplObservation": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"xrpl:testnet\",\"tx\":{\"hash\":\"A51FF23B4E19197E07C6C76B4DB78792B06CA19889600343E895F90B94E36AC9\",\"ledger_index\":1000020,\"ledger_hash\":\"0213560B9365AC215D49C8F62ADC454619EB2D30E8242E0998CFF1B06C7DC802\",\"validated\":true,\"ctid\":\"C00F425400000001\",\"meta\":{\"TransactionIndex\":0,\"TransactionResult\":\"tesSUCCESS\"},\"tx_json\":{\"TransactionType\":\"AccountSet\",\"Account\":\"rGenesisRehearsaSyntheticAccount\",\"Fee\":\"12\",\"Sequence\":1000001,\"LastLedgerSequence\":1000038,\"Memos\":[{\"Memo\":{\"MemoType\":\"726E6E65742E616E63686F722D7061796C6F61642E7631\",\"MemoData\":\"524E4E4554414E430101A20C2311EC1B1084409446FD3E78A49004328EE0521237647BB9E909B6A06EE7\"}}],\"SigningPubKey\":\"EDF3D0A40A4CD855AD6013D318DC04FD8311AA6E64DD8D05BC7644164FAA5B3828\",\"hash\":\"A51FF23B4E19197E07C6C76B4DB78792B06CA19889600343E895F90B94E36AC9\",\"ledger_index\":1000020}}}",
+    "evmObservation": "{\"format\":\"rnnet.anchor-observation.v1\",\"network\":\"evm:11155111\",\"transaction\":{\"hash\":\"0x1e92cd238b0a8d654870675b5fbe8a9b50b460019f36bd9e9aa6cc222980e91f\",\"type\":\"0x2\",\"chainId\":\"0xaa36a7\",\"nonce\":\"0x0\",\"from\":\"0x0ff2c5b3120e7086397c33aa67e628e475ed3811\",\"to\":\"0x0ff2c5b3120e7086397c33aa67e628e475ed3811\",\"value\":\"0x0\",\"input\":\"0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"gas\":\"0x7530\",\"maxFeePerGas\":\"0x3b9aca22\",\"maxPriorityFeePerGas\":\"0x3b9aca00\",\"accessList\":[],\"blockHash\":\"0x5c2a2294d7c418b08e862b2ad8e336ffb10dbc3293b3bab1ee59b3585b2fed38\",\"blockNumber\":\"0xb71b00\",\"transactionIndex\":\"0x0\"},\"receipt\":{\"transactionHash\":\"0x1e92cd238b0a8d654870675b5fbe8a9b50b460019f36bd9e9aa6cc222980e91f\",\"blockHash\":\"0x5c2a2294d7c418b08e862b2ad8e336ffb10dbc3293b3bab1ee59b3585b2fed38\",\"blockNumber\":\"0xb71b00\",\"transactionIndex\":\"0x0\",\"from\":\"0x0ff2c5b3120e7086397c33aa67e628e475ed3811\",\"to\":\"0x0ff2c5b3120e7086397c33aa67e628e475ed3811\",\"contractAddress\":null,\"status\":\"0x1\",\"gasUsed\":\"0x5898\",\"logs\":[]}}",
+    "expectedOutcome": "PASS",
+    "expectedConclusions": [
+      "PAYLOAD_MATCH",
+      "RECORDS_CONSISTENT",
+      "CHAIN_INCLUSION_UNVERIFIED"
+    ],
+    "expectedReport": "{\"conclusions\":[\"PAYLOAD_MATCH\",\"RECORDS_CONSISTENT\",\"CHAIN_INCLUSION_UNVERIFIED\"],\"expectedCommitment\":\"sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"findings\":[],\"format\":\"rnnet.anchor-verification-report.v1\",\"outcome\":\"PASS\",\"records\":{\"evm\":{\"assurance\":\"CONSISTENT_WITH_SUPPLIED_DATA\",\"expectedCommitment\":\"sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"findings\":[],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:e934c173f1abe64a0da60c63774d3e89b5836a579e2f6c65dee5cac5ae59b542\"},\"network\":\"evm:11155111\",\"outcome\":\"PASS\",\"payload\":{\"commitment\":\"sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"hex\":\"524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"matchesExpected\":true},\"statements\":[{\"basis\":\"Decoded from the supplied transaction data and equal to the payload of the expected commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"anchorPayload\"},{\"basis\":\"Named by the supplier of the record and consistent with the transaction's own network fields; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"network\"},{\"basis\":\"Stated by the supplied transaction data; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"transactionStatus\"},{\"basis\":\"The supplied data names the ledger or block that includes the transaction; no inclusion proof was checked.\",\"classification\":\"CLAIMED\",\"subject\":\"inclusion\"},{\"basis\":\"The supplied data shows inclusion in a block, not finality.\",\"classification\":\"UNRESOLVED\",\"subject\":\"finality\"},{\"basis\":\"Not recomputed from the signed transaction, so not bound to the data that was checked.\",\"classification\":\"UNRESOLVED\",\"subject\":\"transactionHash\"},{\"basis\":\"The sending account as stated by the supplied data.\",\"classification\":\"CLAIMED\",\"subject\":\"submitter\"}],\"transaction\":{\"blockHash\":\"0x5c2a2294d7c418b08e862b2ad8e336ffb10dbc3293b3bab1ee59b3585b2fed38\",\"blockNumber\":\"0xb71b00\",\"from\":\"0x0ff2c5b3120e7086397c33aa67e628e475ed3811\",\"hash\":\"0x1e92cd238b0a8d654870675b5fbe8a9b50b460019f36bd9e9aa6cc222980e91f\",\"to\":\"0x0ff2c5b3120e7086397c33aa67e628e475ed3811\",\"transactionIndex\":\"0x0\"}},\"xrpl\":{\"assurance\":\"CONSISTENT_WITH_SUPPLIED_DATA\",\"expectedCommitment\":\"sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"findings\":[],\"format\":\"rnnet.anchor-record.v1\",\"input\":{\"sha256\":\"sha256:8ba435476424e0ea5e316d546a4ce8d518f34970ceef99118a1679b32bf12c9a\"},\"network\":\"xrpl:testnet\",\"outcome\":\"PASS\",\"payload\":{\"commitment\":\"sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"hex\":\"524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"matchesExpected\":true},\"statements\":[{\"basis\":\"Decoded from the supplied transaction data and equal to the payload of the expected commitment.\",\"classification\":\"VERIFIED\",\"subject\":\"anchorPayload\"},{\"basis\":\"Named by the supplier of the record and consistent with the transaction's own network fields; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"network\"},{\"basis\":\"Stated by the supplied transaction data; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"transactionStatus\"},{\"basis\":\"The supplied data names the ledger or block that includes the transaction; no inclusion proof was checked.\",\"classification\":\"CLAIMED\",\"subject\":\"inclusion\"},{\"basis\":\"The supplied data states the transaction is in a validated ledger; not authenticated.\",\"classification\":\"CLAIMED\",\"subject\":\"finality\"},{\"basis\":\"Not recomputed from the signed transaction, so not bound to the data that was checked.\",\"classification\":\"UNRESOLVED\",\"subject\":\"transactionHash\"},{\"basis\":\"The sending account as stated by the supplied data.\",\"classification\":\"CLAIMED\",\"subject\":\"submitter\"}],\"transaction\":{\"account\":\"rGenesisRehearsaSyntheticAccount\",\"hash\":\"A51FF23B4E19197E07C6C76B4DB78792B06CA19889600343E895F90B94E36AC9\",\"ledgerHash\":\"0213560B9365AC215D49C8F62ADC454619EB2D30E8242E0998CFF1B06C7DC802\",\"ledgerIndex\":1000020}}},\"statements\":[{\"basis\":\"No authenticated proof of inclusion was verified on either network.\",\"classification\":\"UNRESOLVED\",\"subject\":\"chainInclusion\"},{\"basis\":\"An anchor binds a commitment; it says nothing about whether the evidence is true or the event happened.\",\"classification\":\"UNRESOLVED\",\"subject\":\"anchoredEvidence\"}]}"
+  }
+}

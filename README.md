@@ -7,7 +7,7 @@ that evidence on public test networks.
 
 ## Status
 
-**Early implementation (RN-NET-01 to RN-NET-03B1).** This repository contains:
+**Early implementation (RN-NET-01 to RN-NET-03B1; RN-NET-03B2-A preflight).** This repository contains:
 
 - the canonical JSON profile and the evidence commitment format;
 - an independent, offline evidence verifier for one original, synthetic evidence
@@ -19,7 +19,12 @@ that evidence on public test networks.
   providers (`packages/chain-readonly/`, `tools/verify-live-anchor.mjs`), with provider comparison,
   captures and offline replay. It never signs or submits anything;
 - their specifications, conformance vectors and second implementations;
-- repository security guards.
+- repository security guards;
+- the offline preflight of Genesis Proof 01, the first planned dual-chain anchor (RN-NET-03B2-A):
+  a synthetic evidence fixture with immutable golden values, and checks of the intended
+  *unsigned* XRPL Testnet and Sepolia transactions
+  ([`docs/genesis/`](docs/genesis/genesis-proof-01-preflight.md), [`fixtures/genesis-proof-01/`](fixtures/genesis-proof-01/)).
+  Nothing has been signed or submitted, and no key or account exists.
 
 It submits no transactions and holds no keys. Only `tools/verify-live-anchor.mjs`, when run in
 live mode, contacts a network, and only with read-only methods. What providers report stays a
@@ -144,7 +149,7 @@ defense in depth by making common Node network, worker and subprocess APIs throw
 it is not a sandbox. Likewise the dependency guard is a source lint, not a sandbox. Without `unshare`, the
 tests can be run directly with
 `node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs"`
-and `python3 -I -B tools/reference/rnnet_reference.py` (and `rnnet_evidence_reference.py`, `rnnet_anchor_reference.py`), but then nothing
+and `python3 -I -B tools/reference/rnnet_reference.py` (and `rnnet_evidence_reference.py`, `rnnet_anchor_reference.py`, `rnnet_genesis_reference.py`), but then nothing
 enforces that they stay offline.
 
 To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
