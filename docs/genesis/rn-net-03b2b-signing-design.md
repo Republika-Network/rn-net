@@ -1,8 +1,9 @@
 # RN-NET-03B2-B: signing architecture design proposal
 
-- Status: **Proposal** (RN-NET-03B2 governance closure). No decision is taken here. Each
-  decision goes into its own ADR (§12), and nothing below is implemented or installed.
-- Builds on: [ADR-RN-009 to 012](../adr/README.md) (accepted in PR #12, once merged),
+- Status: **Proposal** (RN-NET-03B2 governance closure). No decision is taken here except the
+  founder's dependency approval recorded in §1. Each decision goes into its own ADR (§12), and
+  nothing below is implemented or installed by this document.
+- Builds on: [ADR-RN-009 to 012](../adr/README.md) (Accepted; PR #12, merged as `a800cbf`),
   [ADR-RN-013](../adr/ADR-RN-013-read-only-rpc-architecture.md),
   [ADR-RN-016](../adr/ADR-RN-016-genesis-anchoring-transactions.md),
   [preflight](genesis-proof-01-preflight.md), [authorization](genesis-proof-01-authorization.md)
@@ -25,19 +26,33 @@ is for development only.
 
 | Package | Version | License | Runtime dependencies | Unpacked size | Assessment |
 |---|---|---|---|---|---|
-| **`@noble/hashes`** | 2.3.0 (2.4.0 latest) | MIT | **none** | 0.7 MB | **Recommended.** Provides `keccak_256`. Cure53 audit at 1.0.0 (Jan 2022), with SHA-3/Keccak in scope |
-| **`@noble/curves`** | 2.3.0 (2.4.0 latest) | MIT | `@noble/hashes` (exact pin) | 1.6 MB | **Recommended.** Its README lists audits: Trail of Bits at **2.3.0** (Aug 2026, full scope); Trail of Bits at 0.7.3 (2023, `secp256k1` and `weierstrass` in scope); Kudelski (2023); Cure53 (2024) |
+| **`@noble/hashes`** | **2.4.0** (exact) | MIT | **none** | 0.7 MB | **Approved.** Provides `keccak_256`. Cure53 audit at 1.0.0 (Jan 2022), with SHA-3/Keccak in scope; report published in the project repository |
+| **`@noble/curves`** | **2.4.0** (exact) | MIT | `@noble/hashes` (exact pin) | 1.6 MB | **Approved.** Its README lists audits: Trail of Bits at 2.3.0 (Aug 2026, full scope; **report not published**, see below); Trail of Bits at 0.7.3 (2023, `secp256k1` and `weierstrass` in scope); Kudelski (2023); Cure53 (2024) |
 | `micro-eth-signer` | 0.20.1 | MIT | `micro-packed`, `@noble/curves`, `@noble/hashes`, `@noble/ciphers` | 3.1 MB | Not chosen. Pre-1.0, and it pulls in two more packages for functions we don't need |
 | `@ethereumjs/tx` | 10.1.3 | MPL-2.0 | `@ethereumjs/{rlp,util,common}` and noble, all as `^` ranges | 1.1 MB | Not chosen. Its dependencies are ranges, not pins; it is a large framework; and its license differs |
 | `ethers` | 6.17.0 | MIT | 7, including `ws`, `aes-js` (beta), an old noble 1.2.0 and `@types/node` | 13 MB | Not chosen. It includes network providers and wallet code, and its graph is large |
 | `viem` | 2.57.14 | MIT | 8, including `ox`, `ws`, `abitype` and BIP-32/39 | 29 MB | Not chosen. Its graph is large, it includes networking, and the latest version was published today |
 | `ox` | 1.8.12 | MIT | 10, including `zod` and post-quantum | 18 MB | Not chosen, for the same reasons |
 
-### Recommendation
+### Decision: founder-approved versions
 
-Use exactly **`@noble/curves@2.3.0` and `@noble/hashes@2.3.0`**: two packages from one
-maintainer. Both are MIT-licensed. The project reports PGP-signed commits and npm Trusted
-Publishing with provenance. RN-NET would use only the following:
+**The founder approved exactly `@noble/hashes@2.4.0` and `@noble/curves@2.4.0`** on 2026-11-01,
+for RN-NET-03B2-B1 only. That milestone is the offline, test-only signing toolchain within gate
+A. Both versions are pinned exactly, with no `^` or `~` ranges. ADR-RN-017 records the
+decision.
+
+**What the approval does not cover.** It does not authorize:
+- operational keys or funding;
+- signing a live transaction;
+- broadcasting;
+- any Mainnet access.
+
+**Testnet only, not production custody.** These libraries are approved only for testnet keys
+that are single-use and hold no value. Nothing in RN-NET makes them suitable for custody of
+value: JavaScript gives no constant-time or memory-erasure guarantees (below). Any production
+or Mainnet use needs a new ADR and a new review.
+
+RN-NET uses only these functions:
 
 - **Keccak-256:** `keccak_256` from `@noble/hashes/sha3.js`.
 - **Signing:** `secp256k1.sign(digest, key, { prehash: false, format: 'recovered' })`. This
@@ -45,19 +60,43 @@ Publishing with provenance. RN-NET would use only the following:
 - **Recovery:** `secp256k1.Signature.fromBytes(sig, 'recovered')` and its recovery method. These
   serve **only** as the signer's self-check; independent checks are in §9.
 
-**Why 2.3.0 and not 2.4.0.** 2.3.0 is the version the README names for the August 2026 Trail of
-Bits audit. Version 2.4.0 came three weeks later. Moving to it needs a reviewed `npm diff`
-between the two versions.
+**Why 2.4.0 rather than 2.3.0:**
+- **Both contain the Trail of Bits fixes.** The 2.3.0 release notes list them, including
+  binding recovered ECDSA signatures to their recovery id, so 2.4.0 has them too.
+- **2.4.0 only adds hardening.** A file-by-file comparison of the published tarballs shows:
+  - `sha3.js` (Keccak): unchanged;
+  - `secp256k1.js`: 5 changed lines, Schnorr only;
+  - `abstract/weierstrass.js`: 72 changed lines of hardening. ECDSA and ECDH reject the point
+    at infinity as a public key, DER signature size is bounded, and inputs are snapshotted.
+- **It is not new.** 2.4.0 was published on 2026-08-27, more than two months before approval.
 
-**Still to verify before ADR-RN-017 is accepted:**
-- the audit reports themselves; so far only the README's claims have been read;
-- npm provenance for both tarballs;
-- a recorded diff of the 2.3.0 tarball against its tagged source.
+**Audit limitation.** The README says Trail of Bits audited version 2.3.0 in August 2026, but
+**the report has not been published**. On 2026-11-01 the project's `audit/` folder held only the
+2023 Trail of Bits, 2023 Kudelski and 2024 Cure53 reports. The README links only to the Trail of
+Bits website, not to a report. RN-NET therefore treats the 2026 audit as **an unverified claim** and does not rely on
+it. The supporting evidence that was checked:
+- the earlier published audits, whose scope included `secp256k1` and `weierstrass`;
+- the release notes;
+- the reviewed 2.3.0 → 2.4.0 diff;
+- RN-NET's own known-answer tests (§9).
+
+**Checked on 2026-11-01** (scratch copies of the tarballs, outside the repository):
+- **Integrity:** each tarball's SHA-512 integrity matches the registry.
+- **Install scripts:** none.
+- **Provenance:** npm SLSA provenance names `refs/tags/2.4.0` and `.github/workflows/release.yml`
+  in `paulmillr/noble-curves` and `paulmillr/noble-hashes`.
+- **Advisories:** the GitHub advisory database lists none for either package.
+- **Capabilities:** no `node:` imports, no network APIs, no `process.env`.
+- **Known-answer tests:** run offline under `unshare -rn` and all pass:
+  - Keccak-256 of `""` and `"abc"`;
+  - the EIP-155 example's signing hash, `r`, `s`, recovery id and sender;
+  - a pure-Python cross-check that recovers the same sender.
 
 ### Security implications
 
-- **Supply chain.** Two packages are added to `package-lock.json`, with exact versions and
-  integrity hashes, and installed with `npm ci --ignore-scripts`. The `dependency-boundaries`
+- **Supply chain.** Two packages are pinned in a separate `signer/package.json` and
+  `signer/package-lock.json`, with exact versions and integrity hashes, and installed with
+  `npm ci --ignore-scripts`. The root lockfile still contains only `acorn`. The `dependency-boundaries`
   guard is extended so that only the signer workspace (§3) may import them, and nothing under
   `packages/` may.
 - **Constant time.** The noble README states that JavaScript cannot be relied on to run in
@@ -381,7 +420,7 @@ This proposal changes none of them; it only says which tooling each gate needs.
 
 | ADR | Subject |
 |---|---|
-| ADR-RN-017 | Signing dependencies (`@noble/curves` and `@noble/hashes` 2.3.0), the `signer/` workspace and its guard rules, the testnet key file and storage |
+| ADR-RN-017 | Signing dependencies (`@noble/curves` and `@noble/hashes` 2.4.0, exact), the `signer/` workspace and its guard rules, the testnet key file and storage |
 | ADR-RN-018 | Transaction-preparation reads: an ADR-RN-013 amendment for the §6 methods |
 | ADR-RN-019 | Write path: the keyless broadcaster and its method allowlist |
 
@@ -389,9 +428,16 @@ This proposal changes none of them; it only says which tooling each gate needs.
 fixture keys only, offline, nothing live. It includes:
 
 - ADR-RN-017;
-- installing the two pinned packages, after a separate founder approval;
+- installing the two pinned packages (approved: `@noble/hashes@2.4.0`, `@noble/curves@2.4.0`);
 - `packages/tx-intent`;
-- `signer/` (`keygen` and `sign`), exercised only with label-derived fixture keys;
+- `signer/` signing and verification, exercised only with label-derived fixture keys;
+- the key-file format, tested in memory only.
+
+  B1 has **no `keygen`**, no file-based key loader and no interactive signing CLI. Those
+  belong to the milestone before gate B, and each needs its own approval.
+
+B1 also includes:
+
 - `rnnet_tx_reference.py`;
 - the guard extensions;
 - the §9 negative tests;
