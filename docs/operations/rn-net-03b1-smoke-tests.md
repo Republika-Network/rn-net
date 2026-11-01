@@ -22,9 +22,16 @@
 
 **Follow-up.** PR #9 (RN-NET-03B1-RPC-01, `2382ddf`) replaced dRPC with Automata 1RPC.
 
-**Evidence status.** The SMOKE-01 raw evidence and its SHA-256 digests were **not available** in
-the workspace used for RN-NET-03B2-A, so they could not be re-verified here. The results above are
-the founder-recorded outcomes. The dRPC error text is quoted from PR #9.
+**Evidence status: not independently re-verified.**
+
+- **Not recovered.** The SMOKE-01 raw RPC captures **could not be recovered**: a search of the
+  RN-NET workspace and its scratch areas during RN-NET-03B2-A found none.
+- **No digests.** No SHA-256 digests of them are recorded anywhere in this repository.
+- **Not re-verified.** SMOKE-01 has therefore **not been independently re-verified**.
+- **Source of the results.** The table above holds the founder-recorded outcomes. The dRPC error
+  text is quoted from PR #9.
+- **Nothing filled in.** No evidence or digest has been reconstructed or substituted for the
+  missing captures.
 
 ## SMOKE-02
 

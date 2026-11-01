@@ -1,6 +1,6 @@
 # ADR-RN-016: Genesis Proof 01 anchoring transactions and execution controls
 
-- Status: Proposed (RN-NET-03B2-A)
+- Status: Accepted (founder approval of PR #10 as implemented, RN-NET-03B2-A acceptance)
 - Date: 2026-11-01
 - Builds on: [ADR-RN-009](ADR-RN-009-anchor-payload-encoding.md), [ADR-RN-010](ADR-RN-010-xrpl-testnet-memo-anchoring.md), [ADR-RN-011](ADR-RN-011-sepolia-transaction-data-anchoring.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Design: [Genesis Proof 01 preflight](../genesis/genesis-proof-01-preflight.md), [authorization](../genesis/genesis-proof-01-authorization.md)
@@ -77,6 +77,15 @@ are.
 
   Each needs review, and the write path needs its own ADR. `packages/chain-readonly` stays
   read-only.
+- **Open decision for RN-NET-03B2-B: the Sepolia signer dependency.** Node.js built-ins have no
+  Keccak-256, and `crypto.sign` always hashes its input, so they cannot produce a recoverable
+  secp256k1 signature over a Keccak-256 digest. RN-NET-03B2-B must choose, in its own ADR:
+  - an audited third-party library, pinned like the existing development dependency;
+  - or an original implementation, checked against published test vectors.
+
+  Accepting this ADR does not make that choice. The XRPL signer needs no new dependency.
+- **What this acceptance covers.** It accepts the construction and controls above. It does not
+  accept ADR-RN-009 to ADR-RN-012, which remain Proposed, and it authorizes no gate beyond A.
 - **Gas rules can change.** A later Ethereum fork may reprice calldata. Gas use must be confirmed
   with `eth_estimateGas` before signing, and the 30,000 limit re-checked.
 - **What the anchor shows.** As ADR-RN-012 allows, the anchors show the same commitment payload
