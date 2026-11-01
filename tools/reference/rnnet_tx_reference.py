@@ -173,7 +173,10 @@ def read_length(data, at, count):
     return n
 
 
-def rlp_at(data, at):
+MAX_RLP_DEPTH = 4
+
+
+def rlp_at(data, at, depth=0):
     if at >= len(data):
         raise Fail("RNTX_DECODE")
     b = data[at]
@@ -200,9 +203,11 @@ def rlp_at(data, at):
         raise Fail("RNTX_DECODE")
     if not is_list:
         return data[start:end], end
+    if depth >= MAX_RLP_DEPTH:
+        raise Fail("RNTX_DECODE")
     items, cursor = [], start
     while cursor < end:
-        item, nxt = rlp_at(data, cursor)
+        item, nxt = rlp_at(data, cursor, depth + 1)
         if nxt > end:
             raise Fail("RNTX_DECODE")
         items.append(item)
@@ -391,8 +396,12 @@ class Reader:
         t, n = first >> 4, first & 0x0F
         if t == 0:
             t = self.take(1)[0]
+            if t < 16:
+                raise Fail("RNTX_NONCANONICAL_ENCODING")
         if n == 0:
             n = self.take(1)[0]
+            if n < 16:
+                raise Fail("RNTX_NONCANONICAL_ENCODING")
         name = BY_CODE.get((t, n))
         if name == "NetworkID":
             raise Fail("RNTX_WRONG_CHAIN")
@@ -413,6 +422,18 @@ class Reader:
 
 
 def decode_xrpl(data: bytes) -> dict:
+    tx = decode_xrpl_fields(data)
+    # The bytes must be exactly the canonical serialization of what they decode to.
+    try:
+        canonical = encode_xrpl(tx)
+    except (ValueError, OverflowError, KeyError, TypeError):
+        raise Fail("RNTX_NONCANONICAL_ENCODING")
+    if canonical != data:
+        raise Fail("RNTX_NONCANONICAL_ENCODING")
+    return tx
+
+
+def decode_xrpl_fields(data: bytes) -> dict:
     r = Reader(data)
     tx, last = {}, -1
     while not r.done():
@@ -532,7 +553,7 @@ def intent_ok(intent) -> bool:
     if intent["network"] == "xrpl:testnet":
         return xrpl_tx_ok(tx, c) and "SigningPubKey" in tx and address_from_public_key(bytes.fromhex(tx["SigningPubKey"])) == tx["Account"]
     if intent["network"] == "evm:11155111":
-        return sepolia_tx_ok(tx, c)
+        return sepolia_tx_ok(tx, c) and int(tx["nonce"], 16) < 2**64  # EIP-2681
     return False
 
 
@@ -585,7 +606,12 @@ def check_signed(intent, data: bytes):
 
 def verify(intent, approved_digest, signed) -> dict:
     record = {"format": "rnnet.signed-tx-verification.v1", "network": None, "intentDigest": None, "blobSha256": None, "transactionHash": None, "outcome": "FAIL", "code": None}
-    if not intent_ok(intent):
+    try:
+        canon(intent)  # values outside rnnet.canonical-json.v1 make the intent invalid
+        valid = intent_ok(intent)
+    except ref.RefError:
+        valid = False
+    if not valid:
         return {**record, "code": "RNTX_INTENT_INVALID"}
     if not isinstance(approved_digest, str) or DIGEST.fullmatch(approved_digest) is None or intent_digest(intent) != approved_digest:
         return {**record, "code": "RNTX_INTENT_DIGEST_MISMATCH"}

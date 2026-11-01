@@ -50,6 +50,10 @@ An intent is a JSON object with exactly these members:
 - **Sepolia:** `transaction.from` is the sender. It is not part of the signed bytes; the
   verifier recovers it from the signature.
 
+- **Sepolia:** `nonce` is below 2^64 (EIP-2681).
+- **JSON values:** every value is within `rnnet.canonical-json.v1`: safe integers only, no `-0`
+  and no lone surrogates.
+
 Anything else is `RNTX_INTENT_INVALID`.
 
 ## 3. Digest
@@ -109,9 +113,10 @@ Each step that fails stops verification with its code. The steps run in this ord
 2. **Bytes.** They must be written as §4 requires, else `RNTX_DECODE`. On success,
    `blobSha256` and `transactionHash` are computed from them.
 3. **Decoding.** These failures stop verification:
-   - `RNTX_DECODE`: truncated or malformed bytes;
+   - `RNTX_DECODE`: truncated or malformed bytes, or RLP lists nested more than 4 deep;
    - `RNTX_TRAILING_BYTES`;
-   - `RNTX_NONCANONICAL_ENCODING`: field order, RLP form, leading zeros;
+   - `RNTX_NONCANONICAL_ENCODING`: field order, RLP form, leading zeros, an XRPL field ID below
+     16 in an extended form, or XRPL bytes that are not exactly the canonical re-serialization;
    - `RNTX_UNKNOWN_FIELD`: an XRPL field outside §4.1, `MemoFormat` included;
    - `RNTX_WRONG_CHAIN`: XRPL `NetworkID`;
    - `RNTX_WRONG_TX_TYPE`: an EVM type byte other than `0x02`;
@@ -146,10 +151,14 @@ after `checkHandoff` succeeds. It holds no key and never imports `signer/`.
 - **two identical** verification records with outcome PASS, from the JavaScript and the Python
   verifier.
 
-A record alone is not trusted. The hand-off also:
+The records are not trusted for the bytes. The hand-off also:
 - recomputes the blob hash (`RNTX_HANDOFF_BLOB_MISMATCH`);
 - re-checks the intent against the digest;
-- decodes the blob and compares every field with the intent (the §5 codes).
+- decodes the blob and compares every field with the intent (the §5 codes);
+- recomputes the XRPL transaction hash.
+
+It takes the signature checks and the Sepolia hash from the records. **A broadcaster must
+re-verify the signature itself before submitting.**
 
 The other hand-off failures are `RNTX_HANDOFF_INVALID` and `RNTX_HANDOFF_NOT_PASS`. B1 defines
 this interface and has no transport and no RPC write method.

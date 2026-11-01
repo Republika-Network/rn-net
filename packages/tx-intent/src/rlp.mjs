@@ -52,7 +52,10 @@ function readLength(bytes, at, count) {
   return n;
 }
 
-function decodeAt(bytes, at) {
+/** Deepest list nesting accepted; a type-2 transaction needs 3 (access list entries). */
+export const MAX_RLP_DEPTH = 4;
+
+function decodeAt(bytes, at, depth = 0) {
   if (at >= bytes.length) throw new TxError(TxErrorCode.DECODE, 'truncated');
   const b = bytes[at];
   let start;
@@ -80,10 +83,11 @@ function decodeAt(bytes, at) {
   const end = start + length;
   if (end > bytes.length) throw new TxError(TxErrorCode.DECODE, 'truncated');
   if (!list) return { item: bytes.subarray(start, end), next: end };
+  if (depth >= MAX_RLP_DEPTH) throw new TxError(TxErrorCode.DECODE, 'lists nested too deeply');
   const items = [];
   let cursor = start;
   while (cursor < end) {
-    const { item, next } = decodeAt(bytes, cursor);
+    const { item, next } = decodeAt(bytes, cursor, depth + 1);
     if (next > end) throw new TxError(TxErrorCode.DECODE, 'list item overruns its list');
     items.push(item);
     cursor = next;

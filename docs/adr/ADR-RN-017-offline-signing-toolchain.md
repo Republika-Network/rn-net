@@ -5,7 +5,7 @@
 - Amends: [ADR-RN-005](ADR-RN-005-guard-parser-dependency.md). Before this ADR, `acorn` was the only third-party package, and the guard read only `packages/`.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Specification: [rnnet.unsigned-tx-intent.v1](../../spec/rnnet.unsigned-tx-intent.v1.md)
-- Design: [RN-NET-03B2-B signing design](../genesis/rn-net-03b2b-signing-design.md) (PR #13)
+- Design: [RN-NET-03B2-B signing design](../genesis/rn-net-03b2b-signing-design.md). This link resolves once PR #13 merges.
 
 ## Context
 
@@ -71,7 +71,12 @@ The guard now reads `signer/**` with its own allowlist:
 - **Built-ins:** `node:buffer` (`Buffer`) and `node:crypto` (`createHash`, `createPrivateKey`,
   `createPublicKey`, `sign`, `verify`, `scryptSync`, `createCipheriv`, `createDecipheriv`).
   - No `node:fs`, `node:readline`, network module or child process.
-  - No `randomBytes` or `generateKeyPairSync`, so there is **no key generation**.
+  - No `randomBytes` or `generateKeyPairSync`.
+  - The guard also reports the global WebCrypto `crypto` and noble's key-generation helpers
+    (`randomSecretKey`, `keygen`), in `signer/` and in `packages/*/src`.
+
+  This removes every key-generation route the guard can see. A name built at run time is beyond
+  a static lint, so review remains the control.
   - Tests may add the usual test built-ins.
 - **Third-party:** only `@noble/hashes/sha3.js` and `@noble/curves/secp256k1.js`.
 - **RN-NET code:** only `packages/canonical` and `packages/tx-intent`, through their public
@@ -80,9 +85,14 @@ The guard now reads `signer/**` with its own allowlist:
   to `signer/` too.
 - **Who may import `signer/`:**
   - nothing under `packages/` (already refused as an import outside `packages/`);
-  - in `tools/`, only `tools/signing/build-b1-fixtures.mjs` and `tools/signing.test.mjs`. This
-    is a raw-text check: a defense in depth, with review as the control.
-  - No `tools/` file may import `@noble/*`.
+  - outside `packages/` and `signer/`, only `tools/signing/build-b1-fixtures.mjs` and
+    `tools/signing.test.mjs`. The check reads the import specifiers, template-literal `import()`
+    and one-line require-style loaders. It is a raw-text check: a defense in depth, with review
+    as the control.
+  - No file outside `signer/` may import `@noble/*`.
+  - **Not detected:** an import specifier built at run time, and a re-export of `signer/` through
+    one of the two allowed files. Review covers both.
+  - The signer lockfile's top-level fields and root entry must match the manifest exactly.
 - **New packages:**
   - `packages/tx-intent`: built-ins `Buffer`, `createHash` and `node:util` `types`; packages
     `canonical` and `anchor`.
@@ -106,6 +116,10 @@ The guard now reads `signer/**` with its own allowlist:
 - **Sign log.** An in-memory log allows one signature per key per signer: the same intent again
   is `RNTX_ALREADY_SIGNED`, and any other intent for that key is `RNTX_SEQUENCE_UNRESOLVED`.
   The persistent log and same-nonce replacement belong to the milestone before gate D.
+- **One encoding per transaction.** The XRPL decoder refuses field IDs below 16 written in the
+  extended forms. Both XRPL decoders require the received bytes to equal the canonical
+  re-serialization, so a PASS concerns the received bytes. RLP is canonical by construction and
+  limited to 4 levels of nesting.
 - **Verification.** Signed bytes are verified against the approved intent by
   `signer/src/verify.mjs` and, independently, by `tools/reference/rnnet_tx_reference.py`.
   - The Python reference uses no cryptography library: Keccak from FIPS 202, integer

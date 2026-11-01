@@ -49,6 +49,8 @@ export function makeIntent(intent) {
     if (!Object.hasOwn(tx, 'SigningPubKey')) problems.push('SigningPubKey is required in an intent');
     else if (addressFromPublicKey(Buffer.from(tx.SigningPubKey, 'hex')) !== tx.Account) problems.push('Account is not the address of SigningPubKey');
   }
+  // EIP-2681: a nonce is below 2^64.
+  if (intent.network === IntentNetwork.SEPOLIA && problems.length === 0 && BigInt(tx.nonce) >= 2n ** 64n) problems.push('nonce must be below 2^64 (EIP-2681)');
   ensure(problems.length === 0, TxErrorCode.INTENT_INVALID, problems.join('; '));
   return deepFreeze(JSON.parse(Buffer.from(canonicalBytes(intent)).toString('utf8')));
 }

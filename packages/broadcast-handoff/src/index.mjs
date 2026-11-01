@@ -4,11 +4,12 @@
 //
 // A verification record is a file anyone could write, so it is not trusted alone. The hand-off
 // recomputes the blob hash, re-checks the intent against the approved digest, decodes the blob
-// with packages/tx-intent and compares every field with the intent. Only the signature check is
-// left to the two verifiers (packages/ has no Keccak-256).
+// with packages/tx-intent, compares every field with the intent and recomputes the XRPL
+// transaction hash. The signature checks and the Sepolia hash are left to the two verifiers
+// (packages/ has no Keccak-256), so the B3 broadcaster must re-verify the signature itself.
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { approvedIntent, compareSepolia, compareXrpl, decodeEip1559Signed, decodeXrplTx, IntentNetwork, TxError, TxErrorCode } from '../../tx-intent/src/index.mjs';
+import { approvedIntent, compareSepolia, compareXrpl, decodeEip1559Signed, decodeXrplTx, IntentNetwork, TxError, TxErrorCode, xrplTxHash } from '../../tx-intent/src/index.mjs';
 
 export const HANDOFF_FORMAT = 'rnnet.signed-tx-verification.v1';
 const RECORD_FIELDS = ['blobSha256', 'code', 'format', 'intentDigest', 'network', 'outcome', 'transactionHash'];
@@ -43,5 +44,10 @@ export function checkHandoff({ intent, approvedDigest, signedTransaction, verifi
   if (blobSha256 !== first.blobSha256) throw new TxError(TxErrorCode.HANDOFF_BLOB_MISMATCH, 'the blob is not the verified one');
   const diff = checked.network === IntentNetwork.XRPL_TESTNET ? compareXrpl(checked.transaction, decodeXrplTx(bytes)) : compareSepolia(checked.transaction, decodeEip1559Signed(bytes).transaction);
   if (diff) throw new TxError(diff.code, `field ${diff.field}`);
+  // The XRPL transaction hash is recomputed here. The Sepolia one (Keccak-256) and both signature
+  // checks are taken from the two verifiers' records: B3's broadcaster must re-verify them.
+  if (checked.network === IntentNetwork.XRPL_TESTNET ? first.transactionHash !== xrplTxHash(bytes) : !/^0x[0-9a-f]{64}$/.test(first.transactionHash)) {
+    throw new TxError(TxErrorCode.HANDOFF_INVALID, 'the record transaction hash is wrong');
+  }
   return Object.freeze({ network: checked.network, signedTransaction, blobSha256, transactionHash: first.transactionHash });
 }

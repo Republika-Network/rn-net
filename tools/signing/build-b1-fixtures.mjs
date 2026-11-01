@@ -121,6 +121,10 @@ function xrplCases(intent, signed, k) {
     ['xrpl-unknown-field', intent, digest, upperHex(Buffer.concat([head, seq, lls, fieldHeader(2, 33), Buffer.from('00000001', 'hex'), rest])), 'RNTX_UNKNOWN_FIELD'],
     ['xrpl-memo-format-added', intent, digest, upperHex(withMemoFormat), 'RNTX_UNKNOWN_FIELD'],
     ['xrpl-fields-out-of-order', intent, digest, upperHex(Buffer.concat([head, lls, seq, rest])), 'RNTX_NONCANONICAL_ENCODING'],
+    // Field IDs below 16 written in the extended forms: other encodings of the same fields.
+    ['xrpl-header-long-form-field', intent, digest, `1002${signed.slice(2)}`, 'RNTX_NONCANONICAL_ENCODING'],
+    ['xrpl-header-long-form-both', intent, digest, `000102${signed.slice(2)}`, 'RNTX_NONCANONICAL_ENCODING'],
+    ['xrpl-header-long-form-account', intent, digest, signed.replace(/8114/, '800114'), 'RNTX_NONCANONICAL_ENCODING'],
     ['xrpl-trailing-byte', intent, digest, `${signed}00`, 'RNTX_TRAILING_BYTES'],
     ['xrpl-truncated', intent, digest, signed.slice(0, -2), 'RNTX_DECODE'],
     ['xrpl-lower-case-hex', intent, digest, signed.toLowerCase(), 'RNTX_DECODE'],
@@ -177,6 +181,8 @@ function sepoliaCases(intent, signed, k) {
     ['sepolia-intent-chain-1', withTx(intent, { chainId: '0x1' }), digest, signed, 'RNTX_INTENT_INVALID'],
     ['sepolia-intent-fee-above-cap', withTx(intent, { maxFeePerGas: '0x4a817c801' }), digest, signed, 'RNTX_INTENT_INVALID'],
     ['sepolia-intent-not-self-send', withTx(intent, { to: other.address }), digest, signed, 'RNTX_INTENT_INVALID'],
+    ['sepolia-intent-nonce-2-pow-64', withTx(intent, { nonce: '0x10000000000000000' }), digest, signed, 'RNTX_INTENT_INVALID'],
+    ['sepolia-access-list-nested-too-deep', intent, digest, typed(items({ accessListItems: [[[[[]]]]] })), 'RNTX_DECODE'],
   ];
 }
 

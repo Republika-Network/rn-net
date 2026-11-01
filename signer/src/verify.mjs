@@ -16,6 +16,7 @@ import {
   xrplSigningPreimage,
   xrplTxHash,
 } from '../../packages/tx-intent/src/index.mjs';
+import { CanonicalError } from '../../packages/canonical/src/index.mjs';
 import { ed25519Verify, keccak256, secp256k1RecoverAddress } from './crypto.mjs';
 
 export const VERIFICATION_FORMAT = 'rnnet.signed-tx-verification.v1';
@@ -65,6 +66,9 @@ export function verifySignedTransaction({ intent, approvedDigest, signedTransact
   try {
     checked = approvedIntent(intent, approvedDigest);
   } catch (error) {
+    // A value outside rnnet.canonical-json.v1 (a lone surrogate, an unsafe integer, -0) is an
+    // invalid intent too, reported as a record rather than thrown.
+    if (error instanceof CanonicalError) return { ...record, code: TxErrorCode.INTENT_INVALID };
     if (!(error instanceof TxError)) throw error;
     return { ...record, code: error.code };
   }

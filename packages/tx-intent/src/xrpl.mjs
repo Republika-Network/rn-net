@@ -212,8 +212,16 @@ class Reader {
     const first = this.take(1)[0];
     let type = first >> 4;
     let nth = first & 0x0f;
-    if (type === 0) type = this.take(1)[0];
-    if (nth === 0) nth = this.take(1)[0];
+    // The extended forms exist only for codes of 16 or more; a smaller code written long is a
+    // second encoding of the same field and is refused (rippled refuses it too).
+    if (type === 0) {
+      type = this.take(1)[0];
+      if (type < 16) fail(TxErrorCode.NONCANONICAL_ENCODING, 'type code below 16 in the extended form');
+    }
+    if (nth === 0) {
+      nth = this.take(1)[0];
+      if (nth < 16) fail(TxErrorCode.NONCANONICAL_ENCODING, 'field code below 16 in the extended form');
+    }
     const name = byCode.get(`${type}/${nth}`);
     if (name === 'NetworkID') fail(TxErrorCode.WRONG_CHAIN, 'NetworkID must be omitted on XRPL Testnet');
     if (name === undefined) fail(TxErrorCode.UNKNOWN_FIELD, `field ${type}/${nth}`);
@@ -239,6 +247,20 @@ const hexUpper = (bytes) => Buffer.from(bytes).toString('hex').toUpperCase();
  * after the Memos array.
  */
 export function decodeXrplTx(bytes) {
+  const tx = decodeFields(bytes);
+  // One transaction, one encoding: the bytes must be exactly the canonical serialization of what
+  // they decode to, so a PASS is about the received bytes, not a re-encoding of them.
+  let canonical;
+  try {
+    canonical = encodeXrplTx(tx);
+  } catch {
+    fail(TxErrorCode.NONCANONICAL_ENCODING, 'the fields do not re-encode');
+  }
+  if (!canonical.equals(Buffer.from(bytes))) fail(TxErrorCode.NONCANONICAL_ENCODING, 'not the canonical serialization');
+  return tx;
+}
+
+function decodeFields(bytes) {
   const r = new Reader(bytes);
   const tx = {};
   let last = -1;

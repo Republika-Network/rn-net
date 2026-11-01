@@ -12,7 +12,7 @@
 import { Buffer } from 'node:buffer';
 import { createCipheriv, createDecipheriv, scryptSync } from 'node:crypto';
 import { canonicalBytes } from '../../packages/canonical/src/index.mjs';
-import { TxError, TxErrorCode } from '../../packages/tx-intent/src/index.mjs';
+import { isPlainData, TxError, TxErrorCode } from '../../packages/tx-intent/src/index.mjs';
 import { bindKey } from './keys.mjs';
 
 export const KEY_FILE_FORMAT = 'rnnet.testnet-key-file.v1';
@@ -79,7 +79,10 @@ function checkShape(file) {
  * changed field is RNTX_KEYFILE_DECRYPT; a malformed file, or a secret whose public key or
  * address differs from the file's, is RNTX_KEYFILE_INVALID.
  */
-export function decryptKeyFile(file, passphrase) {
+export function decryptKeyFile(input, passphrase) {
+  // Plain data only, then one canonical snapshot that every later step reads.
+  if (!isPlainData(input)) throw invalid('a key file must be plain JSON data');
+  const file = JSON.parse(Buffer.from(canonicalBytes(input)).toString('utf8'));
   checkShape(file);
   let secretKey;
   try {

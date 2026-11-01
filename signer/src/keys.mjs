@@ -11,8 +11,10 @@ import { ed25519PublicKey, evmAddress, secp256k1PublicKey } from './crypto.mjs';
  * Checks { network, purpose, secretKey } and returns a frozen key with its public key and
  * address. XRPL public keys are written as XRPL does ("ED" + upper-case hex).
  */
-export function bindKey(key) {
-  if (key === null || typeof key !== 'object') throw new TxError(TxErrorCode.KEY_INVALID, 'a key is { network, purpose, secretKey }');
+export function bindKey(input) {
+  if (input === null || typeof input !== 'object') throw new TxError(TxErrorCode.KEY_INVALID, 'a key is { network, purpose, secretKey }');
+  // Read each member once, so a getter cannot show the checks one value and the result another.
+  const key = { network: input.network, purpose: input.purpose, secretKey: input.secretKey };
   if (!Object.values(IntentNetwork).includes(key.network)) throw new TxError(TxErrorCode.KEY_INVALID, 'unknown network');
   if (!PURPOSES.includes(key.purpose)) throw new TxError(TxErrorCode.KEY_INVALID, 'unknown purpose');
   if (!(key.secretKey instanceof Uint8Array) || key.secretKey.length !== 32) throw new TxError(TxErrorCode.KEY_INVALID, 'a secret key is 32 bytes');
