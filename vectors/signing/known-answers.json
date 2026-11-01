@@ -1,0 +1,312 @@
+{
+  "format": "rnnet.conformance-vectors.v1",
+  "profile": "rnnet.unsigned-tx-intent.v1",
+  "kind": "signing-known-answers",
+  "note": "Public known-answer vectors for RN-NET-03B2-B1, copied from the sources below with their notices (vectors/signing/README.md). Both the JavaScript toolchain and tools/reference/rnnet_tx_reference.py must reproduce them.",
+  "sources": [
+    {
+      "id": "eip-155",
+      "url": "https://eips.ethereum.org/EIPS/eip-155",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "ethers",
+      "url": "https://github.com/ethers-io/ethers.js/blob/9c1e82e1230526ebcd62902890c4f24b1f7f7d79/testcases/transactions.json.gz",
+      "license": "MIT",
+      "notice": "Copyright (c) 2016-2025 Richard Moore"
+    },
+    {
+      "id": "ethereum-tests",
+      "url": "https://github.com/ethereum/tests/tree/ff69b74f2eb44fbe1bf09627f06ebf69cc72ea67/TransactionTests/ttEIP1559",
+      "license": "MIT"
+    },
+    {
+      "id": "ripple-binary-codec",
+      "url": "https://github.com/XRPLF/xrpl.js/tree/c61c9bc768b02ccecfab8c382036d3c93cbcd57c/packages/ripple-binary-codec/test",
+      "license": "ISC",
+      "notice": "Copyright (c) 2015 Ripple Labs Inc."
+    }
+  ],
+  "keccak256": [
+    {
+      "input": "",
+      "expected": "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+    },
+    {
+      "input": "abc",
+      "expected": "4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45"
+    }
+  ],
+  "eip155": {
+    "source": "eip-155",
+    "signingDataHex": "0xec098504a817c800825208943535353535353535353535353535353535353535880de0b6b3a764000080018080",
+    "signingHash": "0xdaf5a779ae972f972197303d7b574746c7ef83eadac0f2791ad23db92e4c8e53",
+    "keyByteRepeated32": "46",
+    "v": 37,
+    "recoveryId": 0,
+    "r": "0x28ef61340bd939bc2195fe537567866003e1a15d3c71ff63e1590620aa636276",
+    "s": "0x67cbe9d8997f761aecb703304b3800ccf555c9f3dc64214b297fb1966a3b6d83",
+    "sender": "0x9d8a62f656a8d1615c1294fd71e9cfb3e4855a4f"
+  },
+  "eip1559": [
+    {
+      "id": "ethers-random-0",
+      "source": "ethers",
+      "transaction": {
+        "type": "0x2",
+        "chainId": "0x8404bf1f",
+        "nonce": "0x288",
+        "maxPriorityFeePerGas": "0x2c7e63",
+        "maxFeePerGas": "0x346d9246",
+        "gas": "0x9d",
+        "to": "0x6eb893e3466931517a04a17d153a6330c3f2f1dd",
+        "value": "0xc854",
+        "input": "0x889e365e59664fb881554ba1175519b5195b1d20390beb806d8f2cda7893e6f79848195dba4c905db6d7257ffb5eefea35f18ae33c",
+        "accessList": []
+      },
+      "unsignedHex": "0x02f862848404bf1f820288832c7e6384346d9246819d946eb893e3466931517a04a17d153a6330c3f2f1dd82c854b5889e365e59664fb881554ba1175519b5195b1d20390beb806d8f2cda7893e6f79848195dba4c905db6d7257ffb5eefea35f18ae33cc0",
+      "signedHex": "0x02f8a5848404bf1f820288832c7e6384346d9246819d946eb893e3466931517a04a17d153a6330c3f2f1dd82c854b5889e365e59664fb881554ba1175519b5195b1d20390beb806d8f2cda7893e6f79848195dba4c905db6d7257ffb5eefea35f18ae33cc080a0f1003f96c6c6620dd46db36d2ae9f12d363947eb0db088c678b6ad1cf494aa6fa06085b5abbf448de5d622dc820da590cfdb6bb77b41c6650962b998a941f8d701",
+      "signature": {
+        "yParity": 0,
+        "r": "0xf1003f96c6c6620dd46db36d2ae9f12d363947eb0db088c678b6ad1cf494aa6f",
+        "s": "0x6085b5abbf448de5d622dc820da590cfdb6bb77b41c6650962b998a941f8d701"
+      },
+      "sender": "0x801040e2965d0cf9d73fee4ccc8eea9eebbc491e"
+    },
+    {
+      "id": "ethers-random-1",
+      "source": "ethers",
+      "transaction": {
+        "type": "0x2",
+        "chainId": "0xdf",
+        "nonce": "0x265",
+        "maxPriorityFeePerGas": "0x45",
+        "maxFeePerGas": "0x76cf803ef8c9",
+        "gas": "0x3a",
+        "to": "0x2e806e1f4b2c1bc500e41b882213648af39dd4a2",
+        "value": "0x45",
+        "input": "0xb2f1646d",
+        "accessList": []
+      },
+      "unsignedHex": "0x02ea81df820265458676cf803ef8c93a942e806e1f4b2c1bc500e41b882213648af39dd4a24584b2f1646dc0",
+      "signedHex": "0x02f86d81df820265458676cf803ef8c93a942e806e1f4b2c1bc500e41b882213648af39dd4a24584b2f1646dc001a00633d97e07870e5c1fa9e4f9f8beb169396225d5c691fddcf41ce3a3ea121e1ca0057f715c06932e29d5a4d8b70019c974a34d59e44e4ded4df7f5726ec8e87780",
+      "signature": {
+        "yParity": 1,
+        "r": "0x0633d97e07870e5c1fa9e4f9f8beb169396225d5c691fddcf41ce3a3ea121e1c",
+        "s": "0x057f715c06932e29d5a4d8b70019c974a34d59e44e4ded4df7f5726ec8e87780"
+      },
+      "sender": "0x9c69f72cf49ece70dd223e9cfa4745781aac6906"
+    },
+    {
+      "id": "ethers-random-3",
+      "source": "ethers",
+      "transaction": {
+        "type": "0x2",
+        "chainId": "0xb3",
+        "nonce": "0x212",
+        "maxPriorityFeePerGas": "0x5a492a",
+        "maxFeePerGas": "0x57f3c57a41",
+        "gas": "0xccb4",
+        "to": "0x8bee13b1d7e29953a7484a3ae8e344d86b4ad2c5",
+        "value": "0x3b04",
+        "input": "0x4c4aaeceaa35f9cd275639e2319057a18f3c4d8bf242707b08a1a2a32531d3975a4dc67b8a92f5a11adbf12b6f8d8809d1544aed6f9da9b1f5e753307165e3e85afdbd",
+        "accessList": []
+      },
+      "unsignedHex": "0x02f87081b3820212835a492a8557f3c57a4182ccb4948bee13b1d7e29953a7484a3ae8e344d86b4ad2c5823b04b8434c4aaeceaa35f9cd275639e2319057a18f3c4d8bf242707b08a1a2a32531d3975a4dc67b8a92f5a11adbf12b6f8d8809d1544aed6f9da9b1f5e753307165e3e85afdbdc0",
+      "signedHex": "0x02f8b381b3820212835a492a8557f3c57a4182ccb4948bee13b1d7e29953a7484a3ae8e344d86b4ad2c5823b04b8434c4aaeceaa35f9cd275639e2319057a18f3c4d8bf242707b08a1a2a32531d3975a4dc67b8a92f5a11adbf12b6f8d8809d1544aed6f9da9b1f5e753307165e3e85afdbdc080a0c458cee1b97cfb1f6fa52b2adaa135d8501d63ba908c113f48796d40884496b1a03abaf292f68e0fc6a5c1012455d49d2d566cb4cf2eeebc8d52f1f5e3e20c808b",
+      "signature": {
+        "yParity": 0,
+        "r": "0xc458cee1b97cfb1f6fa52b2adaa135d8501d63ba908c113f48796d40884496b1",
+        "s": "0x3abaf292f68e0fc6a5c1012455d49d2d566cb4cf2eeebc8d52f1f5e3e20c808b"
+      },
+      "sender": "0xe315ffb79f7bde566a7ba0f7728a925d9a074c2b"
+    }
+  ],
+  "eip1559Invalid": [
+    {
+      "id": "ethereum-tests-maxFeePerGas00prefix",
+      "source": "ethereum-tests",
+      "txbytes": "0x02f88701808477359400a100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff82520894095e7baea6a6c7c4c2dfeb977efac326af552d878080c080a05cbd172231fc0735e0fb994dd5b1a4939170a260b36f0427a8a80866b063b948a07c230f7f578dd61785c93361b9871c0706ebfa6d06e3f4491dc9558c5202ed36",
+      "upstreamException": "TransactionException.RLP_LEADING_ZEROS_BASEFEE",
+      "expectedCode": "RNTX_NONCANONICAL_ENCODING"
+    },
+    {
+      "id": "ethereum-tests-maxPriorityFeePerGas00prefix",
+      "source": "ethereum-tests",
+      "txbytes": "0x02f8870180a100ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff84b2d05e0082520894095e7baea6a6c7c4c2dfeb977efac326af552d878080c080a05cbd172231fc0735e0fb994dd5b1a4939170a260b36f0427a8a80866b063b948a07c230f7f578dd61785c93361b9871c0706ebfa6d06e3f4491dc9558c5202ed36",
+      "upstreamException": "TransactionException.RLP_LEADING_ZEROS_PRIORITY_FEE",
+      "expectedCode": "RNTX_NONCANONICAL_ENCODING"
+    }
+  ],
+  "xrplFieldHeaders": [
+    {
+      "field": "TransactionType",
+      "type": 1,
+      "nth": 2,
+      "expectedHex": "12"
+    },
+    {
+      "field": "Flags",
+      "type": 2,
+      "nth": 2,
+      "expectedHex": "22"
+    },
+    {
+      "field": "Sequence",
+      "type": 2,
+      "nth": 4,
+      "expectedHex": "24"
+    },
+    {
+      "field": "LastLedgerSequence",
+      "type": 2,
+      "nth": 27,
+      "expectedHex": "201B"
+    },
+    {
+      "field": "Fee",
+      "type": 6,
+      "nth": 8,
+      "expectedHex": "68"
+    },
+    {
+      "field": "SigningPubKey",
+      "type": 7,
+      "nth": 3,
+      "expectedHex": "73"
+    },
+    {
+      "field": "TxnSignature",
+      "type": 7,
+      "nth": 4,
+      "expectedHex": "74"
+    },
+    {
+      "field": "MemoType",
+      "type": 7,
+      "nth": 12,
+      "expectedHex": "7C"
+    },
+    {
+      "field": "MemoData",
+      "type": 7,
+      "nth": 13,
+      "expectedHex": "7D"
+    },
+    {
+      "field": "Account",
+      "type": 8,
+      "nth": 1,
+      "expectedHex": "81"
+    },
+    {
+      "field": "ObjectEndMarker",
+      "type": 14,
+      "nth": 1,
+      "expectedHex": "E1"
+    },
+    {
+      "field": "Memo",
+      "type": 14,
+      "nth": 10,
+      "expectedHex": "EA"
+    },
+    {
+      "field": "ArrayEndMarker",
+      "type": 15,
+      "nth": 1,
+      "expectedHex": "F1"
+    },
+    {
+      "field": "Memos",
+      "type": 15,
+      "nth": 9,
+      "expectedHex": "F9"
+    }
+  ],
+  "xrplNativeAmounts": [
+    {
+      "drops": "0",
+      "expectedHex": "4000000000000000"
+    },
+    {
+      "drops": "1",
+      "expectedHex": "4000000000000001"
+    }
+  ],
+  "xrplSigningBlob": {
+    "source": "ripple-binary-codec",
+    "test": "signing-data-encoding.test.ts: can create single signing blobs",
+    "extraFields": {
+      "Amount": [
+        6,
+        1
+      ],
+      "Destination": [
+        8,
+        3
+      ]
+    },
+    "fields": [
+      [
+        "TransactionType",
+        "0000"
+      ],
+      [
+        "Flags",
+        "80000000"
+      ],
+      [
+        "Sequence",
+        "00000001"
+      ],
+      [
+        "Amount",
+        "40000000000003E8"
+      ],
+      [
+        "Fee",
+        "400000000000000A"
+      ],
+      [
+        "SigningPubKey",
+        "ED5F5AC8B98974A3CA843326D9B88CEBD0560177B973EE0B149F782CFAA06DC66A"
+      ],
+      [
+        "Account",
+        "r9LqNeG6qHxjeUocjvVki2XR35weJ9mZgQ"
+      ],
+      [
+        "Destination",
+        "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+      ]
+    ],
+    "json": {
+      "TransactionType": "Payment",
+      "Flags": 2147483648,
+      "Sequence": 1,
+      "Amount": "1000",
+      "Fee": "10",
+      "SigningPubKey": "ED5F5AC8B98974A3CA843326D9B88CEBD0560177B973EE0B149F782CFAA06DC66A",
+      "Account": "r9LqNeG6qHxjeUocjvVki2XR35weJ9mZgQ",
+      "Destination": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh"
+    },
+    "expectedHex": "53545800120000228000000024000000016140000000000003E868400000000000000A7321ED5F5AC8B98974A3CA843326D9B88CEBD0560177B973EE0B149F782CFAA06DC66A81145B812C9D57731E27A2DA8B1830195F88EF32A3B68314B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+  },
+  "xrplAddresses": [
+    {
+      "address": "r9LqNeG6qHxjeUocjvVki2XR35weJ9mZgQ",
+      "accountIdHex": "5B812C9D57731E27A2DA8B1830195F88EF32A3B6"
+    },
+    {
+      "address": "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+      "accountIdHex": "B5F762798A53D543A014CAF8B297CFF8F2F937E8"
+    }
+  ],
+  "xrplTxHash": {
+    "source": "ripple-binary-codec",
+    "test": "fixtures/delivermin-tx.json and delivermin-tx-binary.json",
+    "blobHex": "1200002280020000240000689E201B010BF0E361D4950EA99C657EF800000000000000000000000055534400000000000A20B3C85F482532A9578DBB3950B85CA06594D1684000000000002AF8694000000000003A986AD40485B690F28E8000000000000000000000000055534400000000000A20B3C85F482532A9578DBB3950B85CA06594D173210254D771E2A30552D1F347F5B88EC87513843F8BC1A408E70A4175B2E3C325FD3C7446304402202A4965FCF0571B7308971956864B1949C2BD924B5A41B5E8DAF00C91C64F964502207FD3BEB7C165BD1F10E6E7C443742BD686F8E102A89B502A4A495F4C29EC5C488114EAAA52373B59DCFBFD3476049AA6408AA22EAA898314EAAA52373B59DCFBFD3476049AA6408AA22EAA8901123000000000000000000000000055534400000000000A20B3C85F482532A9578DBB3950B85CA06594D1FF01FDF050193BEDEAA9074764B961405D31E66AC0E9300000000000000000000000005553440000000000FDF050193BEDEAA9074764B961405D31E66AC0E901FDF050193BEDEAA9074764B961405D31E66AC0E9FF300000000000000000000000005553440000000000DD39C650A96EDA48334E70CC4A85B8B2E8502CD301DD39C650A96EDA48334E70CC4A85B8B2E8502CD3017C44F934D7A5FEEBD1530570CDB83D1D8EF1F37E00",
+    "expectedHash": "0FB10DF664F33840ABC68A8BBE78178359C55AC1AFC83DB468CE69C4A86E3EAC"
+  }
+}

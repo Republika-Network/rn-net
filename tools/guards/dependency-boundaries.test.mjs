@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
-import { check, DEV_DEPENDENCIES, importsOf } from './dependency-boundaries.mjs';
+import { check, DEV_DEPENDENCIES, importsOf, SIGNER_DEPENDENCIES } from './dependency-boundaries.mjs';
 
 const rules = (path, content) => check([{ path, content }]).map((f) => f.rule);
 
@@ -479,4 +479,61 @@ test('the verifier may verify signatures but no production code may sign or hold
   }
   assert.ok(rules('packages/verifier/src/x.mjs', "import x from '../../conformance/src/vectors.mjs';").includes('package-not-allowed:conformance'));
   assert.ok(rules('packages/verifier/src/x.mjs', "import { readFileSync } from 'node:fs';").includes('builtin-not-allowed:node:fs'));
+});
+
+// RN-NET-03B2-B1 (ADR-RN-017): the signer project, its pinned dependencies and its boundaries.
+test('the signer manifest declares exactly the two pinned noble packages, and nothing that runs', () => {
+  const ok = { private: true, dependencies: { '@noble/curves': '2.4.0', '@noble/hashes': '2.4.0' } };
+  assert.deepEqual(rules('signer/package.json', JSON.stringify(ok)), []);
+  assert.deepEqual(rules('signer/package.json', JSON.stringify({ dependencies: { '@noble/curves': '^2.4.0', '@noble/hashes': '2.4.0' } })), ['undeclared-dependencies']);
+  assert.deepEqual(rules('signer/package.json', JSON.stringify({ dependencies: { '@noble/curves': '2.4.0' } })), ['signer-dependencies-incomplete']);
+  assert.deepEqual(rules('signer/package.json', JSON.stringify({ dependencies: { ...ok.dependencies, '@noble/ciphers': '2.4.0' } })), ['undeclared-dependencies', 'signer-dependencies-incomplete']);
+  assert.deepEqual(rules('signer/package.json', JSON.stringify({ ...ok, scripts: { postinstall: 'x' } })), ['signer-manifest-field-not-allowed:scripts']);
+  assert.deepEqual(rules('signer/package.json', JSON.stringify({ ...ok, workspaces: ['x'] })), ['manifest-field-not-allowed:workspaces']);
+  // Nowhere else may declare them.
+  assert.deepEqual(rules('package.json', JSON.stringify({ dependencies: ok.dependencies })), ['undeclared-dependencies']);
+  assert.deepEqual(rules('packages/tx-intent/package.json', JSON.stringify({ dependencies: ok.dependencies })), ['undeclared-dependencies']);
+});
+
+test('the signer lockfile holds exactly the pinned packages, by version, source and integrity', () => {
+  const lock = (packages) => JSON.stringify({ lockfileVersion: 3, packages });
+  const entry = (name) => {
+    const { version, resolved, integrity, dependencies } = SIGNER_DEPENDENCIES[name];
+    return { version, resolved, integrity, license: 'MIT', ...(dependencies ? { dependencies } : {}) };
+  };
+  const good = { '': { dependencies: {} }, 'node_modules/@noble/curves': entry('@noble/curves'), 'node_modules/@noble/hashes': entry('@noble/hashes') };
+  assert.deepEqual(rules('signer/package-lock.json', lock(good)), []);
+  const bad = [
+    { ...good, 'node_modules/@noble/hashes': { ...entry('@noble/hashes'), version: '2.3.0' } },
+    { ...good, 'node_modules/@noble/hashes': { ...entry('@noble/hashes'), integrity: 'sha512-AAAA' } },
+    { ...good, 'node_modules/@noble/hashes': { ...entry('@noble/hashes'), resolved: 'https://example.org/h.tgz' } },
+    { ...good, 'node_modules/@noble/hashes': { ...entry('@noble/hashes'), dev: true } },
+    { ...good, 'node_modules/@noble/curves': { ...entry('@noble/curves'), dependencies: { '@noble/hashes': '^2.4.0' } } },
+    { ...good, 'node_modules/@noble/ciphers': { version: '2.4.0' } },
+    { '': {}, 'node_modules/@noble/curves': entry('@noble/curves') },
+  ];
+  for (const packages of bad) assert.deepEqual(rules('signer/package-lock.json', lock(packages)), ['undeclared-lockfile-packages']);
+  // The root lockfile may not hold them.
+  assert.deepEqual(rules('package-lock.json', lock(good)), ['undeclared-lockfile-packages']);
+});
+
+test('signer code: allowed built-ins, exports, libraries and packages only', () => {
+  assert.deepEqual(rules('signer/src/a.mjs', "import { createCipheriv, scryptSync } from 'node:crypto';"), []);
+  assert.deepEqual(rules('signer/src/a.mjs', "import { randomBytes } from 'node:crypto';"), ['builtin-export-not-allowed:node:crypto#randomBytes']);
+  assert.deepEqual(rules('signer/src/a.mjs', "import { generateKeyPairSync } from 'node:crypto';"), ['builtin-export-not-allowed:node:crypto#generateKeyPairSync']);
+  assert.deepEqual(rules('signer/src/a.mjs', "import { x } from '../../packages/tx-intent/src/index.mjs';"), []);
+  assert.deepEqual(rules('signer/src/a.mjs', "import { x } from '../../packages/tx-intent/src/xrpl.mjs';"), ['signer-import-not-allowed:packages/tx-intent/src/xrpl.mjs']);
+  assert.deepEqual(rules('signer/src/a.mjs', "import { x } from '../test/fixture-keys.mjs';"), ['production-imports-non-production:test/fixture-keys.mjs']);
+  assert.deepEqual(rules('signer/test/a.test.mjs', "import { test } from 'node:test';\nimport { x } from './fixture-keys.mjs';"), []);
+  assert.deepEqual(rules('signer/bin/a.mjs', ''), ['non-module-file']);
+  assert.deepEqual(rules('signer/src/a.js', ''), ['non-module-file']);
+  assert.ok(rules('signer/src/a.mjs', 'const g = globalThis;').includes('forbidden-identifier:globalThis'));
+});
+
+test('new packages are registered with their allowlists', () => {
+  assert.deepEqual(rules('packages/tx-intent/src/a.mjs', "import { types } from 'node:util';"), []);
+  assert.deepEqual(rules('packages/verifier/src/a.mjs', "import { types } from 'node:util';"), ['builtin-export-not-allowed:node:util#types', 'builtin-not-allowed:node:util']);
+  assert.deepEqual(rules('packages/broadcast-handoff/src/a.mjs', "import { x } from '../../tx-intent/src/index.mjs';"), []);
+  assert.deepEqual(rules('packages/broadcast-handoff/src/a.mjs', "import { x } from '../../chain-readonly/src/index.mjs';"), ['package-not-allowed:chain-readonly']);
+  assert.deepEqual(rules('packages/broadcast-handoff/src/a.mjs', "import https from 'node:https';"), ['builtin-export-not-allowed:node:https#default', 'builtin-not-allowed:node:https']);
 });
