@@ -1,6 +1,6 @@
 # ADR-RN-009: Anchor payload and domain encoding
 
-- Status: Proposed (RN-NET-03A)
+- Status: Accepted (founder approval of PR #6 as implemented, RN-NET-03B2 governance closure)
 - Date: 2026-10-29
 - Specification: [rnnet.anchor-payload.v1](../../spec/rnnet.anchor-payload.v1.md)
 
