@@ -374,8 +374,12 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
 - **Review follow-ups (C2 review F2, F3).** `process` used as a value (an alias, an argument, a
   destructuring), `constructor` other than a class's own constructor method (or as a computed
   member key), and `Reflect` outside `packages/` also make a file network-capable;
-  `tools/submit/` refuses `Reflect` outright. `signer/` and `txverify/` refuse any dynamic import
-  of a non-relative specifier, so a library cannot be imported whole around the named-import rule.
+  `tools/submit/` refuses `Reflect` outright. The string `constructor` (or a template literal
+  without expressions) used as a computed member or property key, or as a call argument, and the
+  property-descriptor APIs (`getOwnPropertyDescriptor(s)`, `__lookupGetter__` and similar) outside
+  `packages/`, count too. `signer/` and `txverify/` refuse any dynamic import of a non-relative
+  specifier and any `export ... from` a library, so a library cannot be handed on whole around
+  the named-import rule.
 - **The read-only entry point** may not reach `tools/submit/broadcaster.mjs`, however indirectly.
 - **`txverify/` (B3 review N2).** `secp256k1` may appear only as its import binding or as the
   object of a non-computed `.Signature` or `.verify`; any other use is

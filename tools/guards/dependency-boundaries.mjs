@@ -588,6 +588,7 @@ export const NETWORK_CAPABLE_MODULES = [
   'vm', 'repl', 'process', 'wasi',
 ];
 const NETWORK_CAPABLE_NAMES = new Set(['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource', 'createRequire', 'getBuiltinModule', 'require', 'importScripts', 'eval', 'Function', 'WebAssembly', 'globalThis', 'global', 'Reflect']);
+const PROPERTY_DESCRIPTOR_NAMES = new Set(['getOwnPropertyDescriptor', 'getOwnPropertyDescriptors', '__lookupGetter__', '__lookupSetter__', '__defineGetter__', '__defineSetter__']);
 const NETWORK_CAPABLE_PROCESS_MEMBERS = new Set(['binding', '_linkedBinding', 'dlopen', 'getBuiltinModule', 'execve']);
 export const NETWORK_CAPABLE_FILES = [
   TRANSPORT_FILE, // the reviewed transport (ADR-RN-013)
@@ -634,7 +635,18 @@ export function networkCapability(path, content) {
     // `.constructor` reaches the Function constructor from any value (C2 review F2); only a class's
     // own constructor method may use the name.
     if (node.type === 'Identifier' && node.name === 'constructor' && !(parent?.type === 'MethodDefinition' && parent.kind === 'constructor')) reasons.add('constructor-access');
-    if (node.type === 'Literal' && node.value === 'constructor' && parent?.type === 'MemberExpression' && key === 'property' && parent.computed) reasons.add('constructor-access');
+    // The name as a string, wherever it can select a member: a computed member or property key
+    // (also in a destructuring pattern), or an argument (getOwnPropertyDescriptor(o, 'constructor')).
+    // Template literals without expressions count as strings. (C2 re-review F2 residual.)
+    const text = node.type === 'Literal' ? node.value : node.type === 'TemplateLiteral' && node.expressions.length === 0 ? node.quasis[0].value.cooked : undefined;
+    if (text === 'constructor') {
+      const selects = (parent?.type === 'MemberExpression' && key === 'property' && parent.computed) || (parent?.type === 'Property' && key === 'key' && parent.computed) ||
+        ((parent?.type === 'CallExpression' || parent?.type === 'NewExpression') && key === 'arguments');
+      if (selects) reasons.add('constructor-access');
+    }
+    // Property descriptors and legacy accessors read a member without naming it in a member
+    // expression (the Function constructor from a prototype's descriptors).
+    if (node.type === 'Identifier' && PROPERTY_DESCRIPTOR_NAMES.has(node.name) && !path.startsWith('packages/')) reasons.add(`name:${node.name}`);
     for (const [childKey, child] of children(node)) visit(child, node, childKey);
   };
   visit(program, null, null);
@@ -694,6 +706,9 @@ function checkWriteTransportClosure(files, add) {
 function thirdPartyDynamicImports(program) {
   const found = [];
   const visit = (node) => {
+    // `export * from '<library>'` and `export { x } from '<library>'` hand the library on to a
+    // relative importer, around the named-import rule (C2 re-review F3 residual).
+    if ((node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) && !String(node.source.value).startsWith('.')) found.push(`export-from:${node.source.value}`);
     if (node.type === 'ImportExpression' && !(node.source.type === 'Literal' && typeof node.source.value === 'string' && node.source.value.startsWith('.'))) found.push(node.source.type === 'Literal' ? String(node.source.value) : '(computed)');
     for (const [, child] of children(node)) visit(child);
   };

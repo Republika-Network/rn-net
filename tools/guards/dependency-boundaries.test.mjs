@@ -989,3 +989,24 @@ test('C2 review F2 and F3: process aliases, .constructor, Reflect and dynamic li
   }
   assert.ok(!rules('txverify/test/x.test.mjs', "const api = await import('../src/index.mjs');").some((r) => r.startsWith('dynamic-import-not-relative')));
 });
+
+test('C2 re-review: the constructor string in every selecting form, descriptors, and library re-exports', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  for (const [label, code] of [
+    ['template key', 'export const t = (() => {})[`constructor`];'],
+    ['destructuring key', "const { ['constructor']: F } = () => {};\nexport const t = F;"],
+    ['descriptor argument', "export const t = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(() => {}), 'constructor').value;"],
+    ['descriptor walk', "export const t = Object.values(Object.getOwnPropertyDescriptors(Object.getPrototypeOf(() => {}))).find((x) => x.value?.name === 'Fn');"],
+    ['legacy accessor', "export const t = ({}).__lookupGetter__('x');"],
+  ]) {
+    const findings = found([['tools/submit/broadcaster.mjs', 'export const x = 1;'], ['tools/broadcast/x.mjs', `import { x } from '../submit/broadcaster.mjs';\n${code}`]]);
+    assert.ok(findings.includes('tools/broadcast/x.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
+  }
+  // A string that only names the word (test data, an array element, a comparison) is not a route.
+  assert.deepEqual(found([['tools/broadcast/y.mjs', "export const names = ['constructor', 'toString'];\nexport const is = (k) => k === 'constructor';"]]), []);
+  for (const path of ['txverify/src/x.mjs', 'signer/src/x.mjs']) {
+    for (const code of ["export * from '@noble/curves/secp256k1.js';", "export { secp256k1 } from '@noble/curves/secp256k1.js';"]) {
+      assert.ok(rules(path, code).some((r) => r.startsWith('dynamic-import-not-relative:export-from:')), `${path}: ${code}`);
+    }
+  }
+});
