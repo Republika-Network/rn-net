@@ -9,10 +9,15 @@
 // NOT_SENT. Every other failure is UNCERTAIN: a connection error can come after the bytes left.
 // Error text is recorded by digest, never interpreted.
 //
-// fail_hard (design §9 step 1): the published `submit` documentation states only that a
-// transaction that fails locally is neither retried nor relayed. It does not state how tec* or
-// terQUEUED behave under fail_hard, so the conservative classes of ADR-RN-019 §6 stand: tec* is
-// UNCERTAIN, and terQUEUED is UNCERTAIN, not accepted.
+// fail_hard (ADR-RN-019 Amendment C1, E6), checked against the rippled source at tag 3.4.1 (the
+// build_version both Testnet providers reported; spec/rnnet.broadcast.v1.md §6.1):
+//   - tec* is discarded under fail_hard (Transactor: "a tec result must not do anything") and is
+//     neither relayed nor kept; but a tes that then fails an invariant becomes tecINVARIANT_FAILED
+//     and IS applied, and the same signed blob stays valid until LastLedgerSequence. So tec* stays
+//     UNCERTAIN: the response alone never proves that no copy of the blob can be included.
+//   - terQUEUED cannot be returned under fail_hard (TxQ::canBeHeld refuses: telCAN_NOT_QUEUE). An
+//     answer that says it anyway is inconsistent, and stays UNCERTAIN.
+//   - tesSUCCESS means applied to that server's open ledger only, never inclusion or finality.
 import { createHash } from 'node:crypto';
 import { BroadcastCode as C, Outcome } from './codes.mjs';
 import { SubmitNetwork } from './requests.mjs';
@@ -24,7 +29,9 @@ const XRPL_HASH = /^[0-9A-F]{64}$/;
 const XRPL_FLAGS = Object.freeze(['accepted', 'applied', 'broadcast', 'kept', 'queued']);
 // Numeric ranges of each result class (rippled TER.h).
 const CLASS_RANGE = Object.freeze({ tes: [0, 0], tec: [100, 255], tel: [-399, -300], tem: [-299, -200], tef: [-199, -100], ter: [-99, -1] });
-const UNCERTAIN_TEF = new Set(['tefALREADY', 'tefPAST_SEQ']);
+// tefNO_TICKET (RN-NET-03B2-C2, rippled 3.4.1 source): what an already-applied Ticket-based
+// transaction gets back. The Genesis intents use a Sequence, never a Ticket; it stays UNCERTAIN.
+const UNCERTAIN_TEF = new Set(['tefALREADY', 'tefPAST_SEQ', 'tefNO_TICKET']);
 
 const empty = () => ({ outcome: null, code: null, httpStatus: null, transportError: null, returnedTransactionHash: null, xrpl: null, sepolia: null });
 const done = (base, outcome, code) => Object.freeze({ ...base, outcome, code });

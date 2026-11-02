@@ -12,7 +12,8 @@
 //             equal to the transaction's (the nonce is unused).
 //
 // Anything else is UNRESOLVED and writes no RESOLVED entry. Agreement is not a consensus proof
-// (ADR-RN-015); CHAIN_PROVEN is never produced. OFFLINE ONLY IN B3: the transport is injected.
+// (ADR-RN-015); CHAIN_PROVEN is never produced. The transport is injected; every request passes
+// the read-only policy of tools/submit/policy.mjs (RN-NET-03B2-C2).
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { canonicalize, parse } from '../../packages/canonical/src/index.mjs';
@@ -31,6 +32,7 @@ import {
   SubmitNetwork,
 } from '../../packages/chain-submit/src/index.mjs';
 import { intentDigest, makeIntent } from '../../packages/tx-intent/src/index.mjs';
+import { createReadOnlyPolicy } from './policy.mjs';
 import { appendEntry, checkPrivateDirectory, createRunDirectory, readLog, storedText, writeNewFile } from './store.mjs';
 
 export const STATUS_INPUT_FIELDS = Object.freeze(['authorization', 'intent']);
@@ -118,7 +120,10 @@ export async function runStatusCheck({ inputs, environment } = {}) {
     }
     if (providers.some((p) => p === undefined)) throw new BroadcastError(C.PROVIDER_NOT_ALLOWED);
     const capturedProviders = providers.map((p) => ({ id: p.id, operator: p.operator, origin: p.origin }));
-    const transport = recordingTransportFor(environment.transport, exchanges);
+    // Read-only by construction: every request passes the read-only policy (only READ_ONLY_METHODS,
+    // never a write method, the two named providers, a fixed ceiling) before it is recorded or sent.
+    const policy = createReadOnlyPolicy(authorization.network, providers);
+    const transport = policy.wrap(recordingTransportFor(environment.transport, exchanges));
 
     const report = await verifyLiveAnchor({ network: authorization.network, transactionHash: authorization.transactionHash, expectedCommitment: intent.commitment, providers, transport });
     const summary = { outcome: report.outcome, agreement: report.agreement, statuses: report.statuses, outcomes: report.providers.map((p) => p.outcome) };
@@ -126,6 +131,7 @@ export async function runStatusCheck({ inputs, environment } = {}) {
     if (summary.outcomes.every((o) => o === 'NOT_FOUND')) {
       for (const provider of providers) absence.push(await showsAbsence(provider, transport, intent, attempt));
     }
+    if (policy.violation !== null) throw new BroadcastError(C.REQUEST_POLICY, policy.violation);
     const finding = decideFinding(authorization.network, summary, absence);
     const perProvider = providers.map((p, i) => ({ id: p.id, observation: summary.outcomes[i], absence: absence[i] ?? null }));
     return recordOf(finding, finding === 'UNRESOLVED' ? C.STATUS_UNRESOLVED : null, { liveReportSha256: sha256(encodeLiveReport(report)), live: summary, providers: perProvider, capturedProviders });

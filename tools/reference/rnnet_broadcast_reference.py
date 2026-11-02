@@ -17,9 +17,13 @@ committed fixtures (fixtures/broadcast-b3/cases.json):
     searched_all, account_info past LastLedgerSequence; the Sepolia nonce), the finding, the
     rnnet.submission-status.v1 record and the RESOLVED entry.
 
-Limit: for a status check whose providers found the transaction, the inclusion summary (outcome,
-agreement, statuses) is the RN-NET-03B1 live-observation report's, as recorded in the status
-record; this file checks the finding that follows from it, not the report itself.
+For a status check, the RN-NET-03B1 live-observation report (each provider's reads, the RN-NET-03A
+adapter record, agreement and finality) is recomputed from the recorded exchanges, and its digest
+is compared (B3 review N3); every exchange must be used.
+Out of scope, stated: the JavaScript broadcaster's own re-checks after both verifiers agree (the
+hand-off's recomputation and txverify's own signature and hash check) are not modelled here as
+separate steps. The verification they repeat is rnnet_tx_reference.py's own record (signature
+recovery, hashes, decoding, every field), which this file recomputes for every case.
 
 It also confirms that each case's second-verifier record is what rnnet_tx_reference.py itself
 produces (unless the case deliberately tampers with it). Offline; standard library only.
@@ -469,7 +473,7 @@ def classify(network, response, signed, expected_hash):
         if eng == "tesSUCCESS":
             good = flags["accepted"] and flags["broadcast"] and not flags["queued"]
             return done("ACCEPTED_PROVISIONAL", "RNBC_ACCEPTED") if good else done("UNCERTAIN", "RNBC_UNCERTAIN_FLAGS")
-        if eng[:3] in ("tes", "tec") or eng in ("tefALREADY", "tefPAST_SEQ", "terQUEUED"):
+        if eng[:3] in ("tes", "tec") or eng in ("tefALREADY", "tefPAST_SEQ", "tefNO_TICKET", "terQUEUED"):
             return done("UNCERTAIN", "RNBC_UNCERTAIN_ENGINE_RESULT")
         silent = not any(flags[f] for f in FLAGS)
         return done("REJECTED", "RNBC_REJECTED") if silent else done("UNCERTAIN", "RNBC_UNCERTAIN_FLAGS")
@@ -679,6 +683,250 @@ def skip_not_found_reads(net, network, pid, h):
         raise Mismatch("transaction was found")
 
 
+# --- the live-observation report of a status check (B3 review N3) ---------------------------------
+# Recomputed from the recorded exchanges, as packages/chain-readonly does it (readers.mjs and
+# live.mjs; spec/rnnet.live-observation-report.v1.md): each provider's reads, the RN-NET-03A
+# adapter's record (rnnet_anchor_reference.py), agreement, and the report's exact bytes. Nothing of
+# the report is taken from the fixture's expected record any more.
+
+anchor = load("rnnet_anchor_reference")
+RETRYABLE = {"RNLO_TIMEOUT", "RNLO_CONNECTION", "RNLO_RATE_LIMITED", "RNLO_HTTP_STATUS_RETRYABLE"}
+LIVE_MAX_ATTEMPTS = 2
+ANCESTRY_LIMIT = 256
+OUTCOME_OF_ERROR = {
+    "RNLO_NOT_FOUND": "NOT_FOUND", "RNLO_WRONG_NETWORK": "WRONG_NETWORK", "RNLO_NETWORK_UNKNOWN": "WRONG_NETWORK",
+    "RNLO_HASH_MISMATCH": "INCONSISTENT", "RNLO_LEDGER_MISMATCH": "INCONSISTENT", "RNLO_BLOCK_MISMATCH": "INCONSISTENT",
+    "RNLO_INVALID_JSON": "INVALID_RESPONSE", "RNLO_INVALID_RESPONSE": "INVALID_RESPONSE", "RNLO_RPC_ERROR": "INVALID_RESPONSE",
+    "RNLO_UNSUPPORTED_API_VERSION": "INVALID_RESPONSE",
+}
+LIVE_BASIS = {
+    "observed": "As returned by the named RPC providers; not authenticated.",
+    "agreement": "The providers returned the same material data. Their operational independence is not established, and agreement is not a consensus proof.",
+    "validated": "The provider reports the transaction in a validated ledger, and its ledger read agrees; not authenticated.",
+    "finalized": "The provider's finalized block descends, by parent hashes it returned, from the transaction's block; not authenticated.",
+    "unresolvedFinality": "Validation or finality could not be established from the providers.",
+    "proof": "No authenticated proof of inclusion (validated ledger header and validator signatures, or a consensus light client) was verified.",
+}
+
+
+def live_call(net, pid, method, params):
+    """chain-readonly's call() with its default of two attempts for the retryable failures."""
+    last = None
+    for _ in range(LIVE_MAX_ATTEMPTS):
+        e = net.next(pid, prep.request_bytes(net.network, method, params))
+        try:
+            if "error" in e:
+                raise prep.ReadFail(e["error"] if e["error"] in TRANSPORT_CODES else "RNLO_CONNECTION")
+            body = e["response"]["body"].encode("utf-8")
+            status = e["response"]["status"]
+            if len(body) > MAX_RESPONSE:
+                raise prep.ReadFail("RNLO_RESPONSE_TOO_LARGE")
+            if status == 429:
+                raise prep.ReadFail("RNLO_RATE_LIMITED")
+            if status in (502, 503, 504):
+                raise prep.ReadFail("RNLO_HTTP_STATUS_RETRYABLE")
+            if status != 200:
+                raise prep.ReadFail("RNLO_HTTP_STATUS")
+            return interpret(net.network, prep.parse_strict(body))
+        except prep.ReadFail as f:
+            last = f
+            if f.code not in RETRYABLE:
+                raise
+    raise prep.ReadFail("RNLO_HTTP_STATUS") if last.code == "RNLO_HTTP_STATUS_RETRYABLE" else last
+
+
+def observation_bytes(value):
+    try:
+        return canon(value)
+    except Exception:
+        raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+
+
+def obj(v):
+    return isinstance(v, dict)
+
+
+def read_xrpl_live(net, pid, h):
+    info = live_call(net, pid, "server_info", {"api_version": 2})
+    i = info.get("info") if obj(info) and obj(info.get("info")) else {}
+    if "network_id" not in i:
+        raise prep.ReadFail("RNLO_NETWORK_UNKNOWN")
+    if i["network_id"] != 1:
+        raise prep.ReadFail("RNLO_WRONG_NETWORK")
+    t = live_call(net, pid, "tx", {"transaction": h, "binary": False, "api_version": 2})
+    if not obj(t):
+        raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+    if not obj(t.get("tx_json")):
+        raise prep.ReadFail("RNLO_UNSUPPORTED_API_VERSION")
+    if t.get("hash") != h:
+        raise prep.ReadFail("RNLO_HASH_MISMATCH")
+    if not obj(t.get("meta")):
+        raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+    confirmed = False
+    if t.get("validated") is True:
+        if not is_int(t.get("ledger_index")):
+            raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+        led = live_call(net, pid, "ledger", {"ledger_index": t["ledger_index"], "transactions": False, "expand": False, "api_version": 2})
+        header = led.get("ledger") if obj(led.get("ledger")) else None
+        if led.get("validated") is not True:
+            raise prep.ReadFail("RNLO_LEDGER_MISMATCH")
+        if led.get("ledger_index") != t["ledger_index"] or led.get("ledger_hash") != t.get("ledger_hash"):
+            raise prep.ReadFail("RNLO_LEDGER_MISMATCH")
+        if header is not None and (("ledger_hash" in header and header["ledger_hash"] != t.get("ledger_hash")) or ("ledger_index" in header and header["ledger_index"] != t["ledger_index"])):
+            raise prep.ReadFail("RNLO_LEDGER_MISMATCH")
+        confirmed = True
+    record = {k: v for k, v in t.items() if k not in ("status", "warnings")}
+    observation = {"format": "rnnet.anchor-observation.v1", "network": "xrpl:testnet", "tx": record}
+    result = t["meta"].get("TransactionResult")
+    material = {"hash": t["hash"], "ledger_index": t.get("ledger_index"), "ledger_hash": t.get("ledger_hash"), "validated": t.get("validated") is True,
+                "result": result if isinstance(result, str) else None, "tx_json": t["tx_json"]}
+    return observation_bytes(observation), observation_bytes(material), {"validated": confirmed}
+
+
+def read_evm_live(net, pid, h):
+    chain = live_call(net, pid, "eth_chainId", [])
+    if not isinstance(chain, str) or not QUANTITY.fullmatch(chain):
+        raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+    if chain != "0xaa36a7":
+        raise prep.ReadFail("RNLO_WRONG_NETWORK")
+    t = live_call(net, pid, "eth_getTransactionByHash", [h])
+    if t is None:
+        raise prep.ReadFail("RNLO_NOT_FOUND")
+    if not obj(t):
+        raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+    if t.get("hash") != h:
+        raise prep.ReadFail("RNLO_HASH_MISMATCH")
+    r = live_call(net, pid, "eth_getTransactionReceipt", [h])
+    if r is not None and not obj(r):
+        raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+    finality = {"finalized": "UNRESOLVED", "safe": "UNRESOLVED"}
+    if t.get("blockHash") is not None:
+        if not isinstance(t["blockHash"], str) or not EVM_HASH.fullmatch(t["blockHash"]):
+            raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+        for f in ("blockNumber", "transactionIndex"):
+            if not isinstance(t.get(f), str) or not QUANTITY.fullmatch(t[f]):
+                raise prep.ReadFail("RNLO_INVALID_RESPONSE")
+        b = live_call(net, pid, "eth_getBlockByHash", [t["blockHash"], False])
+        if not obj(b) or b.get("hash") != t["blockHash"] or b.get("number") != t["blockNumber"]:
+            raise prep.ReadFail("RNLO_BLOCK_MISMATCH")
+        index = int(t["transactionIndex"], 16)
+        txs = b.get("transactions")
+        if not isinstance(txs, list) or index >= len(txs) or txs[index] != h:
+            raise prep.ReadFail("RNLO_BLOCK_MISMATCH")
+        finality = {}
+        for tag in ("finalized", "safe"):
+            if tag == "safe" and finality["finalized"] in ("IN_ANCESTRY", "CONFLICT"):
+                finality["safe"] = finality["finalized"]
+                continue
+            finality[tag] = walk_live(net, pid, tag, b["hash"], int(b["number"], 16))
+    observation = {"format": "rnnet.anchor-observation.v1", "network": "evm:11155111", "transaction": dict(t), "receipt": None if r is None else dict(r)}
+    material = {"hash": t["hash"], "blockHash": t.get("blockHash"), "blockNumber": t.get("blockNumber"), "transactionIndex": t.get("transactionIndex"),
+                "input": t.get("input"), "from": t.get("from"), "to": t.get("to"), "status": None if r is None else r.get("status"), "finality": finality}
+    return observation_bytes(observation), observation_bytes(material), {"finality": finality}
+
+
+def walk_live(net, pid, tag, target_hash, target_height):
+    try:
+        head = live_call(net, pid, "eth_getBlockByNumber", [tag, False])
+    except prep.ReadFail as f:
+        if f.code == "RNLO_RPC_ERROR":
+            return "UNRESOLVED"
+        raise
+    if not obj(head) or not isinstance(head.get("number"), str) or not QUANTITY.fullmatch(head["number"]) or not isinstance(head.get("hash"), str) or not EVM_HASH.fullmatch(head["hash"]):
+        return "UNRESOLVED"
+    current, height = head, int(head["number"], 16)
+    if height < target_height:
+        return "NOT_REACHED"
+    if height - target_height > ANCESTRY_LIMIT:
+        return "UNRESOLVED"
+    steps = 0
+    while height > target_height:
+        if steps >= ANCESTRY_LIMIT:
+            raise prep.ReadFail("RNLO_BLOCK_MISMATCH")
+        parent_hash = current.get("parentHash")
+        if not isinstance(parent_hash, str) or not EVM_HASH.fullmatch(parent_hash):
+            raise prep.ReadFail("RNLO_BLOCK_MISMATCH")
+        parent = live_call(net, pid, "eth_getBlockByHash", [parent_hash, False])
+        if not obj(parent) or parent.get("hash") != parent_hash or parent.get("number") != hex(height - 1):
+            raise prep.ReadFail("RNLO_BLOCK_MISMATCH")
+        current, height, steps = parent, height - 1, steps + 1
+    return "IN_ANCESTRY" if current["hash"] == target_hash else "CONFLICT"
+
+
+def live_report(net, network, h, commitment, providers):
+    """The rnnet.live-observation-report.v1 report, as a plain value."""
+    entries = []
+    for p in providers:
+        e = {"id": p["id"], "operator": p["operator"]}
+        try:
+            data, material, extra = (read_xrpl_live if network == "xrpl:testnet" else read_evm_live)(net, p["id"], h)
+            rec = (anchor.verify_xrpl if network == "xrpl:testnet" else anchor.verify_evm)(data, commitment)
+            e.update({"outcome": "OBSERVED", "observationSha256": sha(data), "materialSha256": sha(material), "record": rec})
+            if network == "xrpl:testnet":
+                e["providerValidated"] = extra["validated"]
+            else:
+                e["finality"] = extra["finality"]
+        except prep.ReadFail as f:
+            e.update({"outcome": OUTCOME_OF_ERROR.get(f.code, "UNAVAILABLE"), "error": f.code})
+        entries.append(e)
+    comparable = [e for e in entries if e["outcome"] in ("OBSERVED", "NOT_FOUND")]
+    answers = {e["materialSha256"] if e["outcome"] == "OBSERVED" else "NOT_FOUND" for e in comparable}
+    if not comparable:
+        agreement = "SOURCE_UNAVAILABLE"
+    elif len(answers) > 1:
+        agreement = "DISAGREEMENT"
+    elif len(comparable) == 1:
+        agreement = "INSUFFICIENT_SOURCES"
+    else:
+        agreement = "AGREEMENT"
+    findings = []
+    for e in entries:
+        if e["outcome"] != "OBSERVED":
+            findings.append({"code": e["error"], "severity": "unavailable" if e["outcome"] == "UNAVAILABLE" else "error", "subject": f"providers.{e['id']}"})
+        elif e["record"]["outcome"] != "PASS":
+            findings.append({"code": "RNLO_RECORD_NOT_PASSED", "severity": "error", "subject": f"providers.{e['id']}"})
+        fin = e.get("finality")
+        if fin and (fin["finalized"] == "CONFLICT" or fin["safe"] == "CONFLICT"):
+            findings.append({"code": "RNLO_FINALITY_CONFLICT", "severity": "error", "subject": f"providers.{e['id']}"})
+    if agreement == "DISAGREEMENT":
+        findings.append({"code": "RNLO_PROVIDER_DISAGREEMENT", "severity": "error", "subject": "providers"})
+    observed = [e for e in entries if e["outcome"] == "OBSERVED"]
+    hard = any(f["severity"] == "error" and f["code"] != "RNLO_RECORD_NOT_PASSED" for f in findings) or any(e["record"]["outcome"] == "FAIL" for e in observed) or (comparable and not observed)
+    if hard:
+        outcome = "FAIL"
+    elif not observed:
+        outcome = "INDETERMINATE"
+    elif any(e["record"]["outcome"] == "UNSUPPORTED" for e in observed):
+        outcome = "UNSUPPORTED"
+    else:
+        outcome = "PASS"
+    xrpl = network == "xrpl:testnet"
+    final = bool(observed) and all((e["providerValidated"] if xrpl else e["finality"]["finalized"] == "IN_ANCESTRY") for e in observed)
+    statuses = []
+    if observed:
+        statuses.append("OBSERVED_FROM_RPC")
+    if final:
+        statuses.append("PROVIDER_REPORTED_VALIDATED" if xrpl else "PROVIDER_REPORTED_FINALIZED")
+    if agreement == "AGREEMENT":
+        statuses.append("MULTI_PROVIDER_AGREEMENT")
+    if agreement == "DISAGREEMENT":
+        statuses.append("DISAGREEMENT")
+    if not final:
+        statuses.append("UNRESOLVED")
+    statements = []
+    if observed:
+        statements.append({"subject": "providerObservation", "classification": "CLAIMED", "basis": LIVE_BASIS["observed"]})
+    if agreement == "AGREEMENT":
+        statements.append({"subject": "providerAgreement", "classification": "CLAIMED", "basis": LIVE_BASIS["agreement"]})
+    if final:
+        statements.append({"subject": "finality", "classification": "CLAIMED", "basis": LIVE_BASIS["validated" if xrpl else "finalized"]})
+    else:
+        statements.append({"subject": "finality", "classification": "UNRESOLVED", "basis": LIVE_BASIS["unresolvedFinality"]})
+    statements.append({"subject": "chainInclusionProof", "classification": "UNRESOLVED", "basis": LIVE_BASIS["proof"]})
+    return {"format": "rnnet.live-observation-report.v1", "network": network, "transactionHash": h, "expectedCommitment": commitment,
+            "outcome": outcome, "agreement": agreement, "statuses": statuses, "providers": entries, "findings": findings, "statements": statements}
+
+
 def run_status(case, endpoints):
     inputs, now = case["inputs"], case["now"]
     log = list(case["logBefore"])
@@ -708,19 +956,20 @@ def run_status(case, endpoints):
     configured = {p["id"]: p for p in endpoints["providers"] if p["network"] == a["network"]}
     if any(i not in configured for i in a["providerIds"]):
         return record(None, "RNBC_PROVIDER_NOT_ALLOWED")
-    live = expected["live"]
+    # The live report is recomputed from the exchanges (B3 review N3), then the absence reads; every
+    # recorded exchange must be used, in order.
+    net = Network(a["network"], case["exchanges"])
+    report = live_report(net, a["network"], a["transactionHash"], intent["commitment"], [configured[pid] for pid in a["providerIds"]])
+    live = {"outcome": report["outcome"], "agreement": report["agreement"], "statuses": report["statuses"], "outcomes": [p["outcome"] for p in report["providers"]]}
     absence = []
     if all(o == "NOT_FOUND" for o in live["outcomes"]):
-        net = Network(a["network"], case["exchanges"])
-        for pid in a["providerIds"]:
-            skip_not_found_reads(net, a["network"], pid, a["transactionHash"])
         for pid in a["providerIds"]:
             absence.append(absence_of(net, pid, intent, attempt))
-        if net.queue:
-            raise Mismatch("unused exchanges")
+    if net.queue:
+        raise Mismatch("unused exchanges")
     finding = decide_finding(a["network"], live, absence)
     providers = [{"id": pid, "observation": live["outcomes"][i], "absence": absence[i] if i < len(absence) else None} for i, pid in enumerate(a["providerIds"])]
-    return record(finding, "RNBC_STATUS_UNRESOLVED" if finding == "UNRESOLVED" else None, live, providers, expected["liveReportSha256"])
+    return record(finding, "RNBC_STATUS_UNRESOLVED" if finding == "UNRESOLVED" else None, live, providers, sha(canon(report)))
 
 
 # --- checks ----------------------------------------------------------------------------------------

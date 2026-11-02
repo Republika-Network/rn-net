@@ -565,7 +565,8 @@ test('key-generation routes and indirect signer imports are reported', () => {
   assert.ok(rules('signer/src/a.mjs', 'const k = s.keygen();').includes('key-generation:keygen'));
   assert.ok(rules('packages/broadcast-handoff/src/a.mjs', 'const k = crypto.subtle;').includes('global-crypto'));
   assert.ok(rules('signer/test/a.test.mjs', "import { generateKeyPairSync } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#generateKeyPairSync'));
-  assert.deepEqual(rules('tools/x.mjs', 'const m = await import(`../signer/src/sign.mjs`);'), ['signer-importer-not-allowed']);
+  // A template-literal import() is also a computed import, so the file is network-capable (C2, N1).
+  assert.deepEqual(rules('tools/x.mjs', 'const m = await import(`../signer/src/sign.mjs`);'), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:dynamic-import-non-literal']);
   assert.deepEqual(rules('scripts/sign.mjs', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
   assert.deepEqual(rules('tools/x.js', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
 });
@@ -880,4 +881,86 @@ test('C4 does not widen B1/B3 isolation: the broadcaster, packages and txverify 
   assert.ok(rules('packages/chain-submit/src/x.mjs', "import { x } from '../../../tools/keytool/cli.mjs';").includes('import-outside-packages'));
   assert.ok(rules('txverify/src/x.mjs', "import { x } from '../../signer/src/keygen.mjs';").some((r) => r.startsWith('txverify-import-not-allowed')));
   assert.ok(rules('packages/tx-intent/src/x.mjs', "import { randomBytes } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#randomBytes'));
+});
+
+// RN-NET-03B2-C2: the B3 review's follow-ups N1 and N2, as the reviewer wrote the repros.
+test('C2 N1: tools/submit/ cannot reach the network or load code without a static import', () => {
+  const r = (content, path = 'tools/submit/a.mjs') => rules(path, content);
+  for (const [code, rule] of [
+    ["const h = process.getBuiltinModule('node:https');", 'submit-process-access'],
+    ["const t = process.binding('tcp_wrap');", 'submit-process-access'],
+    ["import { createRequire as cr } from 'node:module';\nconst h = cr(import.meta.url)('node:https');", 'submit-module-not-allowed:node:module'],
+    ["import m from 'node:module';\nconst q = m.createRequire(import.meta.url);", 'submit-module-not-allowed:node:module'],
+    ["import { getBuiltinModule as g } from 'node:process';", 'submit-module-not-allowed:node:process'],
+    ["import { ClientRequest } from '_http_client';", 'third-party-import:_http_client'],
+    ["import { ClientRequest } from 'node:_http_client';", 'submit-module-not-allowed:node:_http_client'],
+    ["import os from 'node:os';", 'submit-module-not-allowed:node:os'],
+    ["import * as fs from 'node:fs';", 'submit-builtin-export-not-allowed:node:fs#*'],
+    ["import { symlinkSync } from 'node:fs';", 'submit-builtin-export-not-allowed:node:fs#symlinkSync'],
+    ["const p = process.env.HOME;", 'submit-process-access'],
+    ["const { argv } = process;", 'submit-process-access'],
+    ['const m = await import(name);', 'dynamic-import-non-literal'],
+    ["const f = globalThis['fe' + 'tch'];", 'forbidden-identifier:globalThis'],
+    ["import { main } from '../verify-live-anchor.mjs';", 'submit-import-not-allowed:tools/verify-live-anchor.mjs'],
+    ["import { t } from '../net.mjs';", 'submit-import-not-allowed:tools/net.mjs'],
+    ["import { x } from '../../packages/tx-prepare/src/index.mjs';", 'submit-import-not-allowed:packages/tx-prepare/src/index.mjs'],
+    ["import { x } from '../../packages/chain-readonly/src/rpc.mjs';", 'submit-import-not-allowed:packages/chain-readonly/src/rpc.mjs'],
+  ]) assert.ok(r(code).includes(rule), `${code} -> ${r(code).join(' ')}`);
+  // The library files keep only process.getuid and process.pid; the entry points also argv,
+  // exitCode, stdout and stderr, and only they may have a command line.
+  assert.deepEqual(r('const u = process.getuid();'), []);
+  assert.ok(r('process.exitCode = 1;').includes('submit-process-access'));
+  for (const entry of ['tools/submit/submit-anchor.mjs', 'tools/submit/status-check.mjs']) {
+    assert.deepEqual(r('#!/usr/bin/env node\nprocess.exitCode = main(process.argv.slice(2));\nprocess.stdout.write(x);', entry), [], entry);
+    assert.ok(r("import { httpsTransport } from '../live/https-transport.mjs';", entry).includes('submit-imports-transport'), entry);
+  }
+});
+
+test('C2 N1 residual: hand-written network code anywhere in tools/ counts as network in the graph', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const entry = "#!/usr/bin/env node\nimport { runBroadcast } from '../submit/broadcaster.mjs';\nimport { t } from '../net.mjs';\nawait runBroadcast({ argv: process.argv, t });";
+  const helpers = [
+    ['global fetch', "export const t = async ({ url, body }) => (await fetch(url, { method: 'POST', body })).text();"],
+    ['_http_client', "import { ClientRequest } from '_http_client';\nexport const t = ClientRequest;"],
+    ['node:_tls_wrap', "import { TLSSocket } from 'node:_tls_wrap';\nexport const t = TLSSocket;"],
+    ['createRequire', "import { createRequire } from 'node:module';\nexport const t = createRequire(import.meta.url)('https');"],
+    ['getBuiltinModule', "export const t = process.getBuiltinModule('node:https');"],
+    ['child_process curl', "import { execFileSync } from 'node:child_process';\nexport const t = (u) => execFileSync('curl', [u]);"],
+    ['computed import', 'export const t = async (n) => import(n);'],
+    ['worker', "import { Worker } from 'node:worker_threads';\nexport const t = Worker;"],
+  ];
+  for (const [label, helper] of helpers) {
+    const findings = found([['tools/submit/broadcaster.mjs', "import { x } from '../../packages/chain-submit/src/index.mjs';"], ['tools/net.mjs', helper], ['tools/broadcast/send.mjs', entry]]);
+    assert.ok(findings.includes('tools/broadcast/send.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
+    assert.ok(findings.some((f) => f.startsWith('tools/net.mjs:network-capable-file-not-allowed:')), `${label}: ${findings.join(' ')}`);
+  }
+  // A network-capable file inside the write path is itself a join.
+  assert.ok(found([['tools/submit/x.mjs', 'export const t = (u) => fetch(u);']]).includes('tools/submit/x.mjs:write-transport-join-transitive'));
+  // The named verifier spawn is not network; the same import anywhere else is.
+  assert.deepEqual(found([['tools/submit/python-verifier.mjs', "import { execFileSync } from 'node:child_process';\nexport const v = execFileSync;"]]), []);
+  // The read-only entry point never reaches the broadcaster, however indirectly.
+  assert.ok(found([
+    ['tools/submit/status-check.mjs', "import { a } from './helper.mjs';"],
+    ['tools/submit/helper.mjs', "export { runBroadcast as a } from './broadcaster.mjs';"],
+    ['tools/submit/broadcaster.mjs', 'export const runBroadcast = 1;'],
+  ]).includes('tools/submit/status-check.mjs:status-entry-point-reaches-broadcaster'));
+});
+
+test('C2 N2: secp256k1 is never a value in txverify/, only .Signature and .verify', () => {
+  const r = (code) => rules('txverify/src/x.mjs', `import { secp256k1 } from '@noble/curves/secp256k1.js';\n${code}`);
+  for (const code of [
+    'const v = Object.values(secp256k1);',
+    "const s = Reflect.get(secp256k1, ['s', 'i', 'g', 'n'].join(''));",
+    'const s = { ...secp256k1 }[n];',
+    'use(secp256k1);',
+    'let c; c = secp256k1;',
+    'const t = [secp256k1];',
+  ]) assert.ok(r(code).includes('txverify-secp256k1-value'), `${code} -> ${r(code).join(' ')}`);
+  assert.deepEqual(r("const s = secp256k1.Signature.fromBytes(b, 'recovered');\nconst ok = secp256k1.verify(s, d, p);"), []);
+});
+
+test('C2: no live joiner, and the entry points are exactly the two of ADR-RN-019 Amendment C1', async () => {
+  const guard = await import('./dependency-boundaries.mjs');
+  assert.deepEqual(guard.WRITE_TRANSPORT_JOINERS, []);
+  assert.deepEqual(guard.SUBMIT_ENTRY_POINTS, ['tools/submit/submit-anchor.mjs', 'tools/submit/status-check.mjs']);
 });

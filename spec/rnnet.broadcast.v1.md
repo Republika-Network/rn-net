@@ -1,8 +1,10 @@
 # rnnet.broadcast.v1: controlled testnet broadcasting (offline implementation)
 
-- Status: Draft, implemented offline in RN-NET-03B2-B3 (gate A). **Nothing here authorizes a
-  broadcast.** No live entry point exists; every submission in this repository goes to an
-  injected, simulated transport.
+- Status: Draft, implemented offline in RN-NET-03B2-B3 (gate A), with the controlled live
+  boundary of RN-NET-03B2-C2 (§12). **Nothing here authorizes a broadcast.** The two entry points
+  exist but are **disabled for live network access**: neither imports the network transport, both
+  refuse as commands, and every submission in this repository goes to an injected, simulated
+  transport.
 - Decision: [ADR-RN-019](../docs/adr/ADR-RN-019-controlled-testnet-broadcasting.md); plan:
   [B3 design](../docs/genesis/rn-net-03b2b3-broadcaster-design.md).
 - Code: `packages/chain-submit` (formats, write requests, classifier, log rules; no dependencies,
@@ -116,7 +118,7 @@ check has written a `RESOLVED` entry, as ADR-RN-019 §6 makes the status check t
 
 | Outcome | Code | When |
 |---|---|---|
-| `NOT_SENT` | `RNBC_NOT_SENT_HARNESS` | The harness refused before calling the transport (a second write in one run) |
+| `NOT_SENT` | `RNBC_NOT_SENT_HARNESS` | The harness refused before calling the transport (a second write in one run, or the request policy, §12). Decided from the harness's own state, never from what a transport throws: a transport that throws anything after being called is `UNCERTAIN` |
 | `NOT_SENT` | `RNBC_NOT_SENT_BLOCKED_ADDRESS` | The transport refused before connecting (`RNLO_BLOCKED_ADDRESS`) |
 | `UNCERTAIN` | `RNBC_UNCERTAIN_TRANSPORT` | Any other transport failure: timeout, connection, redirect, oversized response |
 | `UNCERTAIN` | `RNBC_UNCERTAIN_HTTP_STATUS` | Any HTTP status other than 200 (429 and 5xx included; no retry) |
@@ -125,7 +127,7 @@ check has written a `RESOLVED` entry, as ADR-RN-019 §6 makes the status check t
 | `UNCERTAIN` | `RNBC_UNCERTAIN_BLOB_MISMATCH` | XRPL `tx_blob` is not the sent blob |
 | `UNCERTAIN` | `RNBC_UNCERTAIN_HASH_MISMATCH` | The returned hash is not the recomputed one |
 | `UNCERTAIN` | `RNBC_UNCERTAIN_FLAGS` | XRPL: any of `accepted`, `applied`, `broadcast`, `kept`, `queued` missing; `tesSUCCESS` without `accepted` and `broadcast`, or with `queued`; a rejected class with any flag true |
-| `UNCERTAIN` | `RNBC_UNCERTAIN_ENGINE_RESULT` | XRPL `tec*`, `tefALREADY`, `tefPAST_SEQ`, and `terQUEUED` |
+| `UNCERTAIN` | `RNBC_UNCERTAIN_ENGINE_RESULT` | XRPL `tec*`, `tefALREADY`, `tefPAST_SEQ`, `tefNO_TICKET`, and `terQUEUED` |
 | `REJECTED` | `RNBC_REJECTED` | XRPL `tem*`, `tel*`, other `ter*` and other `tef*`, with every flag false |
 | `ACCEPTED_PROVISIONAL` | `RNBC_ACCEPTED` | XRPL `tesSUCCESS` with `accepted` and `broadcast` true and `queued` false; Sepolia `result` equal to the recomputed hash |
 
@@ -133,12 +135,21 @@ Checks run in this order: transport, HTTP status, JSON, envelope, engine result 
 `tx_blob` and `tx_json.hash` present, `tx_blob` equal, `tx_json.hash` equal, all five flags
 present, then the class.
 
-**`fail_hard` (design §9 step 1).** The published `submit` documentation was read: it states only
-that, with `fail_hard: true`, a transaction that fails locally is neither retried nor relayed.
-It does not state how `tec*` or `terQUEUED` behave under `fail_hard`. The rippled source was not
-reviewed. So the conservative classes of ADR-RN-019 §6 stand: `tec*` is `UNCERTAIN`, and
-`terQUEUED` is `UNCERTAIN` (it is accepted only if rippled can return it under `fail_hard`, which
-is unconfirmed). Confirming both from the rippled source remains a precondition of gate E-XRPL.
+### 6.1 `fail_hard` (ADR-RN-019 Amendment C1, E6)
+
+The rippled source was read at tag `3.4.1` (commit `00e64075`), the `build_version` both Testnet
+providers reported. The finding is recorded in
+[rn-net-03b2c2-fail-hard-rippled-3.4.1](../docs/genesis/rn-net-03b2c2-fail-hard-rippled-3.4.1.md):
+- under `fail_hard`, a tec result is discarded, and no result other than tes is relayed or kept;
+- `terQUEUED` cannot be returned (`TxQ::canBeHeld` gives `telCAN_NOT_QUEUE`);
+- `tesSUCCESS` means applied to one server's open ledger, never inclusion.
+
+The classes do not change. tec* stays `UNCERTAIN`: an invariant failure can return a tec for an
+applied transaction, the answer is one server's open view, and the blob stays valid until
+`LastLedgerSequence`. `terQUEUED` stays `UNCERTAIN` as an inconsistent answer. `tefNO_TICKET` is
+added to `UNCERTAIN` (an already-applied Ticket transaction). No answer is proof of inclusion or
+finality, and a timeout or disconnect says nothing about whether the transaction was applied and
+relayed.
 
 ## 7. rnnet.submission-record.v1
 
@@ -152,12 +163,28 @@ names no authorization and nothing is stored.
 
 The record and the capture of every exchange (`capture.json`, `rnnet.rpc-capture.v1`, reads and
 the write) go to a new run directory (`run-NNNNNN`, mode `0700`) under the evidence directory,
-written with `wx` and mode `0600`. Neither is committed or published; publication is gate F.
+mode `0600`. Neither is committed or published; publication is gate F.
+
+**Evidence before the write (C2).** Immediately after `ATTEMPTING` and before the transport is
+called, `attempt.json` is written to the run directory: `rnnet.submission-attempt.v1`, with
+`authorizationDigest`, `attemptEntry` (the `ATTEMPTING` digest), `providerId`, `url`,
+`requestSha256`, `request` (the exact request text), `presubmitExchanges` (their count) and
+`presubmitExchangesSha256`.
+
+**Durability (C2, B3 review N4).** Every log entry and evidence file is created the same way:
+1. written to `.NAME.tmp` (`O_CREAT|O_EXCL|O_NOFOLLOW`, mode `0600`), fsync'ed;
+2. `link()`ed to its name, which fails if the name exists;
+3. the temporary name removed and the directory fsync'ed.
+
+`ATTEMPTING` is durable before the write. A leftover temporary name in the log refuses every later
+run (`RNBC_LOG_CONFLICT`) until the founder has looked at it.
 
 ## 8. Refusal precedence
 
-1. `RNBC_INPUT_INVALID`; `RNBC_AUTHORIZATION_INVALID`; `RNBC_LOG_DIRECTORY`,
-   `RNBC_EVIDENCE_DIRECTORY`; `RNBC_LOG_INVALID`; `RNBC_AUTHORIZATION_USED`. Nothing is logged.
+1. `RNBC_INPUT_INVALID`; `RNBC_AUTHORIZATION_INVALID`; `RNBC_INPUT_INVALID` for a signed
+   transaction above 4096 bytes in its network's form (C2, B3 review N5); `RNBC_LOG_DIRECTORY`,
+   `RNBC_EVIDENCE_DIRECTORY`; `RNBC_LOG_INVALID` or `RNBC_LOG_CONFLICT` (a leftover temporary
+   name); `RNBC_AUTHORIZATION_USED`. Nothing is logged.
 2. `RUN_STARTED` is written. Then: `RNBC_PROVIDER_NOT_ALLOWED` (the id must be one of the two
    configured providers of the network).
 3. Verification (§9): `RNTX_INTENT_INVALID` for non-canonical intent text;
@@ -170,7 +197,13 @@ written with `wx` and mode `0600`. Neither is committed or published; publicatio
    `RNBC_PRESUBMIT_SEQUENCE`, XRPL `RNBC_AUTHORIZATION_EXPIRED`, `RNBC_PRESUBMIT_ALREADY_KNOWN`;
    Sepolia `RNLO_WRONG_NETWORK`, `RNBC_PRESUBMIT_BASE_FEE`, `RNBC_PRESUBMIT_NONCE` (latest, then
    pending), `RNBC_PRESUBMIT_ALREADY_KNOWN`, `RNBC_PRESUBMIT_BALANCE`.
-7. `RNBC_DRY_RUN`; the log rules again on the log as it now stands; `ATTEMPTING`; the write (§6).
+7. `RNBC_DRY_RUN`; Sepolia `RNBC_AUTHORIZATION_EXPIRED` again; the write request is built
+   (`RNBC_INPUT_INVALID` if it cannot be); `RNBC_REQUEST_POLICY` if any request was refused (§12);
+   the log rules again on the log as it now stands; `ATTEMPTING`; `attempt.json`; the write (§6).
+
+After the write has started, no failure is ever recorded as `NOT_SENT`. If the run cannot write
+`RESULT`, the attempt stays unresolved, which refuses every later run for that sequence until a
+status check (§5).
 
 ## 9. The run
 
@@ -228,10 +261,10 @@ lagging provider leaves the finding `UNRESOLVED`. Agreement is not a consensus p
 
 ## 11. Differences from the design, and why
 
-- **No `tools/submit/submit-anchor.mjs`.** The founder's B3 instruction excludes any executable
-  live write entry point. `tools/submit/` is a library with an injected transport; the guard
-  refuses a command line there and refuses any file joining `chain-submit` to the network
-  transport (`WRITE_TRANSPORT_JOINERS` is empty). The entry point is a gate-E prerequisite.
+- **`tools/submit/submit-anchor.mjs` exists from C2, disabled** (§12). In B3, the founder's
+  instruction excluded any executable live write entry point. In C2, the entry point's interface
+  and checks exist, but it cannot reach the network: it does not import the transport, and
+  `WRITE_TRANSPORT_JOINERS` is empty. Enabling it is a gate-E change.
 - **`chain-submit` has no Ed25519 built-ins.** Signature checks are in `txverify/`, which the
   harness calls; `chain-submit` imports only `Buffer` and `createHash`.
 - **The XRPL validity margin** is applied as "void once a validated ledger reaches
@@ -239,3 +272,112 @@ lagging provider leaves the finding `UNRESOLVED`. Agreement is not a consensus p
 - **The log rules** are stricter after uncertainty (§5).
 - **`authorizationId` and `dryRun`** are authorization fields, so that a re-run needs a new
   authorization and a dry run is the founder's stated intent.
+
+## 12. The controlled live boundary (RN-NET-03B2-C2)
+
+ADR-RN-019 Amendment C1 (E1 to E6) stays **Proposed**. C2 implements it offline, with live network
+access **disabled**.
+
+### 12.1 Entry points
+
+| File | Role | Live network access |
+|---|---|---|
+| `tools/submit/submit-anchor.mjs` | `submitAnchor({ argv, deps })`: one founder-approved submission | **Disabled.** As a command it refuses at once (`RNSA_LIVE_DISABLED`, exit 3) and reads nothing. `LIVE_NETWORK_ACCESS = false` |
+| `tools/submit/status-check.mjs` | `statusCheck({ argv, deps })`: one read-only status check | **Disabled**, the same way |
+
+The submission flow, in order:
+1. **Flags.** Exactly `--network --authorization --intent --approved-digest --signed-transaction
+   --endpoints --log-dir --evidence-dir`, each once (`RNSA_USAGE`). There is no retry, fee, field,
+   provider or force option.
+2. **Network.** `--network` is `xrpl:testnet` or `evm:11155111` (`RNSA_NETWORK_NOT_ALLOWED`), and
+   the authorization names the same one (`RNSA_NETWORK_MISMATCH`).
+3. **Endpoints.** The endpoint file is exactly the reviewed providers, pinned in code as
+   `REVIEWED_PROVIDERS` by id, network and URL (`RNSA_ENDPOINTS_NOT_REVIEWED`). A test pins that
+   list to `config/rpc-endpoints.json`.
+4. **Files.** Each input is a private file: absolute path, regular file, not a symbolic link,
+   owned by the user, mode `0600`, at most 64 KiB (`RNSA_FILE`). One final newline is removed from
+   the intent and the signed transaction.
+5. **Approval.** The founder sees every value the run is bound to, and types
+   `<network> <last 16 hex digits of the authorization digest>` (`RNSA_APPROVAL_REFUSED`). Typing
+   the network makes the approval separate per network; the digest makes it separate per
+   submission. A refusal at steps 1 to 5 consumes nothing.
+6. **The run.** `runBroadcast` (§9), under the request policy (§12.2).
+
+**Exit codes:**
+- `0`: `ACCEPTED_PROVISIONAL`. Never proof of inclusion.
+- `10`: `NOT_SENT`. `11`: `REJECTED`. `12`: `UNCERTAIN`; do not resend, a status check comes next.
+- `2`: refused before the run. `3`: live access disabled.
+
+`status-check.mjs` takes `--network --authorization --intent --endpoints --log-dir
+--evidence-dir`, with the same file, endpoint and approval checks, and runs `runStatusCheck` (§10).
+Its exit codes: `0` for a finding written as `RESOLVED`, `12` for `UNRESOLVED`, `2` refused,
+`3` disabled.
+
+### 12.2 The request policy (`tools/submit/policy.mjs`)
+
+Every request of a run is checked before the transport is called; a refused request is never sent.
+
+**Submit runs.** A request is admitted only if:
+- it names one of the run's two configured providers, at that provider's URL;
+- its body is one JSON-RPC request, and its method is on the exact per-provider plan:
+  - XRPL: `server_info` 1, `account_info` 1, `tx` 1;
+  - Sepolia: `eth_chainId` 1, `eth_getBlockByNumber` 1, `eth_getTransactionCount` 2,
+    `eth_getTransactionByHash` 1, `eth_getBalance` 1.
+
+The write is admitted only:
+- as the network's one write method (`submit`, or `eth_sendRawTransaction`);
+- to the authorized provider;
+- once;
+- after **every** planned read.
+
+A run that sends therefore uses exactly 7 requests on XRPL, or 13 on Sepolia. A refused read ends
+the run `NOT_SENT` (`RNBC_REQUEST_POLICY`), and a refused write is `NOT_SENT`
+(`RNBC_NOT_SENT_HARNESS`).
+
+**Status checks.** Only `READ_ONLY_METHODS`, never a write method, to the two named providers.
+The ceiling per provider is XRPL 9 and Sepolia 527: the live verifier's reads with their retries,
+plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY`, and no
+`RESOLVED` entry is written.
+
+### 12.3 Guard rules added in C2 (`tools/guards/dependency-boundaries.mjs`)
+
+- **`tools/submit/` allowlists (B3 review N1).**
+  - Built-in exports: `SUBMIT_BUILTIN_EXPORTS`, no default or namespace import.
+  - `child_process`: `execFileSync` in `python-verifier.mjs` only.
+  - `process`: only `getuid` and `pid`; the two entry points also `argv`, `exitCode`, `stdout` and
+    `stderr`.
+  - Relative imports: only `tools/submit/` and the entry points of the five packages it uses and
+    of `txverify/`.
+  - `FORBIDDEN_CONSTRUCTS` and the raw-text rules apply.
+  - Only the two entry points may have a command line.
+- **Network-capable files (B3 review N1 residual).** In the import graph, a file is network if it
+  imports any of: a network, subprocess, worker, cluster, inspector, vm, repl or wasi module;
+  `node:module`; `node:process`; an underscore-prefixed legacy module. Or if it:
+  - names `fetch`, `WebSocket`, `XMLHttpRequest`, `EventSource`, `createRequire`,
+    `getBuiltinModule`, `require`, `eval`, `Function`, `WebAssembly`, `globalThis` or `global`;
+  - reads `process.binding`, `_linkedBinding`, `dlopen`, `getBuiltinModule` or `execve`, or a
+    computed member of `process`;
+  - has a computed `import()`;
+  - or cannot be parsed.
+
+  The one named verifier spawn is not counted. Every network-capable file under `tools/` must be
+  listed in `NETWORK_CAPABLE_FILES`. The write side may not reach a network file, and no other file
+  may reach both.
+- **The read-only entry point** may not reach `tools/submit/broadcaster.mjs`, however indirectly.
+- **`txverify/` (B3 review N2).** `secp256k1` may appear only as its import binding or as the
+  object of a non-computed `.Signature` or `.verify`; any other use is
+  `txverify-secp256k1-value`.
+- `WRITE_TRANSPORT_JOINERS` stays empty.
+
+### 12.4 What enabling live access would take (gate E, per network)
+
+All of these are outside C2, and C2 authorizes none of them:
+- **Approvals:** ADR-RN-019 Amendment C1 accepted; this implementation reviewed and merged.
+- **The code change:** a reviewed change that names one entry point in `WRITE_TRANSPORT_JOINERS`,
+  imports the transport there, adds the terminal route for the approval prompt, and sets
+  `LIVE_NETWORK_ACCESS`.
+- **Gates B to D for that network.**
+- **The C6 read-only run:** it confirms `build_version`, `complete_ledgers` and each provider's
+  answers.
+- **The authorization:** a founder-written `rnnet.broadcast-authorization.v1`.
+

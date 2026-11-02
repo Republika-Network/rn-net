@@ -101,6 +101,9 @@ run_checks() {
   echo "::group::Broadcaster's Python verifier as a real subprocess (no preload; still inside the namespace)"
   node tools/broadcast/python-verifier.check.mjs "$(command -v python3)"
   echo "::endgroup::"
+  echo "::group::Submission log under concurrent writer processes (no preload; still inside the namespace)"
+  node tools/broadcast/concurrent-log.check.mjs
+  echo "::endgroup::"
   echo "::group::Key tool sign log: JavaScript against the Python reference on real directories (no preload; still inside the namespace)"
   node tools/signing/keytool-python.check.mjs "$(command -v python3)"
   echo "::endgroup::"
