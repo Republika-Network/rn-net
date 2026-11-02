@@ -97,6 +97,10 @@ are.
 
 - Status: **Proposed** (RN-NET-03B2-C1). It is not accepted, and accepting it would authorize
   none of gates B to F.
+  - **It stays Proposed until C3 implements it.** That means the offset constant, the Python
+    preparation reference, the specification text and the regenerated B2 fixtures and digests,
+    with tests showing `+ 80` binding and the refusal when 4 or fewer remain.
+  - **Then it needs an independent review.** Only after that review may the founder accept it.
 - Founder decision behind it (2026-11-02): draft a proposal raising the offset from 20 to 80
   validated ledgers, and keep the broadcaster's refusal when four or fewer ledgers remain. This
   is a testnet execution proposal. It does not authorize signing or broadcasting.
