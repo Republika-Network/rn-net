@@ -2,7 +2,7 @@
 
 **Synthetic broadcaster runs.** No provider was contacted, and nothing here was or can be sent to a network.
 
-`cases.json` (`rnnet.broadcast-b3-fixtures.v1`) holds 165 submit runs and 11 status checks, covering 57 distinct outcome codes. Each case has:
+`cases.json` (`rnnet.broadcast-b3-fixtures.v1`) holds 167 submit runs and 11 status checks, covering 57 distinct outcome codes. Each case has:
 - the inputs (intent text, approved digest, signed transaction, authorization, any supplied records) and the second verifier's record;
 - the submission log before the run;
 - every exchange: the exact request text, and the response status and body or the transport error;
