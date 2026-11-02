@@ -25,6 +25,8 @@ export const ALLOWED_BUILTINS = {
   verifier: ['node:buffer', 'node:crypto'],
   anchor: ['node:buffer', 'node:crypto'],
   'chain-readonly': ['node:buffer', 'node:crypto'],
+  'tx-intent': ['node:buffer', 'node:crypto', 'node:util'],
+  'broadcast-handoff': ['node:buffer', 'node:crypto'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
@@ -45,6 +47,8 @@ export const ALLOWED_BUILTIN_EXPORTS = {
 export const PACKAGE_BUILTIN_EXPORTS = {
   // createPublicKey and verify check Ed25519 signatures (RN-NET-02); they cannot sign.
   verifier: { 'node:crypto': ['createPublicKey', 'verify'] },
+  // types.isProxy refuses Proxy objects in intents (ADR-RN-016 §3).
+  'tx-intent': { 'node:util': ['types'] },
 };
 // Further exports allowed in test code only. Signing exists only to build test inputs, so
 // production code can never hold or use a private key.
@@ -64,6 +68,42 @@ export const DEV_DEPENDENCIES = {
 // Fields a pinned lockfile entry may have; anything else (nested dependencies, for example) is
 // reported.
 const LOCKFILE_ENTRY_FIELDS = ['version', 'resolved', 'integrity', 'dev', 'license', 'bin', 'engines'];
+
+// The signer project (signer/, ADR-RN-017): a separate npm project with its own manifest and
+// lockfile, holding exactly these runtime dependencies, pinned by version, source and integrity.
+// Founder-approved for RN-NET-03B2-B1 only (offline, test-only signing toolchain).
+export const SIGNER_DEPENDENCIES = {
+  '@noble/curves': {
+    version: '2.4.0',
+    resolved: 'https://registry.npmjs.org/@noble/curves/-/curves-2.4.0.tgz',
+    integrity: 'sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew==',
+    dependencies: { '@noble/hashes': '2.4.0' },
+  },
+  '@noble/hashes': {
+    version: '2.4.0',
+    resolved: 'https://registry.npmjs.org/@noble/hashes/-/hashes-2.4.0.tgz',
+    integrity: 'sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==',
+  },
+};
+const SIGNER_LOCKFILE_ENTRY_FIELDS = ['version', 'resolved', 'integrity', 'license', 'engines', 'funding', 'dependencies'];
+// Manifest fields the signer project may not have: no executable, no install or run scripts.
+const SIGNER_MANIFEST_FIELDS_NOT_ALLOWED = ['bin', 'scripts', 'exports', 'main', 'type', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+// What signer/ code may import. No node:fs, node:readline, network modules or child processes:
+// in B1 the signer can only be called from code with key bytes its caller already holds.
+export const SIGNER_BUILTINS = ['node:buffer', 'node:crypto'];
+export const SIGNER_BUILTIN_EXPORTS = {
+  'node:buffer': ['Buffer'],
+  'node:crypto': ['createHash', 'createPrivateKey', 'createPublicKey', 'sign', 'verify', 'scryptSync', 'createCipheriv', 'createDecipheriv'],
+};
+export const SIGNER_THIRD_PARTY = ['@noble/hashes/sha3.js', '@noble/curves/secp256k1.js'];
+// RN-NET packages signer/ may import, through their public entry points only.
+export const SIGNER_PACKAGES = ['canonical', 'tx-intent'];
+// The only tools/ files that may import signer/ (the B1 fixture generator and tests). A raw-text
+// check over tools/, which is otherwise exempt: defense in depth, with review as the control.
+export const SIGNER_IMPORTERS = ['tools/signing/build-b1-fixtures.mjs', 'tools/signing.test.mjs'];
+// The guard's own tests hold such imports as string test data; they are exempt from that check
+// only, by exact path.
+const SIGNER_IMPORT_TEST_DATA = ['tools/guards/dependency-boundaries.test.mjs'];
 // Manifest fields that change what npm installs or links, beyond the dependency lists.
 const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
 
@@ -81,6 +121,8 @@ export const ALLOWED_PACKAGES = {
   verifier: ['canonical', 'commitment'],
   anchor: ['canonical'],
   'chain-readonly': ['canonical', 'anchor'],
+  'tx-intent': ['canonical', 'anchor'],
+  'broadcast-handoff': ['tx-intent'],
 };
 
 // Whitespace, block comments or line comments, as allowed between tokens.
@@ -260,8 +302,13 @@ export function check(files) {
       const manifest = JSON.parse(content);
       for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
         const declared = Object.entries(manifest[key] ?? {});
-        const allowed = path === 'package.json' && key === 'devDependencies' ? DEV_DEPENDENCIES : {};
+        const allowed = path === 'package.json' && key === 'devDependencies' ? DEV_DEPENDENCIES : path === 'signer/package.json' && key === 'dependencies' ? SIGNER_DEPENDENCIES : {};
         if (declared.some(([dependency, version]) => allowed[dependency]?.version !== version)) add(path, `undeclared-${key}`);
+      }
+      if (path === 'signer/package.json') {
+        const declared = Object.keys(manifest.dependencies ?? {}).sort().join(',');
+        if (declared !== Object.keys(SIGNER_DEPENDENCIES).sort().join(',')) add(path, 'signer-dependencies-incomplete');
+        for (const field of SIGNER_MANIFEST_FIELDS_NOT_ALLOWED) if (Object.hasOwn(manifest, field)) add(path, `signer-manifest-field-not-allowed:${field}`);
       }
       for (const field of MANIFEST_FIELDS_NOT_ALLOWED) if (Object.hasOwn(manifest, field)) add(path, `manifest-field-not-allowed:${field}`);
     }
@@ -281,13 +328,46 @@ export function check(files) {
         );
       };
       const valid = path === 'package-lock.json' && entries.length === expected.size + 1 && Object.hasOwn(Object.fromEntries(entries), '') && entries.every(matches);
-      if (!valid) add(path, 'undeclared-lockfile-packages');
+      if (path === 'signer/package-lock.json') {
+        // Exactly the signer project and its pinned runtime dependencies (never `dev`).
+        const pins = new Map(Object.entries(SIGNER_DEPENDENCIES).map(([dependency, pin]) => [`node_modules/${dependency}`, pin]));
+        const pinned = ([where, entry]) => {
+          if (where === '') return true;
+          const pin = pins.get(where);
+          return (
+            pin !== undefined &&
+            entry.dev === undefined &&
+            ['version', 'resolved', 'integrity'].every((field) => entry[field] === pin[field]) &&
+            JSON.stringify(entry.dependencies ?? null) === JSON.stringify(pin.dependencies ?? null) &&
+            Object.keys(entry).every((field) => SIGNER_LOCKFILE_ENTRY_FIELDS.includes(field))
+          );
+        };
+        const lockfile = JSON.parse(content);
+        const rootEntry = Object.fromEntries(entries)[''];
+        const wantedRoot = { name: 'rn-net-signer', dependencies: Object.fromEntries(Object.entries(SIGNER_DEPENDENCIES).map(([d, pin]) => [d, pin.version])) };
+        const rootValid =
+          Object.keys(lockfile).sort().join(',') === 'lockfileVersion,name,packages,requires' &&
+          lockfile.name === 'rn-net-signer' && lockfile.lockfileVersion === 3 && lockfile.requires === true &&
+          rootEntry !== undefined && JSON.stringify(Object.keys(rootEntry).sort()) === '["dependencies","name"]' &&
+          rootEntry.name === wantedRoot.name &&
+          JSON.stringify(Object.entries(rootEntry.dependencies).sort()) === JSON.stringify(Object.entries(wantedRoot.dependencies).sort());
+        const signerValid = rootValid && entries.length === pins.size + 1 && entries.every(pinned);
+        if (!signerValid) add(path, 'undeclared-lockfile-packages');
+      } else if (!valid) add(path, 'undeclared-lockfile-packages');
     }
     // Node resolves a symlinked module's imports from its real path, not from where it is linked;
     // a linked package directory moves everything under it.
-    if (symlink && (path === 'packages' || path.startsWith('packages/'))) {
+    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/'))) {
       add(path, 'symlink-in-package');
       continue;
+    }
+    if (path.startsWith('signer/')) {
+      checkSigner(path, content, add);
+      continue;
+    }
+    if (!path.startsWith('packages/') && /\.(mjs|js|cjs|mts|cts|ts)$/.test(path) && content !== null) {
+      checkToolsSignerImports(path, content, add);
+      if (path.startsWith('tools/')) continue;
     }
     const match = /^packages\/([^/]+)\/(.+)$/.exec(path);
     if (!match) continue;
@@ -322,6 +402,7 @@ export function check(files) {
     }
     for (const problem of new Set(analysis.problems)) add(path, problem);
     const area = rest.startsWith('test/') ? 'test' : 'src';
+    if (area === 'src') for (const route of keyGenerationRoutes(content)) add(path, route);
     for (const { source, name } of analysis.builtinImports) {
       const allowed = [
         ...(ALLOWED_BUILTIN_EXPORTS[source] ?? []),
@@ -362,4 +443,109 @@ export function check(files) {
     }
   }
   return findings;
+}
+
+// signer/ (ADR-RN-017): parsed like packages/, with its own allowlist of built-ins, exports,
+// third-party specifiers and RN-NET packages.
+function checkSigner(path, content, add) {
+  const rest = path.slice('signer/'.length);
+  if (['package.json', 'package-lock.json', 'README.md'].includes(rest)) return;
+  if (!path.endsWith('.mjs') || !/^(src|test)\//.test(rest)) {
+    add(path, 'non-module-file');
+    return;
+  }
+  if (content === null) {
+    add(path, 'unreadable-module');
+    return;
+  }
+  for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
+  for (const { id, pattern } of RAW_RULES) if (pattern.test(content)) add(path, id);
+  let analysis;
+  try {
+    analysis = analyze(parse(content, PARSE_OPTIONS));
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    add(path, 'unsupported-syntax');
+    analysis = { specifiers: [], problems: [], builtinImports: [] };
+  }
+  for (const problem of new Set(analysis.problems)) add(path, problem);
+  for (const route of keyGenerationRoutes(content)) add(path, route);
+  const area = rest.startsWith('test/') ? 'test' : 'src';
+  for (const { source, name } of analysis.builtinImports) {
+    // Signer tests get the test built-ins, but not the test-only key APIs of packages/.
+    const allowed = [...(SIGNER_BUILTIN_EXPORTS[source] ?? []), ...(area === 'test' ? ALLOWED_BUILTIN_EXPORTS[source] ?? [] : [])];
+    if (!allowed.includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
+  }
+  const builtins = area === 'test' ? [...SIGNER_BUILTINS, ...TEST_BUILTINS] : SIGNER_BUILTINS;
+  for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
+    if (specifier.startsWith('node:')) {
+      if (!builtins.includes(specifier)) add(path, `builtin-not-allowed:${specifier}`);
+      continue;
+    }
+    if (!specifier.startsWith('.')) {
+      if (!SIGNER_THIRD_PARTY.includes(specifier)) add(path, `third-party-import:${specifier}`);
+      continue;
+    }
+    const target = resolve(path, specifier);
+    if (target === null) {
+      add(path, `unsupported-specifier:${specifier}`);
+      continue;
+    }
+    if (target.startsWith('signer/')) {
+      if (area === 'src' && !target.startsWith('signer/src/')) add(path, `production-imports-non-production:${target.slice('signer/'.length)}`);
+      continue;
+    }
+    const pkg = /^packages\/([^/]+)\/src\/index\.mjs$/.exec(target);
+    if (!pkg || !SIGNER_PACKAGES.includes(pkg[1])) add(path, `signer-import-not-allowed:${target}`);
+  }
+}
+
+// tools/ is trusted tooling and exempt from the import allowlists, except that only the files in
+// SIGNER_IMPORTERS may import signer/ or the signer's libraries.
+function checkToolsSignerImports(path, content, add) {
+  if (SIGNER_IMPORTERS.includes(path) || SIGNER_IMPORT_TEST_DATA.includes(path)) return;
+  // Routes the specifier patterns cannot read: a template-literal import(), or a require-style
+  // loader on one line, naming the signer directory.
+  if (/import\s*\(\s*`[^`]*\bsigner\/|createRequire[^\n]*\bsigner\//.test(content)) add(path, 'signer-importer-not-allowed');
+  for (const specifier of new Set(rawImportsOf(content))) {
+    if (specifier.startsWith('@noble/')) add(path, 'signer-library-outside-signer');
+    if (!specifier.startsWith('.')) continue;
+    const target = resolve(path, specifier);
+    if (target === 'signer' || target?.startsWith('signer/')) add(path, 'signer-importer-not-allowed');
+    // A specifier the guard cannot resolve exactly (percent-encoding, backslashes) is reported
+    // only if it could name signer/; the guard's own tests use such specifiers as test data.
+    else if (target === null && /signer/i.test(safeDecode(specifier))) add(path, 'signer-importer-not-allowed');
+  }
+}
+
+function safeDecode(specifier) {
+  try {
+    return decodeURIComponent(specifier).replaceAll('\\', '/');
+  } catch {
+    return specifier;
+  }
+}
+
+// Names that generate keys or reach randomness without an import: the global WebCrypto object and
+// the key-generation helpers of the signer's libraries. Reported in packages/ and signer/ (B1 has
+// no key generation, ADR-RN-017 §5). A name built at run time is beyond a static lint.
+const KEYGEN_PROPERTIES = new Set(['randomSecretKey', 'randomPrivateKey', 'keygen', 'getRandomValues', 'generateKey', 'generateKeyPair', 'generateKeyPairSync', 'randomBytes', 'subtle']);
+export function keyGenerationRoutes(content) {
+  const found = new Set();
+  let program;
+  try {
+    program = parse(content, PARSE_OPTIONS);
+  } catch {
+    return found;
+  }
+  const visit = (node, parent, key) => {
+    if (node.type === 'Identifier' && node.name === 'crypto' && !isPropertyName(node, parent, key)) found.add('global-crypto');
+    if (node.type === 'MemberExpression' && !node.computed && KEYGEN_PROPERTIES.has(node.property.name)) found.add(`key-generation:${node.property.name}`);
+    if (node.type === 'Literal' && typeof node.value === 'string' && KEYGEN_PROPERTIES.has(node.value)) found.add(`key-generation:${node.value}`);
+    // Destructuring, as in `const { randomSecretKey } = secp256k1.utils`.
+    if (node.type === 'Property' && !node.computed && node.key.type === 'Identifier' && KEYGEN_PROPERTIES.has(node.key.name)) found.add(`key-generation:${node.key.name}`);
+    for (const [childKey, child] of children(node)) visit(child, node, childKey);
+  };
+  visit(program, null, null);
+  return found;
 }

@@ -1,0 +1,9 @@
+{
+  "name": "rn-net-signer",
+  "private": true,
+  "description": "Offline, test-only signing toolchain (RN-NET-03B2-B1, ADR-RN-017). Imported by nothing under packages/.",
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0"
+  }
+}
