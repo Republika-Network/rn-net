@@ -489,7 +489,48 @@ export function check(files) {
       else if (targetRest !== 'src/index.mjs') add(path, `private-import:${targetPkg}/${targetRest}`);
     }
   }
+  checkWriteTransportClosure(files, add);
   return findings;
+}
+
+// The write path and the network transport may never meet, however indirectly (B3 review B1): over
+// the graph of relative imports (static, re-exports and literal dynamic imports) of every file
+// given, no file outside the write side itself may have both a write-side file
+// (packages/chain-submit/, tools/submit/) and the transport in its import closure, unless
+// WRITE_TRANSPORT_JOINERS names it. A name assembled at run time is beyond a static lint.
+export const TRANSPORT_FILE = 'tools/live/https-transport.mjs';
+function checkWriteTransportClosure(files, add) {
+  const exempt = new Set([...SIGNER_IMPORT_TEST_DATA, 'tools/guards/dependency-boundaries.mjs']);
+  const edges = new Map();
+  for (const { path, content } of files) {
+    if (content === null || !/\.(mjs|js|cjs|mts|cts|ts)$/.test(path) || exempt.has(path)) continue;
+    let specifiers = rawImportsOf(content);
+    try {
+      specifiers = [...specifiers, ...importsOf(content)];
+    } catch {
+      // unparseable sources are reported elsewhere; the raw specifiers still count
+    }
+    edges.set(path, [...new Set(specifiers)].filter((sp) => sp.startsWith('.')).map((sp) => resolve(path, sp)).filter((t) => t !== null));
+  }
+  const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
+  const reach = new Map();
+  const closure = (start) => {
+    if (reach.has(start)) return reach.get(start);
+    const seen = new Set();
+    const stack = [start];
+    while (stack.length) {
+      const at = stack.pop();
+      for (const next of edges.get(at) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
+    }
+    const result = { write: [...seen].some(isWrite), transport: seen.has(TRANSPORT_FILE) };
+    reach.set(start, result);
+    return result;
+  };
+  for (const path of edges.keys()) {
+    if (isWrite(path) || path === TRANSPORT_FILE || WRITE_TRANSPORT_JOINERS.includes(path)) continue;
+    const { write, transport } = closure(path);
+    if (write && transport) add(path, 'write-transport-join-transitive');
+  }
 }
 
 // signer/ (ADR-RN-017): parsed like packages/, with its own allowlist of built-ins, exports,

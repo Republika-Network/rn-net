@@ -707,3 +707,30 @@ await runBroadcast({ inputs: JSON.parse(args[0]), environment: { transport: http
   assert.ok(rules('scripts/run.mjs', "import { runStatusCheck } from '../tools/submit/status.mjs';").includes('chain-submit-importer-not-allowed'));
   assert.deepEqual(rules('tools/broadcast/x.mjs', "import { runBroadcast } from '../submit/broadcaster.mjs';"), []);
 });
+
+test('the write path and the transport never meet through re-exports (B3 review B1, re-check)', () => {
+  const many = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).filter((f) => f.rule === 'write-transport-join-transitive').map((f) => f.path);
+  const transport = ['tools/live/https-transport.mjs', 'export const httpsTransport = () => {};'];
+  const harness = ['tools/submit/broadcaster.mjs', 'export const runBroadcast = () => {};'];
+  // Route 1: the harness re-exported from an allowed directory.
+  assert.deepEqual(many([transport, harness,
+    ['tools/broadcast/run.mjs', "export { runBroadcast } from '../submit/broadcaster.mjs';"],
+    ['tools/send.mjs', "import { runBroadcast } from './broadcast/run.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';"],
+  ]), ['tools/send.mjs']);
+  // Route 2: the transport re-exported from a plain helper.
+  assert.deepEqual(many([transport, harness,
+    ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"],
+    ['tools/broadcast/send.mjs', "import { runBroadcast } from '../submit/broadcaster.mjs';\nimport { t } from '../net.mjs';"],
+  ]), ['tools/broadcast/send.mjs']);
+  // Through chain-submit and a literal dynamic import, two hops away.
+  assert.deepEqual(many([transport, ['packages/chain-submit/src/index.mjs', 'export const a = 1;'],
+    ['tools/a.mjs', "export * from '../packages/chain-submit/src/index.mjs';"],
+    ['tools/b.mjs', "export * from './a.mjs';"],
+    ['scripts/c.mjs', "import { a } from '../tools/b.mjs';\nconst t = await import('../tools/live/https-transport.mjs');"],
+  ]), ['scripts/c.mjs']);
+  // Either side alone is fine.
+  assert.deepEqual(many([transport, harness,
+    ['tools/broadcast/run.mjs', "export { runBroadcast } from '../submit/broadcaster.mjs';"],
+    ['tools/verify.mjs', "import { httpsTransport } from './live/https-transport.mjs';"],
+  ]), []);
+});
