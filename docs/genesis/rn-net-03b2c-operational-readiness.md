@@ -61,6 +61,10 @@ Estimated time per step, typical and worst case, from the preparation read to th
 | `submit` | < 1 s | 10 s |
 | **Total** | **≈ 1.5–2.8 min** | |
 
+**The proposal stays `+ 80`, with the refusal when 4 or fewer ledgers remain.** It stays
+Proposed until C3 implements it and its tests are independently reviewed (ADR-RN-016
+Amendment C1).
+
 **Verdict: 80 is valid for a human-gated flow, with conditions.** It fits only if:
 - the authorization is drafted by tooling (ADR-RN-019 Amendment C1, E3);
 - D-XRPL and E-XRPL run in one sitting;
@@ -162,9 +166,12 @@ attempt each.
 - **Method allowlist.** The run uses only methods that are already allowlisted.
 - **What the run cannot settle.** The 1RPC lag needs one comparison. If that does not explain
   it, gate F keeps relying on the PublicNode walk alone, as ADR-RN-019 §8 already says.
-- **If either Sepolia provider refuses the block-hash form for `eth_estimateGas`.** RN-NET then
-  has no working Sepolia pair, and the founder decides the P4 alternative. There are two
-  reviewed Sepolia providers today, and preparation needs 2 to 4.
+- **`eth_estimateGas` is not assumed to work on either provider** (ADR-RN-018 Amendment C1, P4).
+  - C6 verifies it separately per provider and records the result.
+  - If either provider refuses it, RN-NET has no working Sepolia pair. There are two reviewed
+    Sepolia providers today, and preparation needs 2 to 4.
+  - Any alternative estimation strategy is a new amendment with its own focused review.
+  - There is never a fallback to an unpinned `latest` or `pending` state.
 
 ### Sepolia finality constraints
 
@@ -176,18 +183,37 @@ attempt each.
   blocks):
   - a `finalized` block still below the transaction gives `NOT_REACHED`;
   - one more than 256 blocks above it gives `UNRESOLVED`, which is not inferred.
-- **So gate F has a window.** The verification run must fall roughly between 15 and 60 minutes
-  after inclusion: after finality, and before the `finalized` head is more than 256 blocks
-  past the transaction. It is authorized once inside that window, not polled. A later run
-  cannot show finality by the walk.
+- **A window of the current implementation, not of Sepolia.** With today's verifier, a run that
+  shows finality must fall roughly between 15 and 60 minutes after inclusion: after finality,
+  and before the `finalized` head is more than 256 blocks past the transaction.
+  - This is an **operational constraint of the current code**: `ANCESTRY_LIMIT` = 256 in
+    `packages/chain-readonly/src/readers.mjs`.
+  - It is **not a property of blockchain finality.** A finalized block stays finalized. Only
+    this verifier's ability to show it, by a bounded live walk, runs out.
+  - Inside the window the run is authorized once, not polled. Later, the walk returns
+    `UNRESOLVED`, never a negative finding.
 - **The 1RPC observation is a real blocker for agreement.** If 1RPC's `finalized` lags by about
   67 minutes, as in SMOKE-02, the two providers cannot be inside the window together:
   - while PublicNode can walk, 1RPC reports `NOT_REACHED`;
   - by the time 1RPC reaches the block, PublicNode is past 256 blocks.
 
-  ADR-RN-019 §8 already lets the PublicNode walk alone carry finality and reports the
-  disagreement. C6 must find out whether the lag persists. If it does, the founder accepts a
-  gate-F record with Sepolia finality from one provider, or adds a reviewed provider.
+  SMOKE-02 is a single observation. ADR-RN-019 §8 already lets the PublicNode walk alone carry
+  finality and reports the disagreement. C6 must find out whether the lag persists. If it does,
+  the founder has two options: accept a gate-F record with Sepolia finality from one provider, or
+  add a reviewed provider.
+- **Before gate F: a separately reviewed strategy for durable, reproducible verification.** The
+  published record must stay checkable after the walk window has closed, by RN-NET and by third
+  parties. That needs its own design, amendment and independent review, before gate F. It is
+  **not decided here**. Candidates for that review:
+  - **offline reproduction** of the gate-F verdict from the captured exchanges, which stay
+    reproducible indefinitely;
+  - **a bounded check by height:** the canonical hash at the transaction's height, plus a
+    `finalized` number at or above it. This is a different and weaker kind of provider claim
+    than the walk, so it needs review;
+  - **a larger, budgeted ancestry limit.**
+
+  Until that strategy is reviewed and accepted, gate F stays blocked, even if E succeeds on both
+  networks.
 
 ## 5. C4: encrypted testnet key tooling and founder-controlled signing
 
@@ -310,7 +336,7 @@ attempt.
 | D-SEP | Sepolia | C-SEP; as D-XRPL, plus C6 passed on EIP-1898 and H2 | founder, at the terminal |
 | E-XRPL | XRPL Testnet | D-XRPL **in the same sitting**; C2 merged and reviewed (N1–N5, `fail_hard` recorded); ADR-RN-019 Amendment C1 accepted; H8 | founder |
 | E-SEP | Sepolia | D-SEP; as E-XRPL; H8 | founder |
-| F | both | E on both networks, each resolved as included; Sepolia finalized on PublicNode; C5 merged; H10 | agent, read-only; publication by the founder |
+| F | both | E on both networks, each resolved as included; Sepolia finalized on PublicNode; the durable, reproducible verification strategy reviewed and accepted (§4); C5 merged; H10 | agent, read-only; publication by the founder |
 
 ## 10. Revised shortest path to Genesis Proof 01
 
@@ -330,8 +356,9 @@ attempt.
 7. **Sepolia: D-SEP, then E-SEP.** It has no expiry, and its finality takes the longest, so it
    goes first.
 8. **XRPL: C-XRPL, then D-XRPL and E-XRPL in one sitting.**
-9. **Gate F** inside the Sepolia walk window (about 15 to 60 minutes after inclusion, §4), with
-   XRPL validated: one verification run, the C5 record, the founder's review, publication. Do it the
+9. **Gate F**, once the durable-verification strategy (§4) is reviewed. With the current
+   verifier that means inside its walk window, about 15 to 60 minutes after inclusion, with XRPL
+   validated: one verification run, the C5 record, the founder's review, publication. Do it the
    same day, because XRPL Testnet can be reset.
 
 **Critical path:** C4 → H1 → B → C, run in parallel with C3 → C6 → D; then C2 → E; then F.
@@ -341,7 +368,7 @@ attempt.
 - **Sepolia same-nonce replacement tooling.** Built only if E-SEP ends `PENDING`, after its own
   founder decision. ADR-RN-017 Amendment C1, K4 rule 4, keeps it refused.
 - **More Sepolia providers.** Only needed if C6 shows that one of the two cannot serve the
-  block-hash form, and the founder rejects the P4 alternative.
+  block-hash form, and no reviewed alternative (ADR-RN-018 Amendment C1, P4) is accepted.
 - **The SMOKE-01 raw evidence.** Not recovered. The recorded summary stands, unless the founder
   decides otherwise.
 - **Key retirement.** Decided after the proof (authorization doc §2.7).

@@ -290,11 +290,32 @@ Sepolia preparation runs in two passes over the same two providers, in a fixed o
 - **EIP-1898 does not list `eth_estimateGas`.** It names `eth_getBalance`, `eth_getStorageAt`,
   `eth_getTransactionCount`, `eth_getCode`, `eth_call` and `eth_getProof`. Whether
   `eth_estimateGas` accepts the block-hash object depends on the client behind each provider.
-- **So P5 must check it for each provider.** If a provider refuses it, P2 applies and that
-  provider refuses preparation. RN-NET then has no working Sepolia pair.
-- **The way out is a separate founder decision**, not part of this amendment: allow only
-  `eth_estimateGas` by the number P. The estimate binds no field: it is only checked against the
-  fixed 30,000 limit and the intrinsic cost.
+- **Support is not assumed on either provider.** Neither `sepolia-publicnode` nor
+  `sepolia-1rpc` is assumed to accept `{blockHash, requireCanonical: true}` for
+  `eth_estimateGas`.
+  - Support must be verified **separately for each provider**, by the P5 read-only check, and the
+    result recorded.
+  - Until it is recorded for both providers, C3 must treat the method as possibly unsupported. Its
+    tests must show that a refusal ends preparation on that provider (P2).
+- **No silent fallback.** The request always carries the block-hash object. Preparation never
+  sends `eth_estimateGas`:
+  - with `latest` or `pending`;
+  - with no block parameter (clients then pick their own default);
+  - by number, unless a reviewed amendment allows it.
+
+  An error is a refusal, not a cue to retry another way.
+- **If a provider refuses it,** P2 applies and that provider refuses preparation. RN-NET then has
+  no working Sepolia pair.
+- **Any alternative estimation strategy needs its own focused review.** It is not part of this
+  amendment, and it is not a founder decision alone. Examples:
+  - by the number P;
+  - an `eth_call` at the pinned hash;
+  - estimating offline from the intrinsic cost.
+
+  Each needs a written amendment, its own simulated refusal cases and Python reference, and an
+  independent review, before the founder can accept it. One fact is relevant to that review: the
+  estimate binds no field, because it is only checked against the fixed 30,000 limit and the
+  intrinsic cost. That fact does not by itself justify an alternative.
 
 ### P5. Provider compatibility check, before C3 is used live
 
