@@ -17,7 +17,8 @@ const guards = {
 const files = trackedFiles();
 let failed = false;
 for (const [name, guard] of Object.entries(guards)) {
-  const findings = guard.check(files);
+  // The whole tracked tree: every relative import target must exist (dependency-boundaries).
+  const findings = guard.check(files, { wholeTree: true });
   if (findings.length > 0) {
     failed = true;
     console.error(formatFindings(name, findings).join('\n'));

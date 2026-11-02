@@ -45,6 +45,7 @@ import {
 } from '../../packages/tx-intent/src/index.mjs';
 import { CanonicalError } from '../../packages/canonical/src/index.mjs';
 import { verifySepoliaSignature, verifySignedTransaction, verifyXrplSignature } from '../../txverify/src/index.mjs';
+import { createRequestPolicy } from './policy.mjs';
 import { appendEntry, checkPrivateDirectory, createRunDirectory, readLog, storedText, writeNewFile } from './store.mjs';
 
 /** The only inputs a run accepts (ADR-RN-019 §2); verificationRecords is optional. */
@@ -62,6 +63,11 @@ const sameRecord = (a, b) => {
     return false;
   }
 };
+
+export const ATTEMPT_EVIDENCE_FORMAT = 'rnnet.submission-attempt.v1';
+/** Attempts to write RESULT after a conflict, with a growing synchronous wait (25 ms, 50 ms, ...). */
+const RESULT_TRIES = 8;
+const RESULT_WAIT = new Int32Array(new SharedArrayBuffer(4));
 
 /** A gate that lets exactly one write through per run; a second is refused by the harness. */
 export function createWriteGate() {
@@ -86,10 +92,18 @@ export function createWriteGate() {
 export async function runBroadcast({ inputs, environment } = {}) {
   const counters = { requests: 0, writes: 0 };
   const state = { counters, authorizationDigest: null, authorization: null, runDirectory: null, exchanges: [], providers: [] };
-  const finish = (outcome, code, extra = {}) => finishRun(state, environment, outcome, code, extra);
+  const finish = (outcome, code, extra = {}) => {
+    state.finishing = true;
+    return finishRun(state, environment, outcome, code, extra);
+  };
   try {
     return await execute(state, inputs, environment, finish);
   } catch (error) {
+    // NOT_SENT only while the write cannot have started, and never for a failure while finishing:
+    // after the write, a missing RESULT leaves the attempt unresolved, which refuses every later
+    // run for this sequence until a status check (ADR-RN-019 §5 rule 2). It is never NOT_SENT.
+    if (state.writeStarted || state.finishing) throw error;
+    if (state.policy?.violation) return finish(Outcome.NOT_SENT, C.REQUEST_POLICY);
     if (error instanceof BroadcastError || error instanceof TxError || error instanceof ReadError) return finish(Outcome.NOT_SENT, error.code);
     throw error;
   }
@@ -101,11 +115,13 @@ async function execute(state, inputs, environment, finish) {
     value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every((k) => fields.includes(k)) && required.every((k) => Object.hasOwn(value, k));
   if (!exact(inputs, INPUT_FIELDS, REQUIRED_INPUTS) || !exact(environment, ENVIRONMENT_FIELDS, ENVIRONMENT_FIELDS)) return finish(Outcome.NOT_SENT, C.INPUT_INVALID);
   const supplied = inputs.verificationRecords ?? [];
-  if (!Array.isArray(supplied) || supplied.length > 2 || typeof inputs.intent !== 'string') return finish(Outcome.NOT_SENT, C.INPUT_INVALID);
+  if (!Array.isArray(supplied) || supplied.length > 2 || typeof inputs.intent !== 'string' || typeof inputs.signedTransaction !== 'string') return finish(Outcome.NOT_SENT, C.INPUT_INVALID);
   if (typeof environment.transport !== 'function' || typeof environment.referenceVerifier !== 'function' || typeof environment.now !== 'function') return finish(Outcome.NOT_SENT, C.INPUT_INVALID);
 
   // 2. The authorization, and the private directories.
   const { authorization, digest } = readAuthorization(inputs.authorization);
+  // The size limit of spec §1, at input (B3 review N5): never discovered after ATTEMPTING.
+  if (blobBytes(authorization.network, inputs.signedTransaction) > SUBMIT_LIMITS.maxBlobBytes) return finish(Outcome.NOT_SENT, C.INPUT_INVALID);
   checkPrivateDirectory(environment.logDir, C.LOG_DIRECTORY);
   checkPrivateDirectory(environment.evidenceDir, C.EVIDENCE_DIRECTORY);
 
@@ -143,13 +159,25 @@ async function execute(state, inputs, environment, finish) {
   // 7. The log permits this attempt.
   decideAttempt(readLog(environment.logDir), authorization);
 
-  // 8. Pre-submit reads, both providers, one attempt each, budgeted.
-  const transport = countingTransport(recordingTransport(environment.transport, state.exchanges), state.counters);
+  // 8. Pre-submit reads, both providers, one attempt each, budgeted, and only the exact read
+  // methods of this network (the request policy refuses anything else without sending it).
+  state.policy = createRequestPolicy(authorization.network, configured, provider.id);
+  const transport = countingTransport(state.policy.reads(recordingTransport(environment.transport, state.exchanges)), state.counters);
   const observedLedger = await presubmitReads(configured, transport, authorization, verified);
 
   if (authorization.dryRun) return finish(Outcome.NOT_SENT, C.DRY_RUN);
   // The reads take time: a Sepolia authorization that became void meanwhile sends nothing.
   if (authorization.network === SubmitNetwork.SEPOLIA && sepoliaAuthorizationExpired(authorization, environment.now())) throw new BroadcastError(C.AUTHORIZATION_EXPIRED, 'notAfter passed during the reads');
+
+  // The exact request bytes, built before ATTEMPTING: a blob the builder refuses is refused here,
+  // with nothing attempted (B3 review N5).
+  let body;
+  try {
+    body = submitRequestBytes(provider.network, verified.signedTransaction);
+  } catch {
+    throw new BroadcastError(C.INPUT_INVALID, 'the write request cannot be built');
+  }
+  if (state.policy.violation !== null) throw new BroadcastError(C.REQUEST_POLICY, state.policy.violation);
 
   // 9. ATTEMPTING, immediately before the write, decided on the log as it now stands.
   const log = readLog(environment.logDir);
@@ -161,9 +189,15 @@ async function execute(state, inputs, environment, finish) {
   });
   appendEntry(environment.logDir, attempting);
   state.attemptEntry = entryDigest(attempting);
+  // Evidence before the write: the exact request and the pre-submit exchanges, durably written.
+  writeNewFile(`${state.runDirectory}/attempt.json`, storedText({
+    format: ATTEMPT_EVIDENCE_FORMAT, authorizationDigest: digest, attemptEntry: state.attemptEntry, providerId: provider.id, url: provider.url,
+    requestSha256: sha256(body), request: Buffer.from(body).toString('utf8'), presubmitExchanges: state.exchanges.length,
+    presubmitExchangesSha256: sha256(Buffer.from(JSON.stringify(state.exchanges), 'utf8')),
+  }));
 
   // 10. The one write: one request, one attempt, no retry, no fallback, no polling.
-  const write = await sendWrite(provider, environment.transport, state, verified.signedTransaction);
+  const write = await sendWrite(provider, environment.transport, state, body);
   const classification = classifySubmitResponse(authorization.network, write.response, verified);
   return finish(classification.outcome, classification.code, { classification, requestSha256: write.requestSha256, responseSha256: write.responseSha256 });
 }
@@ -226,6 +260,11 @@ function verifyEverything(inputs, referenceVerifier, supplied) {
   });
 }
 
+/** Bytes of a signed transaction in its network's text form (hex; Sepolia after `0x`). */
+function blobBytes(network, signedTransaction) {
+  return (network === SubmitNetwork.SEPOLIA ? signedTransaction.length - 2 : signedTransaction.length) / 2;
+}
+
 /** A transport that counts every request; the per-provider budgets of the reads bound them. */
 function countingTransport(inner, counters) {
   return async (request) => {
@@ -260,7 +299,7 @@ async function presubmitReads(providers, transport, authorization, verified) {
       if (account.validated !== true || data.Account !== verified.sender) throw new BroadcastError(C.PRESUBMIT_ACCOUNT);
       if (String(data.Sequence) !== verified.sequence) throw new BroadcastError(C.PRESUBMIT_SEQUENCE);
       const ledger = Math.max(validated, account.ledger_index);
-      if (xrplAuthorizationExpired(authorization, ledger)) throw new BroadcastError(C.AUTHORIZATION_EXPIRED, 'fewer than 4 ledgers remain');
+      if (xrplAuthorizationExpired(authorization, ledger)) throw new BroadcastError(C.AUTHORIZATION_EXPIRED, '4 or fewer ledgers remain before LastLedgerSequence');
       observedLedger = Math.max(observedLedger ?? 0, ledger);
       try {
         await call(context, 'tx', { transaction: verified.transactionHash, binary: false, api_version: 2 });
@@ -287,20 +326,24 @@ async function presubmitReads(providers, transport, authorization, verified) {
 }
 
 /** Sends the one write through the write gate and describes what happened, for the classifier. */
-async function sendWrite(provider, transport, state, signedTransaction) {
-  const body = submitRequestBytes(provider.network, signedTransaction);
+async function sendWrite(provider, transport, state, body) {
   const requestSha256 = sha256(body);
   const recorded = recordingTransport(transport, state.exchanges);
   const gate = state.writeGate ?? (state.writeGate = createWriteGate());
+  const request = { providerId: provider.id, url: provider.url, body, timeoutMs: SUBMIT_LIMITS.timeoutMs, maxResponseBytes: SUBMIT_LIMITS.maxResponseBytes };
+  // NOT_SENT_HARNESS is decided by the harness itself (the gate's state and the request policy)
+  // before the transport is called, never from the type of error a transport throws (B3 review
+  // N5): a transport can throw anything, after sending as well as before.
+  if (gate.used || state.policy.admitWrite(request) !== null) return { requestSha256: null, responseSha256: null, response: { harnessRefused: C.NOT_SENT_HARNESS } };
   let response;
   try {
     response = await gate.send(() => {
+      state.writeStarted = true;
       state.counters.requests += 1;
       state.counters.writes += 1;
-      return recorded({ providerId: provider.id, url: provider.url, body, timeoutMs: SUBMIT_LIMITS.timeoutMs, maxResponseBytes: SUBMIT_LIMITS.maxResponseBytes });
+      return recorded(request);
     });
   } catch (error) {
-    if (error instanceof BroadcastError && error.code === C.NOT_SENT_HARNESS) return { requestSha256: null, responseSha256: null, response: { harnessRefused: error.code } };
     return { requestSha256, responseSha256: null, response: { transportError: TRANSPORT_CODES.includes(error?.code) ? error.code : 'RNLO_CONNECTION' } };
   }
   if (response === null || typeof response !== 'object' || !Number.isInteger(response.status) || !(response.body instanceof Uint8Array)) {
@@ -348,18 +391,22 @@ function finishRun(state, environment, outcome, code, extra) {
     writeNewFile(`${state.runDirectory}/capture.json`, `${JSON.stringify(capture)}\n`);
   }
   if (state.attemptEntry) {
-    // RESULT is written after the write whatever its outcome. A conflicting index is retried at the
-    // next free one: the entry must exist, and its content does not depend on the log's state.
+    // RESULT is written after the write whatever its outcome. A conflict (another run's entry at
+    // that index, or its temporary name while it writes) is retried at the next free index after a
+    // short wait: the entry must exist, and its content does not depend on the log's state. If it
+    // still cannot be written, the run throws and the attempt stays unresolved (spec §8), which
+    // refuses every later run for this sequence until a status check.
     for (let tries = 0; ; tries++) {
-      const log = readLog(environment.logDir);
       try {
+        const log = readLog(environment.logDir);
         appendEntry(environment.logDir, makeEntry(log.length, EntryKind.RESULT, {
           authorizationDigest: state.authorizationDigest, network: a.network, sender: a.sender, sequence: a.sequence,
           attemptEntry: state.attemptEntry, outcome, code, record: recordDigest,
         }));
         break;
       } catch (error) {
-        if (!(error instanceof BroadcastError && error.code === C.LOG_CONFLICT) || tries >= 2) throw error;
+        if (!(error instanceof BroadcastError && error.code === C.LOG_CONFLICT) || tries >= RESULT_TRIES - 1) throw error;
+        Atomics.wait(RESULT_WAIT, 0, 0, 25 * (tries + 1));
       }
     }
   }

@@ -37,6 +37,8 @@ export const BroadcastCode = Object.freeze({
   PRESUBMIT_BASE_FEE: 'RNBC_PRESUBMIT_BASE_FEE',
   PRESUBMIT_BALANCE: 'RNBC_PRESUBMIT_BALANCE',
   DRY_RUN: 'RNBC_DRY_RUN',
+  // A request outside the run's exact method list, provider or budget (RN-NET-03B2-C2, policy.mjs)
+  REQUEST_POLICY: 'RNBC_REQUEST_POLICY',
   // The write
   NOT_SENT_HARNESS: 'RNBC_NOT_SENT_HARNESS',
   NOT_SENT_BLOCKED_ADDRESS: 'RNBC_NOT_SENT_BLOCKED_ADDRESS',

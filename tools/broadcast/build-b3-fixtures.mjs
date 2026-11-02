@@ -217,6 +217,11 @@ function cases(m) {
   xcase('xrpl-tef-max-ledger', [RJ, 'RNBC_REJECTED'], { servers: engine('tefMAX_LEDGER', -186) });
   xcase('xrpl-tef-already', [UN, 'RNBC_UNCERTAIN_ENGINE_RESULT'], { servers: engine('tefALREADY', -198) });
   xcase('xrpl-tef-past-seq', [UN, 'RNBC_UNCERTAIN_ENGINE_RESULT'], { servers: engine('tefPAST_SEQ', -190) });
+  // RN-NET-03B2-C2, from the rippled 3.4.1 source: tefNO_TICKET is what an already-applied
+  // Ticket-based transaction gets back; a tec under fail_hard with every flag false was discarded
+  // by that server, but the blob stays valid, so neither proves that nothing can be included.
+  xcase('xrpl-tef-no-ticket', [UN, 'RNBC_UNCERTAIN_ENGINE_RESULT'], { servers: engine('tefNO_TICKET', -180) });
+  xcase('xrpl-tec-discarded-under-fail-hard', [UN, 'RNBC_UNCERTAIN_ENGINE_RESULT'], { servers: engine('tecUNFUNDED', 103) });
   xcase('xrpl-accepted-false', [UN, 'RNBC_UNCERTAIN_FLAGS'], { servers: xsub(() => xrplSubmitReply(X.signed, X.hash, (r) => { r.accepted = false; })) });
   xcase('xrpl-broadcast-false', [UN, 'RNBC_UNCERTAIN_FLAGS'], { servers: xsub(() => xrplSubmitReply(X.signed, X.hash, (r) => { r.broadcast = false; })) });
   xcase('xrpl-queued-with-success', [UN, 'RNBC_UNCERTAIN_FLAGS'], { servers: xsub(() => xrplSubmitReply(X.signed, X.hash, (r) => { r.queued = true; })) });

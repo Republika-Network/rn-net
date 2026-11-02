@@ -172,8 +172,32 @@ export const SUBMIT_TOOLS = 'tools/submit/';
 export const SUBMIT_FORBIDDEN_MODULES = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dns', 'node:dgram', 'node:worker_threads', 'node:cluster', 'node:readline', 'node:repl', 'node:inspector', 'node:vm'];
 export const SUBMIT_SUBPROCESS_FILES = ['tools/submit/python-verifier.mjs'];
 export const SUBMIT_CRYPTO_EXPORTS = ['createHash'];
+// RN-NET-03B2-C2 (B3 review N1): tools/submit/ is held to allowlists, not only to denials.
+//   - built-ins: exactly these exports (no default or namespace import, no other module);
+//   - node:child_process: execFileSync in SUBMIT_SUBPROCESS_FILES only;
+//   - process: only these members (the entry points also argv, exitCode, stdout and stderr);
+//   - relative imports: tools/submit/ itself and the entry points of SUBMIT_PACKAGES and txverify/;
+//   - FORBIDDEN_CONSTRUCTS and the raw-text rules, as in packages/.
+export const SUBMIT_BUILTIN_EXPORTS = {
+  'node:buffer': ['Buffer'],
+  'node:crypto': ['createHash'],
+  'node:fs': ['closeSync', 'constants', 'existsSync', 'fstatSync', 'fsyncSync', 'linkSync', 'lstatSync', 'mkdirSync', 'openSync', 'readdirSync', 'readFileSync', 'realpathSync', 'unlinkSync', 'writeSync'],
+  'node:path': ['basename', 'dirname', 'isAbsolute', 'join'],
+  'node:url': ['fileURLToPath'],
+};
+export const SUBMIT_PROCESS_PROPERTIES = ['getuid', 'pid'];
+export const SUBMIT_ENTRY_POINT_PROCESS_PROPERTIES = ['argv', 'exitCode', 'stdout', 'stderr'];
+export const SUBMIT_PACKAGES = ['canonical', 'broadcast-handoff', 'chain-readonly', 'chain-submit', 'tx-intent'];
+// The live entry points of ADR-RN-019 Amendment C1 (E1). Only these tools/submit/ files may have a
+// command line. In RN-NET-03B2-C2 both are DISABLED for live network access: neither may import the
+// transport (submit-imports-transport), and WRITE_TRANSPORT_JOINERS stays empty.
+export const SUBMIT_ENTRY_POINTS = ['tools/submit/submit-anchor.mjs', 'tools/submit/status-check.mjs'];
+// The read-only entry point may not reach the write path's run (broadcaster.mjs), however indirectly.
+export const STATUS_ENTRY_POINT = 'tools/submit/status-check.mjs';
+export const BROADCASTER_FILE = 'tools/submit/broadcaster.mjs';
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
-// transport. None in RN-NET-03B2-B3: a live entry point needs gate E and its own review.
+// transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
+// review, and is a change to this list.
 export const WRITE_TRANSPORT_JOINERS = [];
 // Files outside packages/ that may import packages/chain-submit.
 export const CHAIN_SUBMIT_IMPORTERS = /^(?:tools\/submit\/[^/]+\.mjs|tools\/broadcast\/[^/]+\.mjs|tools\/[^/]+\.test\.mjs|txverify\/test\/[^/]+\.test\.mjs)$/;
@@ -320,6 +344,8 @@ function analyze(program) {
         break;
       case 'Literal':
         if (typeof node.value === 'string' && FORBIDDEN_STRINGS.has(node.value)) problems.push(`forbidden-string:${node.value}`);
+        // A regular expression's source is a string too (`f[/constructor/.source]`; C2 final review).
+        if (node.regex && /constructor/.test(node.regex.pattern)) problems.push('forbidden-string:constructor');
         break;
       case 'TemplateElement':
         if (FORBIDDEN_STRINGS.has(node.value.cooked ?? node.value.raw)) problems.push(`forbidden-string:${node.value.cooked ?? node.value.raw}`);
@@ -369,7 +395,8 @@ function resolve(fromPath, specifier) {
   return viaUrl === `/repository/${resolved}` ? resolved : null;
 }
 
-export function check(files) {
+/** `options.wholeTree`: the files are the whole tracked tree (tools/guards/run.mjs), so every relative import target must exist. */
+export function check(files, options = {}) {
   const findings = [];
   const add = (path, rule) => findings.push({ path, rule });
 
@@ -438,7 +465,9 @@ export function check(files) {
     // Node resolves a symlinked module's imports from its real path, not from where it is linked;
     // a linked package directory moves everything under it.
     // tools/ too: a link (tools/sub -> tools/submit) would hide the write side from the import graph.
-    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/') || path === 'txverify' || path.startsWith('txverify/') || path === 'tools' || path.startsWith('tools/'))) {
+    // Anywhere in the repository (C2 final review): a link elsewhere (scripts/x.mjs -> x.cjs) would
+    // load a file the import graph never analyses. No tracked file is a symbolic link.
+    if (symlink) {
       add(path, 'symlink-in-package');
       continue;
     }
@@ -530,7 +559,7 @@ export function check(files) {
       else if (targetRest !== 'src/index.mjs') add(path, `private-import:${targetPkg}/${targetRest}`);
     }
   }
-  checkWriteTransportClosure(files, add);
+  checkWriteTransportClosure(files, add, options.wholeTree === true || files.some((f) => f.path === 'package.json'));
   return findings;
 }
 
@@ -543,10 +572,136 @@ export function check(files) {
 // unless WRITE_TRANSPORT_JOINERS names it. A name assembled at run time is beyond a static lint.
 export const TRANSPORT_FILE = 'tools/live/https-transport.mjs';
 export const NETWORK_BUILTINS = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dns', 'node:dgram'];
-function checkWriteTransportClosure(files, add) {
+// RN-NET-03B2-C2 (B3 review N1 residual): a file is network-capable, for the graph rule, if it can
+// reach the network or run other code without a static import the graph can follow:
+//   - it imports (statically, by re-export or by a literal dynamic import, with or without `node:`)
+//     a network module, a subprocess, worker, cluster, inspector, vm, repl or wasi module,
+//     node:module, node:process, or any underscore-prefixed legacy module (_http_client, _tls_wrap);
+//   - it names fetch, WebSocket, XMLHttpRequest, EventSource, createRequire, getBuiltinModule,
+//     require, importScripts, eval, Function, WebAssembly, globalThis, global or Reflect;
+//   - it reads process.binding, _linkedBinding, dlopen, getBuiltinModule or execve, or a computed
+//     member of process, or uses `process` as a value (an alias, an argument, a destructuring);
+//   - it names `constructor` other than as a class's own constructor method (the Function
+//     constructor is reachable from any value);
+//   - it has a computed dynamic import (`import(x)`), which could load anything; or
+//   - it cannot be parsed.
+// SUBMIT_SUBPROCESS_FILES' one child_process import is the named Python verifier spawn and is not
+// counted. Every other network-capable file under tools/ must be listed in NETWORK_CAPABLE_FILES
+// (reviewed), so new hand-written network or subprocess code is a finding, not a silent route.
+export const NETWORK_CAPABLE_MODULES = [
+  'http', 'https', 'http2', 'net', 'tls', 'dns', 'dns/promises', 'dgram', 'child_process', 'worker_threads', 'cluster', 'module', 'inspector', 'inspector/promises',
+  'vm', 'repl', 'process', 'wasi', 'sqlite',
+];
+const NETWORK_CAPABLE_NAMES = new Set(['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource', 'createRequire', 'getBuiltinModule', 'require', 'importScripts', 'eval', 'Function', 'WebAssembly', 'globalThis', 'global', 'Reflect']);
+const PROPERTY_DESCRIPTOR_NAMES = new Set(['getOwnPropertyDescriptor', 'getOwnPropertyDescriptors', 'getOwnPropertyNames', '__lookupGetter__', '__lookupSetter__', '__defineGetter__', '__defineSetter__']);
+// Bare specifiers a tools/ file may import without being network-capable: the guard's parser only.
+const TOOLS_BARE_SPECIFIERS = ['acorn'];
+const NETWORK_CAPABLE_PROCESS_MEMBERS = new Set(['binding', '_linkedBinding', 'dlopen', 'getBuiltinModule', 'execve']);
+export const NETWORK_CAPABLE_FILES = [
+  TRANSPORT_FILE, // the reviewed transport (ADR-RN-013)
+  'tools/offline.mjs', // the offline preload: imports network modules to deny them
+  'tools/offline.test.mjs', // its tests
+  'tools/guards/lib.mjs', // runs `git ls-files`
+  'tools/signing/keytool-python.check.mjs', // runs the Python key tool reference (offline-checks.sh, in the namespace)
+  'tools/broadcast/concurrent-log.check.mjs', // starts concurrent log writers (offline-checks.sh, in the namespace); imports nothing of the write side
+  ...SUBMIT_SUBPROCESS_FILES,
+];
+// Test data of the guard's own tests: sources that are meant to be refused.
+const GUARD_TEST_DATA = /^tools\/guards\/fixtures\//;
+
+/** Whether JSON text parses, and no key or string in it is `constructor` (escapes included). */
+function jsonIsPlainData(text) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  const plain = (v) => (typeof v === 'string' ? v !== 'constructor' : Array.isArray(v) ? v.every(plain) : v !== null && typeof v === 'object' ? Object.entries(v).every(([k, x]) => k !== 'constructor' && plain(x)) : true);
+  return plain(value);
+}
+
+/** Why a source is network-capable (see above); an empty list if it is not. */
+export function networkCapability(path, content) {
+  // Only ES modules are analysed as such. A CommonJS or TypeScript source (.cjs, .js and .ts
+  // without "type": "module", ...) reaches `require` through `module` or `arguments` without the
+  // name (C2 final review B1), so any such source counts as network-capable.
+  if (!path.endsWith('.mjs')) return ['not-an-es-module'];
+  let program;
+  try {
+    program = parse(content, PARSE_OPTIONS);
+  } catch {
+    return ['unparseable'];
+  }
+  const reasons = new Set();
+  const moduleReason = (specifier) => {
+    if (typeof specifier !== 'string') return;
+    // A URL other than node: (data:, file:, http:, blob:, ...) or an absolute path loads code the
+    // graph cannot follow (C2 final review B2); so does a bare specifier other than the parser,
+    // including a package.json "imports" alias (#name).
+    if (/^[a-z][a-z0-9+.-]*:/i.test(specifier) && !specifier.startsWith('node:')) return reasons.add(`module-url:${specifier.split(':')[0]}`);
+    if (specifier.startsWith('/') || specifier.startsWith('\\')) return reasons.add('module-absolute-path');
+    // signer/ and txverify/ may import only their pinned noble entry points (their own allowlists);
+    // packages/ may import no bare specifier at all.
+    const pinnedLibrary = (path.startsWith('signer/') && SIGNER_THIRD_PARTY.includes(specifier)) || (path.startsWith('txverify/') && Object.hasOwn(TXVERIFY_THIRD_PARTY, specifier));
+    if (!specifier.startsWith('.') && !specifier.startsWith('node:') && !TOOLS_BARE_SPECIFIERS.includes(specifier) && !pinnedLibrary && !path.startsWith('packages/')) return reasons.add(`module-bare:${specifier}`);
+    const bare = specifier.replace(/^node:/, '');
+    if (bare === 'child_process' && SUBMIT_SUBPROCESS_FILES.includes(path)) return;
+    if (NETWORK_CAPABLE_MODULES.includes(bare) || bare.startsWith('_')) reasons.add(`module:${bare}`);
+  };
+  const visit = (node, parent, key) => {
+    if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) moduleReason(node.source.value);
+    // node:test's run() starts subprocesses; only its named test-writing exports, imported
+    // statically, are harmless. A dynamic import or any re-export gives the whole namespace or run().
+    // node:test reaches run(), which starts subprocesses, from every export (`test.run`, `it.run`).
+    // Only test files (*.test.mjs) may import it: they run under the offline preload, which refuses
+    // subprocesses and the network. Anywhere else, any import or re-export of it counts.
+    const isTest = (v) => typeof v === 'string' && /^(?:node:)?test$/.test(v);
+    const testFile = /\.test\.mjs$/.test(path);
+    const source = node.type === 'ImportExpression' ? (node.source.type === 'Literal' ? node.source.value : undefined) : (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || node.type === 'ExportNamedDeclaration') ? node.source?.value : undefined;
+    if (isTest(source) && !testFile) reasons.add('module:test');
+    if (node.type === 'ImportExpression') {
+      if (node.source.type === 'Literal') moduleReason(node.source.value);
+      else reasons.add('dynamic-import-non-literal');
+    }
+    // Reflect is counted outside packages/ only: packages/ code is held to its own, stricter rules,
+    // and tx-intent reads own keys with it.
+    if (node.type === 'Identifier' && NETWORK_CAPABLE_NAMES.has(node.name) && !isPropertyName(node, parent, key) && !(node.name === 'Reflect' && path.startsWith('packages/'))) reasons.add(`name:${node.name}`);
+    if (node.type === 'MemberExpression' && node.object.type === 'Identifier' && node.object.name === 'process' && (node.computed || NETWORK_CAPABLE_PROCESS_MEMBERS.has(node.property.name))) {
+      reasons.add('process-internals');
+    }
+    // `process` as a value (`const p = process; p.getBuiltinModule(...)`, an argument, a
+    // destructuring) hides which member is read (C2 review F2).
+    if (node.type === 'Identifier' && node.name === 'process' && !isPropertyName(node, parent, key) && !(parent?.type === 'MemberExpression' && key === 'object')) reasons.add('process-value');
+    // `.constructor` reaches the Function constructor from any value (C2 review F2); only a class's
+    // own constructor method may use the name.
+    if (node.type === 'Identifier' && node.name === 'constructor' && !(parent?.type === 'MethodDefinition' && parent.kind === 'constructor')) reasons.add('constructor-access');
+    // The string `constructor` (a literal, or a template element, tagged templates included) in any
+    // position outside packages/: held in a constant, wrapped in an expression or used as a key, it
+    // selects the Function constructor (C2 final review B4). Only an equality comparison, which can
+    // select nothing, is exempt. A name assembled from pieces at run time stays beyond a static lint.
+    const text = node.type === 'Literal' ? node.value : node.type === 'TemplateElement' ? node.value.cooked : undefined;
+    if (text === 'constructor' && !path.startsWith('packages/')) {
+      const comparison = parent?.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(parent.operator);
+      if (!comparison) reasons.add('constructor-access');
+    }
+    // A regular expression's source is a string too (`fn[/constructor/.source]`).
+    if (node.type === 'Literal' && node.regex && /constructor/.test(node.regex.pattern) && !path.startsWith('packages/')) reasons.add('constructor-access');
+    // Property descriptors and legacy accessors read a member without naming it in a member
+    // expression (the Function constructor from a prototype's descriptors).
+    if (node.type === 'Identifier' && PROPERTY_DESCRIPTOR_NAMES.has(node.name) && !path.startsWith('packages/')) reasons.add(`name:${node.name}`);
+    for (const [childKey, child] of children(node)) visit(child, node, childKey);
+  };
+  visit(program, null, null);
+  return [...reasons];
+}
+function checkWriteTransportClosure(files, add, wholeTree) {
   const exempt = new Set([...SIGNER_IMPORT_TEST_DATA, 'tools/guards/dependency-boundaries.mjs']);
   const edges = new Map();
   const network = new Set();
+  const unanalysed = new Set();
+  const unresolvedImporters = new Set();
+  const contents = new Map(files.map((f) => [f.path, f.content]));
   for (const { path, content } of files) {
     if (content === null || !/\.(mjs|js|cjs|mts|cts|ts)$/.test(path) || exempt.has(path)) continue;
     let specifiers = rawImportsOf(content);
@@ -556,17 +711,52 @@ function checkWriteTransportClosure(files, add) {
       // unparseable sources are reported elsewhere; the raw specifiers still count
     }
     specifiers = [...new Set(specifiers)];
-    if (path === TRANSPORT_FILE || specifiers.some((sp) => NETWORK_BUILTINS.includes(sp) || NETWORK_BUILTINS.includes(`node:${sp}`))) network.add(path);
+    const capability = GUARD_TEST_DATA.test(path) ? [] : networkCapability(path, content);
+    if (path === TRANSPORT_FILE || capability.length > 0 || specifiers.some((sp) => NETWORK_BUILTINS.includes(sp) || NETWORK_BUILTINS.includes(`node:${sp}`))) network.add(path);
+    if (path.startsWith('tools/') && capability.length > 0 && !NETWORK_CAPABLE_FILES.includes(path)) add(path, `network-capable-file-not-allowed:${capability.join(',')}`);
     const targets = [];
     for (const sp of specifiers.filter((x) => x.startsWith('.'))) {
       // Percent-encoding and backslashes are decoded the way Node's URL resolution reads them; a
       // specifier that still names no repository path (test data above the root) adds no edge.
       const bare = sp.replace(/[?#].*$/s, '');
       const target = resolve(path, bare) ?? resolve(path, safeDecode(bare).replace(/[?#].*$/s, ''));
-      if (target !== null) targets.push(target);
+      // A relative specifier the guard cannot resolve (a +, a space, a non-ASCII letter, ...) gives
+      // no edge to follow, so its importer is counted as network itself (C2 final review B).
+      if (target === null) unresolvedImporters.add(path);
+      if (target !== null) {
+        targets.push(target);
+        // A target the guard does not analyse as an ES module (no .mjs: extensionless, .js, .cjs,
+        // ...) is counted as network: Node may load it as code (C2 final review B1, B3). JSON data
+        // is the one exception.
+        if (!/\.mjs$/.test(target)) unanalysed.add(target);
+        // Guard test data is meant to be refused; nothing outside the guard's own tests imports it.
+        // A test file is exempt from the node:test rule because it runs under the offline preload;
+        // imported by a file that is not a test, it would run without it (C2 final review A).
+        if (/\.test\.mjs$/.test(target) && !/\.test\.mjs$/.test(path) && !GUARD_TEST_DATA.test(path)) add(path, 'imports-test-file');
+        // Only the guard's own test files may import it, never a relay elsewhere in tools/guards/.
+        if (GUARD_TEST_DATA.test(target) && !GUARD_TEST_DATA.test(path) && !SIGNER_IMPORT_TEST_DATA.includes(path)) add(path, 'imports-guard-test-data');
+      }
     }
     edges.set(path, targets);
   }
+  // A target that differs from a given file only in case loads that file on a case-insensitive
+  // file system (NTFS through /mnt/c, macOS), unanalysed; and when the whole tree is given (the
+  // root package.json is among the files), every relative target must exist (C2 final review).
+  const lower = new Map([...contents.keys()].map((k) => [k.toLowerCase(), k]));
+  for (const [from, targets] of edges) {
+    if (GUARD_TEST_DATA.test(from)) continue;
+    for (const target of targets) {
+      if (contents.has(target)) continue;
+      if (lower.has(target.toLowerCase())) add(from, `import-case-mismatch:${target}`);
+      else if (wholeTree) add(from, `import-target-missing:${target}`);
+    }
+  }
+  for (const target of unanalysed) {
+    // JSON is data, unless it holds the constructor name, which code could read from it as a key.
+    if (target.endsWith('.json') && typeof contents.get(target) === 'string' && jsonIsPlainData(contents.get(target))) continue;
+    network.add(target);
+  }
+  for (const importer of unresolvedImporters) if (!GUARD_TEST_DATA.test(importer)) network.add(importer);
   const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
   for (const path of edges.keys()) {
     if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
@@ -579,6 +769,8 @@ function checkWriteTransportClosure(files, add) {
     const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
     const reachesWrite = [...seen].some(isWrite);
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
+    // The read-only status entry point never reaches the write path's run (C2).
+    if (path === STATUS_ENTRY_POINT && seen.has(BROADCASTER_FILE)) add(path, 'status-entry-point-reaches-broadcaster');
     // The key tool may not reach the network at all, however indirectly (RN-NET-03B2-C4).
     if (path.startsWith(KEYTOOL) && reachesNetwork) add(path, 'keytool-reaches-network');
     // Nor may anything else reach key generation or the key tool through an allowed file (review
@@ -586,6 +778,21 @@ function checkWriteTransportClosure(files, add) {
     const inner = path.startsWith('signer/') || path.startsWith(KEYTOOL) || KEYGEN_IMPORTERS.includes(path) || KEYTOOL_IMPORTERS.includes(path);
     if (!inner && [...seen].some((p) => p === SIGNER_KEYGEN_FILE || p.startsWith(KEYTOOL))) add(path, 'keygen-reached-transitively');
   }
+}
+
+// A literal dynamic import of a non-relative specifier escapes the named-import checks of signer/
+// and txverify/ (C2 review F3): a dynamic import of a library entry point gives its whole module.
+function thirdPartyDynamicImports(program) {
+  const found = [];
+  const visit = (node) => {
+    // `export * from '<library>'` and `export { x } from '<library>'` hand the library on to a
+    // relative importer, around the named-import rule (C2 re-review F3 residual).
+    if ((node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) && !String(node.source.value).startsWith('.')) found.push(`export-from:${node.source.value}`);
+    if (node.type === 'ImportExpression' && !(node.source.type === 'Literal' && typeof node.source.value === 'string' && node.source.value.startsWith('.'))) found.push(node.source.type === 'Literal' ? String(node.source.value) : '(computed)');
+    for (const [, child] of children(node)) visit(child);
+  };
+  visit(program);
+  return found;
 }
 
 // signer/ (ADR-RN-017): parsed like packages/, with its own allowlist of built-ins, exports,
@@ -613,6 +820,11 @@ function checkSigner(path, content, add) {
   }
   for (const problem of new Set(analysis.problems)) add(path, problem);
   for (const route of keyGenerationRoutes(content)) add(path, route);
+  try {
+    for (const specifier of thirdPartyDynamicImports(parse(content, PARSE_OPTIONS))) add(path, `dynamic-import-not-relative:${specifier}`);
+  } catch {
+    // reported as unsupported-syntax above
+  }
   const area = rest.startsWith('test/') ? 'test' : 'src';
   for (const { source, name } of analysis.builtinImports) {
     // Signer tests get the test built-ins, but not the test-only key APIs of packages/.
@@ -740,14 +952,20 @@ function checkWriteTransportJoin(path, content, add) {
   if (/https-transport|httpsTransport/.test(content) || computedImport || targets.some((t) => t?.startsWith('tools/live/'))) add(path, 'write-transport-join');
 }
 
-// tools/submit/: the keyless, offline broadcaster harness.
+// tools/submit/: the keyless broadcaster harness and its two entry points (disabled for live use).
+const SUBMIT_IMPORTS = new RegExp(String.raw`^(?:tools/submit/[a-z-]+\.mjs|packages/(?:${SUBMIT_PACKAGES.join('|')})/src/index\.mjs|txverify/src/index\.mjs)$`);
 function checkSubmitTools(path, content, add) {
   if (!path.endsWith('.mjs')) {
     if (!path.endsWith('/README.md')) add(path, 'non-module-file');
     return;
   }
-  if (content.startsWith('#!') || /process\s*\.\s*argv|import\s*\.\s*meta\s*\.\s*main/.test(content)) add(path, 'submit-entry-point');
+  if (!/^tools\/submit\/[a-z-]+\.mjs$/.test(path)) add(path, 'submit-file-name');
+  const entryPoint = SUBMIT_ENTRY_POINTS.includes(path);
+  if (!entryPoint && (content.startsWith('#!') || /process\s*\.\s*argv|import\s*\.\s*meta\s*\.\s*main/.test(content))) add(path, 'submit-entry-point');
   if (/https-transport|httpsTransport/.test(content)) add(path, 'submit-imports-transport');
+  for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
+  // The raw-text rules of packages/, except the one for process (allowed members differ here).
+  for (const { id, pattern } of RAW_RULES) if (id !== 'forbidden-word:process' && pattern.test(content)) add(path, id);
   let program;
   try {
     program = parse(content, PARSE_OPTIONS);
@@ -759,14 +977,32 @@ function checkSubmitTools(path, content, add) {
   const analysis = analyze(program);
   for (const problem of new Set(analysis.problems)) if (problem !== 'process-access') add(path, problem);
   for (const route of keyGenerationRoutes(content)) add(path, route);
+  // Reflect reads members by a name built at run time (C2 review F2); tools/submit/ has no use for it.
+  if (/(?<![\w$])Reflect(?![\w$])/.test(content)) add(path, 'submit-reflect');
+  // process: only the listed members, never computed, aliased or destructured.
+  const processMembers = entryPoint ? [...SUBMIT_PROCESS_PROPERTIES, ...SUBMIT_ENTRY_POINT_PROCESS_PROPERTIES] : SUBMIT_PROCESS_PROPERTIES;
+  const visit = (node, parent, key) => {
+    if (node.type === 'Identifier' && node.name === 'process' && !isPropertyName(node, parent, key)) {
+      const allowed = parent?.type === 'MemberExpression' && key === 'object' && !parent.computed && processMembers.includes(parent.property.name);
+      if (!allowed) add(path, 'submit-process-access');
+    }
+    for (const [childKey, child] of children(node)) visit(child, node, childKey);
+  };
+  visit(program, null, null);
   for (const { source, name } of analysis.builtinImports) {
+    if (source === 'node:child_process') {
+      if (!(SUBMIT_SUBPROCESS_FILES.includes(path) && name === 'execFileSync')) add(path, `submit-subprocess-not-allowed:${name}`);
+      continue;
+    }
     if (source === 'node:crypto' && !SUBMIT_CRYPTO_EXPORTS.includes(name)) add(path, `submit-crypto-export-not-allowed:${name}`);
-    if (source === 'node:child_process' && !(SUBMIT_SUBPROCESS_FILES.includes(path) && name === 'execFileSync')) add(path, `submit-subprocess-not-allowed:${name}`);
+    else if (!(SUBMIT_BUILTIN_EXPORTS[source] ?? []).includes(name)) add(path, `submit-builtin-export-not-allowed:${source}#${name}`);
   }
   for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
     if (specifier.startsWith('node:')) {
       if (SUBMIT_FORBIDDEN_MODULES.includes(specifier)) add(path, `submit-module-not-allowed:${specifier}`);
-      if (specifier === 'node:child_process' && !SUBMIT_SUBPROCESS_FILES.includes(path)) add(path, 'submit-subprocess-not-allowed:module');
+      else if (specifier === 'node:child_process') {
+        if (!SUBMIT_SUBPROCESS_FILES.includes(path)) add(path, 'submit-subprocess-not-allowed:module');
+      } else if (!Object.hasOwn(SUBMIT_BUILTIN_EXPORTS, specifier)) add(path, `submit-module-not-allowed:${specifier}`);
       continue;
     }
     if (!specifier.startsWith('.')) {
@@ -777,6 +1013,7 @@ function checkSubmitTools(path, content, add) {
     if (target === null) add(path, `unsupported-specifier:${specifier}`);
     else if (target.startsWith('tools/live/')) add(path, 'submit-imports-transport');
     else if (target.startsWith('signer/') || target.startsWith('tools/signing/')) add(path, 'signer-importer-not-allowed');
+    else if (!SUBMIT_IMPORTS.test(target)) add(path, `submit-import-not-allowed:${target}`);
   }
 }
 
@@ -871,6 +1108,7 @@ function checkTxverify(path, content, add) {
   const analysis = analyze(program);
   for (const problem of new Set(analysis.problems)) add(path, problem);
   for (const route of keyGenerationRoutes(content)) add(path, route);
+  for (const specifier of thirdPartyDynamicImports(program)) add(path, `dynamic-import-not-relative:${specifier}`);
   const area = rest.startsWith('test/') ? 'test' : 'src';
   for (const { source, name } of analysis.builtinImports) {
     const allowed = [...(TXVERIFY_BUILTIN_EXPORTS[source] ?? []), ...(area === 'test' ? [...(ALLOWED_BUILTIN_EXPORTS[source] ?? [])] : [])];
@@ -922,6 +1160,14 @@ function checkTxverify(path, content, add) {
     if (node.type === 'Literal' && typeof node.value === 'string' && TXVERIFY_DENIED_NAMES.has(node.value)) add(path, `txverify-signing-api:${node.value}`);
     // `const { x } = secp256k1` and aliases of secp256k1 would hide its members.
     if (node.type === 'VariableDeclarator' && node.init?.type === 'Identifier' && node.init.name === 'secp256k1') add(path, 'txverify-secp256k1-alias');
+    // secp256k1 as a value (B3 review N2): an argument, a spread, an assignment, Object.values,
+    // Reflect.get, ... would reach every member. It may appear only as its own import binding, or
+    // as the object of a non-computed .Signature or .verify member expression.
+    if (node.type === 'Identifier' && node.name === 'secp256k1' && !isPropertyName(node, parent, key)) {
+      const asImport = parent?.type === 'ImportSpecifier' && key === 'local';
+      const asMember = parent?.type === 'MemberExpression' && key === 'object' && !parent.computed && TXVERIFY_SECP256K1_MEMBERS.includes(parent.property.name);
+      if (!asImport && !asMember) add(path, 'txverify-secp256k1-value');
+    }
     for (const [childKey, child] of children(node)) visit(child, node, childKey);
   };
   visit(program, null, null);

@@ -565,9 +565,11 @@ test('key-generation routes and indirect signer imports are reported', () => {
   assert.ok(rules('signer/src/a.mjs', 'const k = s.keygen();').includes('key-generation:keygen'));
   assert.ok(rules('packages/broadcast-handoff/src/a.mjs', 'const k = crypto.subtle;').includes('global-crypto'));
   assert.ok(rules('signer/test/a.test.mjs', "import { generateKeyPairSync } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#generateKeyPairSync'));
-  assert.deepEqual(rules('tools/x.mjs', 'const m = await import(`../signer/src/sign.mjs`);'), ['signer-importer-not-allowed']);
+  // A template-literal import() is also a computed import, so the file is network-capable (C2, N1).
+  assert.deepEqual(rules('tools/x.mjs', 'const m = await import(`../signer/src/sign.mjs`);'), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:dynamic-import-non-literal']);
   assert.deepEqual(rules('scripts/sign.mjs', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
-  assert.deepEqual(rules('tools/x.js', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
+  // A non-.mjs source is also network-capable (C2 final review B1).
+  assert.deepEqual(rules('tools/x.js', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:not-an-es-module']);
 });
 
 test('the signer lockfile root entry and top-level fields must match the manifest', () => {
@@ -586,7 +588,8 @@ test('the signer lockfile root entry and top-level fields must match the manifes
 
 test('destructured key-generation helpers and TypeScript files are reported (re-review)', () => {
   assert.ok(rules('signer/src/a.mjs', 'const { randomSecretKey } = s.utils;\nrandomSecretKey();').includes('key-generation:randomSecretKey'));
-  assert.deepEqual(rules('tools/x.mts', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
+  // A non-.mjs source is also network-capable (C2 final review B1).
+  assert.deepEqual(rules('tools/x.mts', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:not-an-es-module']);
 });
 
 // --- RN-NET-03B2-B3: chain-submit, txverify/ and the broadcaster harness (ADR-RN-019) -----------
@@ -880,4 +883,228 @@ test('C4 does not widen B1/B3 isolation: the broadcaster, packages and txverify 
   assert.ok(rules('packages/chain-submit/src/x.mjs', "import { x } from '../../../tools/keytool/cli.mjs';").includes('import-outside-packages'));
   assert.ok(rules('txverify/src/x.mjs', "import { x } from '../../signer/src/keygen.mjs';").some((r) => r.startsWith('txverify-import-not-allowed')));
   assert.ok(rules('packages/tx-intent/src/x.mjs', "import { randomBytes } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#randomBytes'));
+});
+
+// RN-NET-03B2-C2: the B3 review's follow-ups N1 and N2, as the reviewer wrote the repros.
+test('C2 N1: tools/submit/ cannot reach the network or load code without a static import', () => {
+  const r = (content, path = 'tools/submit/a.mjs') => rules(path, content);
+  for (const [code, rule] of [
+    ["const h = process.getBuiltinModule('node:https');", 'submit-process-access'],
+    ["const t = process.binding('tcp_wrap');", 'submit-process-access'],
+    ["import { createRequire as cr } from 'node:module';\nconst h = cr(import.meta.url)('node:https');", 'submit-module-not-allowed:node:module'],
+    ["import m from 'node:module';\nconst q = m.createRequire(import.meta.url);", 'submit-module-not-allowed:node:module'],
+    ["import { getBuiltinModule as g } from 'node:process';", 'submit-module-not-allowed:node:process'],
+    ["import { ClientRequest } from '_http_client';", 'third-party-import:_http_client'],
+    ["import { ClientRequest } from 'node:_http_client';", 'submit-module-not-allowed:node:_http_client'],
+    ["import os from 'node:os';", 'submit-module-not-allowed:node:os'],
+    ["import * as fs from 'node:fs';", 'submit-builtin-export-not-allowed:node:fs#*'],
+    ["import { symlinkSync } from 'node:fs';", 'submit-builtin-export-not-allowed:node:fs#symlinkSync'],
+    ["const p = process.env.HOME;", 'submit-process-access'],
+    ["const { argv } = process;", 'submit-process-access'],
+    ['const m = await import(name);', 'dynamic-import-non-literal'],
+    ["const f = globalThis['fe' + 'tch'];", 'forbidden-identifier:globalThis'],
+    ["import { main } from '../verify-live-anchor.mjs';", 'submit-import-not-allowed:tools/verify-live-anchor.mjs'],
+    ["import { t } from '../net.mjs';", 'submit-import-not-allowed:tools/net.mjs'],
+    ["import { x } from '../../packages/tx-prepare/src/index.mjs';", 'submit-import-not-allowed:packages/tx-prepare/src/index.mjs'],
+    ["import { x } from '../../packages/chain-readonly/src/rpc.mjs';", 'submit-import-not-allowed:packages/chain-readonly/src/rpc.mjs'],
+  ]) assert.ok(r(code).includes(rule), `${code} -> ${r(code).join(' ')}`);
+  // The library files keep only process.getuid and process.pid; the entry points also argv,
+  // exitCode, stdout and stderr, and only they may have a command line.
+  assert.deepEqual(r('const u = process.getuid();'), []);
+  assert.ok(r('process.exitCode = 1;').includes('submit-process-access'));
+  for (const entry of ['tools/submit/submit-anchor.mjs', 'tools/submit/status-check.mjs']) {
+    assert.deepEqual(r('#!/usr/bin/env node\nprocess.exitCode = main(process.argv.slice(2));\nprocess.stdout.write(x);', entry), [], entry);
+    assert.ok(r("import { httpsTransport } from '../live/https-transport.mjs';", entry).includes('submit-imports-transport'), entry);
+  }
+});
+
+test('C2 N1 residual: hand-written network code anywhere in tools/ counts as network in the graph', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const entry = "#!/usr/bin/env node\nimport { runBroadcast } from '../submit/broadcaster.mjs';\nimport { t } from '../net.mjs';\nawait runBroadcast({ argv: process.argv, t });";
+  const helpers = [
+    ['global fetch', "export const t = async ({ url, body }) => (await fetch(url, { method: 'POST', body })).text();"],
+    ['_http_client', "import { ClientRequest } from '_http_client';\nexport const t = ClientRequest;"],
+    ['node:_tls_wrap', "import { TLSSocket } from 'node:_tls_wrap';\nexport const t = TLSSocket;"],
+    ['createRequire', "import { createRequire } from 'node:module';\nexport const t = createRequire(import.meta.url)('https');"],
+    ['getBuiltinModule', "export const t = process.getBuiltinModule('node:https');"],
+    ['child_process curl', "import { execFileSync } from 'node:child_process';\nexport const t = (u) => execFileSync('curl', [u]);"],
+    ['computed import', 'export const t = async (n) => import(n);'],
+    ['worker', "import { Worker } from 'node:worker_threads';\nexport const t = Worker;"],
+  ];
+  for (const [label, helper] of helpers) {
+    const findings = found([['tools/submit/broadcaster.mjs', "import { x } from '../../packages/chain-submit/src/index.mjs';"], ['tools/net.mjs', helper], ['tools/broadcast/send.mjs', entry]]);
+    assert.ok(findings.includes('tools/broadcast/send.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
+    assert.ok(findings.some((f) => f.startsWith('tools/net.mjs:network-capable-file-not-allowed:')), `${label}: ${findings.join(' ')}`);
+  }
+  // A network-capable file inside the write path is itself a join.
+  assert.ok(found([['tools/submit/x.mjs', 'export const t = (u) => fetch(u);']]).includes('tools/submit/x.mjs:write-transport-join-transitive'));
+  // The named verifier spawn is not network; the same import anywhere else is.
+  assert.deepEqual(found([['tools/submit/python-verifier.mjs', "import { execFileSync } from 'node:child_process';\nexport const v = execFileSync;"]]), []);
+  // The read-only entry point never reaches the broadcaster, however indirectly.
+  assert.ok(found([
+    ['tools/submit/status-check.mjs', "import { a } from './helper.mjs';"],
+    ['tools/submit/helper.mjs', "export { runBroadcast as a } from './broadcaster.mjs';"],
+    ['tools/submit/broadcaster.mjs', 'export const runBroadcast = 1;'],
+  ]).includes('tools/submit/status-check.mjs:status-entry-point-reaches-broadcaster'));
+});
+
+test('C2 N2: secp256k1 is never a value in txverify/, only .Signature and .verify', () => {
+  const r = (code) => rules('txverify/src/x.mjs', `import { secp256k1 } from '@noble/curves/secp256k1.js';\n${code}`);
+  for (const code of [
+    'const v = Object.values(secp256k1);',
+    "const s = Reflect.get(secp256k1, ['s', 'i', 'g', 'n'].join(''));",
+    'const s = { ...secp256k1 }[n];',
+    'use(secp256k1);',
+    'let c; c = secp256k1;',
+    'const t = [secp256k1];',
+  ]) assert.ok(r(code).includes('txverify-secp256k1-value'), `${code} -> ${r(code).join(' ')}`);
+  assert.deepEqual(r("const s = secp256k1.Signature.fromBytes(b, 'recovered');\nconst ok = secp256k1.verify(s, d, p);"), []);
+});
+
+test('C2: no live joiner, and the entry points are exactly the two of ADR-RN-019 Amendment C1', async () => {
+  const guard = await import('./dependency-boundaries.mjs');
+  assert.deepEqual(guard.WRITE_TRANSPORT_JOINERS, []);
+  assert.deepEqual(guard.SUBMIT_ENTRY_POINTS, ['tools/submit/submit-anchor.mjs', 'tools/submit/status-check.mjs']);
+});
+
+test('C2 review F2 and F3: process aliases, .constructor, Reflect and dynamic library imports', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const entry = "import { submitAnchor } from '../submit/submit-anchor.mjs';";
+  for (const [label, code] of [
+    ['process alias', "const p = process;\nexport const t = p.getBuiltinModule('node:https');"],
+    ['process destructured', "const { getBuiltinModule: g } = process;\nexport const t = g('node:https');"],
+    ['constructor', "export const t = (() => {}).constructor('return this')().fetch;"],
+    ["['constructor']", "export const t = (() => {})['constructor']('return this')();"],
+    ['Reflect', "export const t = Reflect.get(Buffer, ['constr', 'uctor'].join(''));"],
+  ]) {
+    const findings = found([['tools/submit/broadcaster.mjs', 'export const x = 1;'], ['tools/submit/submit-anchor.mjs', "import { x } from './broadcaster.mjs';"], ['tools/broadcast/x.mjs', `${entry}\n${code}`]]);
+    assert.ok(findings.some((f) => f.startsWith('tools/broadcast/x.mjs:network-capable-file-not-allowed:')), `${label}: ${findings.join(' ')}`);
+    assert.ok(findings.includes('tools/broadcast/x.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
+  }
+  assert.ok(rules('tools/submit/a.mjs', "const f = Reflect.get(Buffer, 'x');").includes('submit-reflect'));
+  // A class's own constructor method is not a route.
+  assert.deepEqual(found([['tools/broadcast/y.mjs', 'export class E extends Error { constructor(m) { super(m); } }']]), []);
+  // F3: no dynamic import of a library in txverify/ or signer/; relative ones stay allowed in tests.
+  for (const path of ['txverify/src/x.mjs', 'signer/src/x.mjs']) {
+    const r = rules(path, "const { secp256k1: curve } = await import('@noble/curves/secp256k1.js');\nexport const v = Object.values(curve);");
+    assert.ok(r.includes('dynamic-import-not-relative:@noble/curves/secp256k1.js'), `${path}: ${r.join(' ')}`);
+  }
+  assert.ok(!rules('txverify/test/x.test.mjs', "const api = await import('../src/index.mjs');").some((r) => r.startsWith('dynamic-import-not-relative')));
+});
+
+test('C2 re-review: the constructor string in every selecting form, descriptors, and library re-exports', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  for (const [label, code] of [
+    ['template key', 'export const t = (() => {})[`constructor`];'],
+    ['destructuring key', "const { ['constructor']: F } = () => {};\nexport const t = F;"],
+    ['descriptor argument', "export const t = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(() => {}), 'constructor').value;"],
+    ['descriptor walk', "export const t = Object.values(Object.getOwnPropertyDescriptors(Object.getPrototypeOf(() => {}))).find((x) => x.value?.name === 'Fn');"],
+    ['legacy accessor', "export const t = ({}).__lookupGetter__('x');"],
+  ]) {
+    const findings = found([['tools/submit/broadcaster.mjs', 'export const x = 1;'], ['tools/broadcast/x.mjs', `import { x } from '../submit/broadcaster.mjs';\n${code}`]]);
+    assert.ok(findings.includes('tools/broadcast/x.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
+  }
+  // Only an equality comparison with the string is not a route.
+  assert.deepEqual(found([['tools/broadcast/y.mjs', "export const is = (k) => k === 'constructor' || 'constructor' !== k;"]]), []);
+  for (const path of ['txverify/src/x.mjs', 'signer/src/x.mjs']) {
+    for (const code of ["export * from '@noble/curves/secp256k1.js';", "export { secp256k1 } from '@noble/curves/secp256k1.js';"]) {
+      assert.ok(rules(path, code).some((r) => r.startsWith('dynamic-import-not-relative:export-from:')), `${path}: ${code}`);
+    }
+  }
+});
+
+test('C2 final review B1 to B4: CommonJS and extensionless targets, URL imports, and the constructor string anywhere', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const write = ['tools/submit/broadcaster.mjs', 'export const x = 1;'];
+  const joins = (files, label) => {
+    const f = found([write, ...files]);
+    assert.ok(f.includes('tools/broadcast/z.mjs:write-transport-join-transitive'), `${label}: ${f.join(' ')}`);
+  };
+  const z = (extra) => ['tools/broadcast/z.mjs', `import { x } from '../submit/broadcaster.mjs';\n${extra}`];
+  // B1: CommonJS helpers, .cjs or .js.
+  joins([z("import h from './h.cjs';"), ['tools/broadcast/h.cjs', "module.exports = module.require('node:https');"]], 'cjs');
+  joins([z("import h from './h.js';"), ['tools/broadcast/h.js', "module.exports = arguments[1]('node:https');"]], 'js');
+  // B3: an extensionless target, even one the guard is never given.
+  joins([z("import { g } from './h';")], 'extensionless');
+  joins([z("import { g } from './h';"), ['tools/broadcast/h', 'export const g = globalThis;']], 'extensionless with file');
+  // B2: URL and absolute imports, and bare specifiers other than the parser.
+  for (const spec of ['data:text/javascript;base64,aW1wb3J0ICdub2RlOmh0dHBzJzs=', 'file:///tmp/x.mjs', 'https://example.invalid/x.mjs', '/tmp/x.mjs', '#net', 'some-package']) {
+    joins([z(`const m = await import('${spec}');`)], spec);
+    joins([z(`export * from '${spec}';`)], `re-export ${spec}`);
+  }
+  // B4: the string held in a constant or wrapped in an expression.
+  for (const code of [
+    "const k = 'constructor';\nexport const g = (() => {})[k]('return this')();",
+    "export const g = (() => {})[(0, 'constructor')];",
+    "export const g = (() => {})[['constructor'][0]];",
+    "export const g = (() => {})[{ k: 'constructor' }.k];",
+    "export const g = (() => {})[`${'constructor'}`];",
+    'export const g = (() => {})[String.raw`constructor`];',
+    "export const g = (k = 'constructor') => (() => {})[k];",
+    "export const g = (() => {})['\\u0063onstructor'];",
+  ]) joins([z(code)], code);
+  // N1 to N3: getOwnPropertyNames, node:sqlite, node:test run, importing guard test data.
+  joins([z('export const n = (p) => p[Object.getOwnPropertyNames(p)[4]];')], 'getOwnPropertyNames');
+  joins([z("import { DatabaseSync } from 'node:sqlite';")], 'sqlite');
+  joins([z("import { run } from 'node:test';")], 'node:test run');
+  assert.ok(found([['tools/submit/a.mjs', "import { g } from '../guards/fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/submit/a.mjs:imports-guard-test-data'));
+  // The legitimate forms stay clean.
+  assert.deepEqual(found([['tools/broadcast/ok.test.mjs', "import { test } from 'node:test';\nimport data from './d.json' with { type: 'json' };\nexport const t = test;"], ['tools/broadcast/d.json', '{"a":1}']]), []);
+});
+
+test('C2 final re-review A to D: node:test namespaces, unresolvable specifiers, regex and JSON names, fixture relays', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const write = ['tools/submit/broadcaster.mjs', 'export const x = 1;'];
+  const z = (extra) => ['tools/broadcast/z.mjs', `import { x } from '../submit/broadcaster.mjs';\n${extra}`];
+  const joins = (files, label) => {
+    const f = found([write, ...files]);
+    assert.ok(f.includes('tools/broadcast/z.mjs:write-transport-join-transitive'), `${label}: ${f.join(' ')}`);
+  };
+  // A: node:test by dynamic import or re-export.
+  joins([z("const t = await import('node:test');")], 'dynamic node:test');
+  joins([z("export { run } from 'node:test';")], 're-export run');
+  joins([z("export * as t from 'node:test';")], 're-export namespace');
+  // B: relative specifiers the guard cannot resolve.
+  for (const spec of ['../../scripts/a+b.cjs', './a b.mjs', './\u00e9.mjs', './c:d.mjs']) joins([z(`import h from '${spec}';`)], spec);
+  // C: the name in a regular expression, or in imported JSON data.
+  joins([z('export const g = (() => {})[/constructor/.source];')], 'regex');
+  joins([z("import k from './k.json' with { type: 'json' };\nexport const g = (() => {})[k.k];"), ['tools/broadcast/k.json', '{"k":"constructor"}']], 'json name');
+  assert.deepEqual(found([['tools/broadcast/ok.mjs', "import d from './d.json' with { type: 'json' };\nexport const t = d;"], ['tools/broadcast/d.json', '{"a":1}']]), []);
+  // D: a relay in tools/guards/ may not import the fixtures.
+  assert.ok(found([['tools/guards/relay.mjs', "export * from './fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/guards/relay.mjs:imports-guard-test-data'));
+});
+
+test('C2 final re-review: node:test outside tests, symbolic links anywhere, escaped JSON names, test-named relays', () => {
+  const found = (files) => check(files.map(([path, content, symlink]) => ({ path, content, symlink: symlink === true }))).map((f) => `${f.path}:${f.rule}`);
+  const write = ['tools/submit/broadcaster.mjs', 'export const x = 1;'];
+  const z = (extra) => ['tools/broadcast/z.mjs', `import { x } from '../submit/broadcaster.mjs';\n${extra}`];
+  const joins = (files, label) => {
+    const f = found([write, ...files]);
+    assert.ok(f.includes('tools/broadcast/z.mjs:write-transport-join-transitive'), `${label}: ${f.join(' ')}`);
+  };
+  for (const code of ["import { test } from 'node:test';\ntest.run({ files: [] });", "import { it } from 'node:test';\nexport const r = it.run;", "import { test } from 'node:test';\nconst { run } = test;"]) joins([z(code)], code);
+  assert.ok(found([['scripts/link.mjs', null, true]]).includes('scripts/link.mjs:symlink-in-package'));
+  joins([z("import k from './k.json' with { type: 'json' };"), ['tools/broadcast/k.json', '{"k":"\\u0063onstructor"}']], 'escaped JSON');
+  joins([z("import k from './k.json' with { type: 'json' };"), ['tools/broadcast/k.json', 'not json']], 'unparseable JSON');
+  assert.ok(found([['tools/guards/relay.test.mjs', "export * from './fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/guards/relay.test.mjs:imports-guard-test-data'));
+});
+
+test('C2 final re-review: case-mismatched and, over the whole tree, missing import targets', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  assert.ok(found([['tools/broadcast/z.mjs', "import { g } from './CD.mjs';"], ['tools/broadcast/cd.mjs', 'export const g = 1;']]).includes('tools/broadcast/z.mjs:import-case-mismatch:tools/broadcast/CD.mjs'));
+  const tree = [['package.json', '{"name":"x","private":true}'], ['tools/broadcast/z.mjs', "import { g } from './gen.mjs';"]];
+  assert.ok(found(tree).includes('tools/broadcast/z.mjs:import-target-missing:tools/broadcast/gen.mjs'));
+  assert.ok(!found(tree.slice(1)).some((f) => f.includes('import-target-missing')));
+});
+
+test('C2 final review: a file that is not a test may not import a test file', () => {
+  const found = (files, options) => check(files.map(([path, content]) => ({ path, content, symlink: false })), options).map((f) => `${f.path}:${f.rule}`);
+  for (const spec of ['./w-helper.test.mjs', './w-helper.test.mjs?x', '../w-helper.test.mjs']) {
+    for (const form of [`import { r } from '${spec}';`, `export * from '${spec}';`, `const m = await import('${spec}');`]) {
+      const f = found([['tools/broadcast/w.mjs', form]]);
+      assert.ok(f.includes('tools/broadcast/w.mjs:imports-test-file'), `${form}: ${f.join(' ')}`);
+    }
+  }
+  assert.ok(!found([['tools/broadcast/a.test.mjs', "import { r } from './b.test.mjs';"]]).some((f) => f.includes('imports-test-file')));
+  assert.ok(found([['tools/broadcast/z.mjs', "import { g } from './gen.mjs';"]], { wholeTree: true }).includes('tools/broadcast/z.mjs:import-target-missing:tools/broadcast/gen.mjs'));
 });

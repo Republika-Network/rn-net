@@ -226,7 +226,13 @@ test('evidence: a run directory 0700 with the record and capture 0600, outside t
       environment: { endpoints: fixtures.endpoints, now: () => base.now, referenceVerifier: () => structuredClone(base.referenceRecord), transport: replayTextTransport(base.exchanges), logDir: dirs.logDir, evidenceDir: dirs.evidenceDir },
     });
     assert.equal(lstatSync(result.runDirectory).mode & 0o777, 0o700);
-    assert.deepEqual(readdirSync(result.runDirectory).sort(), ['capture.json', 'submission-record.json']);
+    // attempt.json is written, durably, before the write (C2): the exact request and the reads.
+    assert.deepEqual(readdirSync(result.runDirectory).sort(), ['attempt.json', 'capture.json', 'submission-record.json']);
+    const attempt = JSON.parse(readFileSync(join(result.runDirectory, 'attempt.json'), 'utf8'));
+    assert.equal(attempt.format, 'rnnet.submission-attempt.v1');
+    assert.equal(attempt.requestSha256, result.record.requestSha256);
+    assert.equal(attempt.presubmitExchanges, 12);
+    assert.equal(attempt.attemptEntry, entryDigest(readLog(dirs.logDir)[1]));
     for (const name of readdirSync(result.runDirectory)) assert.equal(lstatSync(join(result.runDirectory, name)).mode & 0o777, 0o600);
     assert.equal(readFileSync(join(result.runDirectory, 'submission-record.json'), 'utf8'), `${canon(result.record)}\n`);
     const capture = JSON.parse(readFileSync(join(result.runDirectory, 'capture.json'), 'utf8'));

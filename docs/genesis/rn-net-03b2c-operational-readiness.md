@@ -124,6 +124,13 @@ These block **gate E on both networks**.
    simulated providers and prints the time of each step (§2).
 10. **Review.** An independent adversarial review covers all of the above.
 
+**C2 status (RN-NET-03B2-C2, live access disabled):**
+- Items 1 to 8 are implemented offline. See spec/rnnet.broadcast.v1.md §12 and
+  [the fail_hard finding](rn-net-03b2c2-fail-hard-rippled-3.4.1.md).
+- Item 9, the rehearsal harness, is **not built**: it needs C3's live preparation entry point. It
+  moves to C3.
+- Item 10, the independent review, is recorded in the C2 pull request.
+
 **What C2 cannot check before gate E:** whether each provider accepts the write method. The
 public XRPL servers are documented as accepting `submit` of signed blobs. Whether PublicNode and
 1RPC relay `eth_sendRawTransaction` cannot be tested without sending.

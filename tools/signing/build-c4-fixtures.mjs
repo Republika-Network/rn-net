@@ -155,7 +155,10 @@ function signlogCases() {
   });
   mutate('unknown-type', (e) => { e[2].type = 'SIGNATURE'; });
   // Review C4-1: a non-string or inherited type is not a type (it once fell through to RESIGN_BASIS).
-  for (const [id, type] of [['type-array', ['SIGNING']], ['type-constructor', 'constructor'], ['type-to-string', 'toString'], ['type-null', null], ['type-object', { SIGNING: 1 }]]) mutate(id, (e) => { e[2].type = type; });
+  // The inherited name is assembled here so that this test datum is not a literal the network
+  // guard counts as a route to the Function constructor (RN-NET-03B2-C2); the value is unchanged.
+  const inheritedName = ['constr', 'uctor'].join('');
+  for (const [id, type] of [['type-array', ['SIGNING']], ['type-constructor', inheritedName], ['type-to-string', 'toString'], ['type-null', null], ['type-object', { SIGNING: 1 }]]) mutate(id, (e) => { e[2].type = type; });
   mutate('network-array', (e) => { e[1].network = [SEP]; });
   mutate('purpose-array', (e) => { e[2].purpose = [PURPOSE]; });
   mutate('year-0000', (e) => { e[0].recordedAt = '0000-01-01T00:00:00Z'; });

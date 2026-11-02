@@ -462,6 +462,27 @@ flag is set, so the transaction is neither applied nor relayed. If the source co
 `tec*` under `fail_hard` would become `REJECTED` (nothing applied). That change would need a
 reviewed amendment, with the classifier and its Python reference changed together.
 
+### C2 implementation record (RN-NET-03B2-C2)
+
+This amendment stays **Proposed**. RN-NET-03B2-C2 implements it **offline, with live network
+access disabled**. The record below says what was built. It accepts nothing and authorizes nothing.
+- **E1.** `tools/submit/submit-anchor.mjs` and `tools/submit/status-check.mjs` exist. Neither
+  imports the transport, both refuse as commands, and `WRITE_TRANSPORT_JOINERS` is still empty.
+  The rules for live entry points are implemented and pinned by tests: exact flags, providers
+  from the reviewed list, the budget in code, and no retry, fee or field option.
+- **E2.** The request policy enforces the per-provider plan: XRPL 7 requests, Sepolia 13, and the
+  write only after every planned read. Status checks are read-only and have a ceiling.
+- **E3.** One authorization, one attempt: the existing log rules, plus the founder's typed approval
+  of each run (network + authorization digest suffix). A drafted authorization from the signer's
+  command line is not built yet; that is C4/C5 work.
+- **E4.** The message now reads "4 or fewer ledgers remain before LastLedgerSequence"; the
+  behaviour is unchanged.
+- **E6.** The rippled source was read at `3.4.1`; see
+  [the finding](../genesis/rn-net-03b2c2-fail-hard-rippled-3.4.1.md). The hypothesis holds for
+  ordinary tec results, with an invariant-failure exception. tec* and `terQUEUED` stay
+  `UNCERTAIN`, and `tefNO_TICKET` is added to `UNCERTAIN`. No class was loosened.
+- **Prerequisites.** N1 to N5 are fixed (spec §12.3, §7 and §8) and await independent review.
+
 ### Consequences
 
 - The keyless architecture, the formats (`rnnet.broadcast-authorization.v1`,
