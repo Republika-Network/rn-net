@@ -3,7 +3,7 @@
 **Synthetic preparation cases.** No provider was contacted, and nothing here was or can be sent
 to a network.
 
-`cases.json` (`rnnet.preparation-b2-fixtures.v2`) holds 93 cases: 13 accepted and 80 refused,
+`cases.json` (`rnnet.preparation-b2-fixtures.v2`) holds 94 cases: 13 accepted and 81 refused,
 covering all 15 `RNTP_*` codes and both blocked reasons.
 
 RN-NET-03B2-C3 regenerated it:

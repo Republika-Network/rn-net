@@ -146,6 +146,8 @@ export const CASES = [
   { id: 'sepolia-estimate-gas-block-hash-unsupported', network: S, servers: sepB({ estimateGasBlockHash: false }), expect: ['RNTP_PROVIDER_ERROR', SB, 'GAS_ESTIMATION_UNAVAILABLE'] },
   { id: 'sepolia-pinned-hash-no-longer-canonical', network: S, servers: sepB({ raw: { eth_getBalance: () => reply('{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"hash is not currently canonical"}}') } }), expect: ['RNTP_PROVIDER_ERROR', SB, 'BLOCK_HASH_READ_REFUSED'] },
   { id: 'sepolia-rpc-error', network: S, servers: sepB({ raw: { eth_estimateGas: evmError } }), expect: ['RNTP_PROVIDER_ERROR', SB, 'GAS_ESTIMATION_UNAVAILABLE'] },
+  // The pending nonce carries no block hash: an RPC error there is not blocked (C3 review 3).
+  { id: 'sepolia-pending-nonce-rpc-error-not-blocked', network: S, servers: sepB({ raw: { eth_getTransactionCount: (params) => (params[1] === 'pending' ? evmError() : undefined) } }), expect: ['RNTP_PROVIDER_ERROR', SB] },
   { id: 'sepolia-estimate-gas-timeout-not-blocked', network: S, servers: sepA({ raw: { eth_estimateGas: transportError('RNLO_TIMEOUT') } }), expect: ['RNTP_PROVIDER_UNAVAILABLE', SA] },
   { id: 'sepolia-nonce-disagreement', network: S, servers: sepB({ nonce: '0x1' }), expect: ['RNTP_INCONSISTENT', null] },
   { id: 'sepolia-estimate-below-intrinsic', network: S, servers: sepA({ estimate: q(21_000) }), expect: ['RNTP_INCONSISTENT', SA] },
