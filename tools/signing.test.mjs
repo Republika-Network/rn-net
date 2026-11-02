@@ -162,6 +162,7 @@ test('isolation: the broadcaster and packages cannot reach the signer or its lib
   assert.deepEqual(rules('packages/broadcast-handoff/src/x.mjs', "import { createPrivateKey } from 'node:crypto';"), ['builtin-export-not-allowed:node:crypto#createPrivateKey']);
   assert.deepEqual(rules('packages/tx-intent/src/x.mjs', "import { secp256k1 } from '@noble/curves/secp256k1.js';"), ['third-party-import:@noble/curves/secp256k1.js']);
   assert.deepEqual(rules('tools/live/x.mjs', "import { createSigner } from '../../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
-  assert.deepEqual(rules('tools/verify-live-anchor.mjs', "import { keccak_256 } from '@noble/hashes/sha3.js';"), ['signer-library-outside-signer']);
+  // A bare library specifier in tools/ also makes the file network-capable (RN-NET-03B2-C2).
+  assert.deepEqual(rules('tools/verify-live-anchor.mjs', "import { keccak_256 } from '@noble/hashes/sha3.js';"), ['signer-library-outside-signer', 'network-capable-file-not-allowed:module-bare:@noble/hashes/sha3.js']);
   assert.deepEqual(rules('tools/signing/build-b1-fixtures.mjs', "import { createSigner } from '../../signer/src/sign.mjs';"), []);
 });

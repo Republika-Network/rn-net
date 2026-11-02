@@ -568,7 +568,8 @@ test('key-generation routes and indirect signer imports are reported', () => {
   // A template-literal import() is also a computed import, so the file is network-capable (C2, N1).
   assert.deepEqual(rules('tools/x.mjs', 'const m = await import(`../signer/src/sign.mjs`);'), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:dynamic-import-non-literal']);
   assert.deepEqual(rules('scripts/sign.mjs', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
-  assert.deepEqual(rules('tools/x.js', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
+  // A non-.mjs source is also network-capable (C2 final review B1).
+  assert.deepEqual(rules('tools/x.js', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:not-an-es-module']);
 });
 
 test('the signer lockfile root entry and top-level fields must match the manifest', () => {
@@ -587,7 +588,8 @@ test('the signer lockfile root entry and top-level fields must match the manifes
 
 test('destructured key-generation helpers and TypeScript files are reported (re-review)', () => {
   assert.ok(rules('signer/src/a.mjs', 'const { randomSecretKey } = s.utils;\nrandomSecretKey();').includes('key-generation:randomSecretKey'));
-  assert.deepEqual(rules('tools/x.mts', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
+  // A non-.mjs source is also network-capable (C2 final review B1).
+  assert.deepEqual(rules('tools/x.mts', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed', 'network-capable-file-not-allowed:not-an-es-module']);
 });
 
 // --- RN-NET-03B2-B3: chain-submit, txverify/ and the broadcaster harness (ADR-RN-019) -----------
@@ -1002,11 +1004,50 @@ test('C2 re-review: the constructor string in every selecting form, descriptors,
     const findings = found([['tools/submit/broadcaster.mjs', 'export const x = 1;'], ['tools/broadcast/x.mjs', `import { x } from '../submit/broadcaster.mjs';\n${code}`]]);
     assert.ok(findings.includes('tools/broadcast/x.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
   }
-  // A string that only names the word (test data, an array element, a comparison) is not a route.
-  assert.deepEqual(found([['tools/broadcast/y.mjs', "export const names = ['constructor', 'toString'];\nexport const is = (k) => k === 'constructor';"]]), []);
+  // Only an equality comparison with the string is not a route.
+  assert.deepEqual(found([['tools/broadcast/y.mjs', "export const is = (k) => k === 'constructor' || 'constructor' !== k;"]]), []);
   for (const path of ['txverify/src/x.mjs', 'signer/src/x.mjs']) {
     for (const code of ["export * from '@noble/curves/secp256k1.js';", "export { secp256k1 } from '@noble/curves/secp256k1.js';"]) {
       assert.ok(rules(path, code).some((r) => r.startsWith('dynamic-import-not-relative:export-from:')), `${path}: ${code}`);
     }
   }
+});
+
+test('C2 final review B1 to B4: CommonJS and extensionless targets, URL imports, and the constructor string anywhere', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const write = ['tools/submit/broadcaster.mjs', 'export const x = 1;'];
+  const joins = (files, label) => {
+    const f = found([write, ...files]);
+    assert.ok(f.includes('tools/broadcast/z.mjs:write-transport-join-transitive'), `${label}: ${f.join(' ')}`);
+  };
+  const z = (extra) => ['tools/broadcast/z.mjs', `import { x } from '../submit/broadcaster.mjs';\n${extra}`];
+  // B1: CommonJS helpers, .cjs or .js.
+  joins([z("import h from './h.cjs';"), ['tools/broadcast/h.cjs', "module.exports = module.require('node:https');"]], 'cjs');
+  joins([z("import h from './h.js';"), ['tools/broadcast/h.js', "module.exports = arguments[1]('node:https');"]], 'js');
+  // B3: an extensionless target, even one the guard is never given.
+  joins([z("import { g } from './h';")], 'extensionless');
+  joins([z("import { g } from './h';"), ['tools/broadcast/h', 'export const g = globalThis;']], 'extensionless with file');
+  // B2: URL and absolute imports, and bare specifiers other than the parser.
+  for (const spec of ['data:text/javascript;base64,aW1wb3J0ICdub2RlOmh0dHBzJzs=', 'file:///tmp/x.mjs', 'https://example.invalid/x.mjs', '/tmp/x.mjs', '#net', 'some-package']) {
+    joins([z(`const m = await import('${spec}');`)], spec);
+    joins([z(`export * from '${spec}';`)], `re-export ${spec}`);
+  }
+  // B4: the string held in a constant or wrapped in an expression.
+  for (const code of [
+    "const k = 'constructor';\nexport const g = (() => {})[k]('return this')();",
+    "export const g = (() => {})[(0, 'constructor')];",
+    "export const g = (() => {})[['constructor'][0]];",
+    "export const g = (() => {})[{ k: 'constructor' }.k];",
+    "export const g = (() => {})[`${'constructor'}`];",
+    'export const g = (() => {})[String.raw`constructor`];',
+    "export const g = (k = 'constructor') => (() => {})[k];",
+    "export const g = (() => {})['\\u0063onstructor'];",
+  ]) joins([z(code)], code);
+  // N1 to N3: getOwnPropertyNames, node:sqlite, node:test run, importing guard test data.
+  joins([z('export const n = (p) => p[Object.getOwnPropertyNames(p)[4]];')], 'getOwnPropertyNames');
+  joins([z("import { DatabaseSync } from 'node:sqlite';")], 'sqlite');
+  joins([z("import { run } from 'node:test';")], 'node:test run');
+  assert.ok(found([['tools/submit/a.mjs', "import { g } from '../guards/fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/submit/a.mjs:imports-guard-test-data'));
+  // The legitimate forms stay clean.
+  assert.deepEqual(found([['tools/broadcast/ok.mjs', "import { test } from 'node:test';\nimport data from './d.json' with { type: 'json' };\nexport const t = test;"]]), []);
 });

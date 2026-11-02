@@ -585,10 +585,12 @@ export const NETWORK_BUILTINS = ['node:http', 'node:https', 'node:http2', 'node:
 // (reviewed), so new hand-written network or subprocess code is a finding, not a silent route.
 export const NETWORK_CAPABLE_MODULES = [
   'http', 'https', 'http2', 'net', 'tls', 'dns', 'dns/promises', 'dgram', 'child_process', 'worker_threads', 'cluster', 'module', 'inspector', 'inspector/promises',
-  'vm', 'repl', 'process', 'wasi',
+  'vm', 'repl', 'process', 'wasi', 'sqlite',
 ];
 const NETWORK_CAPABLE_NAMES = new Set(['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource', 'createRequire', 'getBuiltinModule', 'require', 'importScripts', 'eval', 'Function', 'WebAssembly', 'globalThis', 'global', 'Reflect']);
-const PROPERTY_DESCRIPTOR_NAMES = new Set(['getOwnPropertyDescriptor', 'getOwnPropertyDescriptors', '__lookupGetter__', '__lookupSetter__', '__defineGetter__', '__defineSetter__']);
+const PROPERTY_DESCRIPTOR_NAMES = new Set(['getOwnPropertyDescriptor', 'getOwnPropertyDescriptors', 'getOwnPropertyNames', '__lookupGetter__', '__lookupSetter__', '__defineGetter__', '__defineSetter__']);
+// Bare specifiers a tools/ file may import without being network-capable: the guard's parser only.
+const TOOLS_BARE_SPECIFIERS = ['acorn'];
 const NETWORK_CAPABLE_PROCESS_MEMBERS = new Set(['binding', '_linkedBinding', 'dlopen', 'getBuiltinModule', 'execve']);
 export const NETWORK_CAPABLE_FILES = [
   TRANSPORT_FILE, // the reviewed transport (ADR-RN-013)
@@ -604,6 +606,10 @@ const GUARD_TEST_DATA = /^tools\/guards\/fixtures\//;
 
 /** Why a source is network-capable (see above); an empty list if it is not. */
 export function networkCapability(path, content) {
+  // Only ES modules are analysed as such. A CommonJS or TypeScript source (.cjs, .js and .ts
+  // without "type": "module", ...) reaches `require` through `module` or `arguments` without the
+  // name (C2 final review B1), so any such source counts as network-capable.
+  if (!path.endsWith('.mjs')) return ['not-an-es-module'];
   let program;
   try {
     program = parse(content, PARSE_OPTIONS);
@@ -613,12 +619,25 @@ export function networkCapability(path, content) {
   const reasons = new Set();
   const moduleReason = (specifier) => {
     if (typeof specifier !== 'string') return;
+    // A URL other than node: (data:, file:, http:, blob:, ...) or an absolute path loads code the
+    // graph cannot follow (C2 final review B2); so does a bare specifier other than the parser,
+    // including a package.json "imports" alias (#name).
+    if (/^[a-z][a-z0-9+.-]*:/i.test(specifier) && !specifier.startsWith('node:')) return reasons.add(`module-url:${specifier.split(':')[0]}`);
+    if (specifier.startsWith('/') || specifier.startsWith('\\')) return reasons.add('module-absolute-path');
+    // signer/ and txverify/ may import only their pinned noble entry points (their own allowlists);
+    // packages/ may import no bare specifier at all.
+    const pinnedLibrary = (path.startsWith('signer/') && SIGNER_THIRD_PARTY.includes(specifier)) || (path.startsWith('txverify/') && Object.hasOwn(TXVERIFY_THIRD_PARTY, specifier));
+    if (!specifier.startsWith('.') && !specifier.startsWith('node:') && !TOOLS_BARE_SPECIFIERS.includes(specifier) && !pinnedLibrary && !path.startsWith('packages/')) return reasons.add(`module-bare:${specifier}`);
     const bare = specifier.replace(/^node:/, '');
     if (bare === 'child_process' && SUBMIT_SUBPROCESS_FILES.includes(path)) return;
     if (NETWORK_CAPABLE_MODULES.includes(bare) || bare.startsWith('_')) reasons.add(`module:${bare}`);
   };
   const visit = (node, parent, key) => {
     if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) moduleReason(node.source.value);
+    // node:test's run() starts subprocesses; only its named test-writing exports are harmless.
+    if (node.type === 'ImportDeclaration' && /^(?:node:)?test$/.test(node.source.value)) {
+      for (const b of node.specifiers) if (b.type !== 'ImportSpecifier' || (b.imported.name ?? b.imported.value) === 'run') reasons.add('module:test#run');
+    }
     if (node.type === 'ImportExpression') {
       if (node.source.type === 'Literal') moduleReason(node.source.value);
       else reasons.add('dynamic-import-non-literal');
@@ -635,14 +654,14 @@ export function networkCapability(path, content) {
     // `.constructor` reaches the Function constructor from any value (C2 review F2); only a class's
     // own constructor method may use the name.
     if (node.type === 'Identifier' && node.name === 'constructor' && !(parent?.type === 'MethodDefinition' && parent.kind === 'constructor')) reasons.add('constructor-access');
-    // The name as a string, wherever it can select a member: a computed member or property key
-    // (also in a destructuring pattern), or an argument (getOwnPropertyDescriptor(o, 'constructor')).
-    // Template literals without expressions count as strings. (C2 re-review F2 residual.)
-    const text = node.type === 'Literal' ? node.value : node.type === 'TemplateLiteral' && node.expressions.length === 0 ? node.quasis[0].value.cooked : undefined;
-    if (text === 'constructor') {
-      const selects = (parent?.type === 'MemberExpression' && key === 'property' && parent.computed) || (parent?.type === 'Property' && key === 'key' && parent.computed) ||
-        ((parent?.type === 'CallExpression' || parent?.type === 'NewExpression') && key === 'arguments');
-      if (selects) reasons.add('constructor-access');
+    // The string `constructor` (a literal, or a template element, tagged templates included) in any
+    // position outside packages/: held in a constant, wrapped in an expression or used as a key, it
+    // selects the Function constructor (C2 final review B4). Only an equality comparison, which can
+    // select nothing, is exempt. A name assembled from pieces at run time stays beyond a static lint.
+    const text = node.type === 'Literal' ? node.value : node.type === 'TemplateElement' ? node.value.cooked : undefined;
+    if (text === 'constructor' && !path.startsWith('packages/')) {
+      const comparison = parent?.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(parent.operator);
+      if (!comparison) reasons.add('constructor-access');
     }
     // Property descriptors and legacy accessors read a member without naming it in a member
     // expression (the Function constructor from a prototype's descriptors).
@@ -656,6 +675,7 @@ function checkWriteTransportClosure(files, add) {
   const exempt = new Set([...SIGNER_IMPORT_TEST_DATA, 'tools/guards/dependency-boundaries.mjs']);
   const edges = new Map();
   const network = new Set();
+  const unanalysed = new Set();
   for (const { path, content } of files) {
     if (content === null || !/\.(mjs|js|cjs|mts|cts|ts)$/.test(path) || exempt.has(path)) continue;
     let specifiers = rawImportsOf(content);
@@ -674,10 +694,19 @@ function checkWriteTransportClosure(files, add) {
       // specifier that still names no repository path (test data above the root) adds no edge.
       const bare = sp.replace(/[?#].*$/s, '');
       const target = resolve(path, bare) ?? resolve(path, safeDecode(bare).replace(/[?#].*$/s, ''));
-      if (target !== null) targets.push(target);
+      if (target !== null) {
+        targets.push(target);
+        // A target the guard does not analyse as an ES module (no .mjs: extensionless, .js, .cjs,
+        // ...) is counted as network: Node may load it as code (C2 final review B1, B3). JSON data
+        // is the one exception.
+        if (!/\.(mjs|json)$/.test(target)) unanalysed.add(target);
+        // Guard test data is meant to be refused; nothing outside the guard's own tests imports it.
+        if (GUARD_TEST_DATA.test(target) && !path.startsWith('tools/guards/')) add(path, 'imports-guard-test-data');
+      }
     }
     edges.set(path, targets);
   }
+  for (const target of unanalysed) network.add(target);
   const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
   for (const path of edges.keys()) {
     if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;

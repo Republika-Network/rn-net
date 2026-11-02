@@ -374,10 +374,20 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
 - **Review follow-ups (C2 review F2, F3).** `process` used as a value (an alias, an argument, a
   destructuring), `constructor` other than a class's own constructor method (or as a computed
   member key), and `Reflect` outside `packages/` also make a file network-capable;
-  `tools/submit/` refuses `Reflect` outright. The string `constructor` (or a template literal
-  without expressions) used as a computed member or property key, or as a call argument, and the
-  property-descriptor APIs (`getOwnPropertyDescriptor(s)`, `__lookupGetter__` and similar) outside
-  `packages/`, count too. `signer/` and `txverify/` refuse any dynamic import of a non-relative
+  `tools/submit/` refuses `Reflect` outright. Outside `packages/`, these count too (C2 final
+  review B1 to B4):
+  - the string `constructor` in any position except an equality comparison: a literal, an escape,
+    or a template element, tagged templates included;
+  - the property-descriptor and property-name APIs (`getOwnPropertyDescriptor(s)`,
+    `getOwnPropertyNames`, `__lookupGetter__` and similar);
+  - a source that is not `.mjs`, since CommonJS reaches `require` through `module` or `arguments`;
+  - any import target that is not `.mjs` or `.json` (an extensionless or `.js`/`.cjs` file), whether
+    or not the guard was given it;
+  - a specifier that is a URL other than `node:` (`data:`, `file:`, `https:`, ...), an absolute
+    path, or a bare specifier other than `acorn` (a `#` alias included);
+  - `node:sqlite`, and any import of `node:test` other than its named exports except `run`.
+
+  Nothing outside the guard's own tests may import `tools/guards/fixtures/`. `signer/` and `txverify/` refuse any dynamic import of a non-relative
   specifier and any `export ... from` a library, so a library cannot be handed on whole around
   the named-import rule.
 - **The read-only entry point** may not reach `tools/submit/broadcaster.mjs`, however indirectly.
