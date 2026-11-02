@@ -21,4 +21,4 @@ ADR is not edited to change its decision; a later ADR supersedes it.
 | [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md) | Multi-provider observation and provenance | Accepted |
 | [ADR-RN-015](ADR-RN-015-live-finality-trust-semantics.md) | Live finality and trust semantics | Accepted |
 | [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md) | Genesis Proof 01 anchoring transactions and execution controls | Accepted |
-| [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md) | Offline test-only signing toolchain and its dependencies | Proposed |
+| [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md) | Offline test-only signing toolchain and its dependencies | Accepted (offline gate A only) |
