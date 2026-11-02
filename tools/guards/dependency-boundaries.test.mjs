@@ -1051,3 +1051,25 @@ test('C2 final review B1 to B4: CommonJS and extensionless targets, URL imports,
   // The legitimate forms stay clean.
   assert.deepEqual(found([['tools/broadcast/ok.mjs', "import { test } from 'node:test';\nimport data from './d.json' with { type: 'json' };\nexport const t = test;"]]), []);
 });
+
+test('C2 final re-review A to D: node:test namespaces, unresolvable specifiers, regex and JSON names, fixture relays', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const write = ['tools/submit/broadcaster.mjs', 'export const x = 1;'];
+  const z = (extra) => ['tools/broadcast/z.mjs', `import { x } from '../submit/broadcaster.mjs';\n${extra}`];
+  const joins = (files, label) => {
+    const f = found([write, ...files]);
+    assert.ok(f.includes('tools/broadcast/z.mjs:write-transport-join-transitive'), `${label}: ${f.join(' ')}`);
+  };
+  // A: node:test by dynamic import or re-export.
+  joins([z("const t = await import('node:test');")], 'dynamic node:test');
+  joins([z("export { run } from 'node:test';")], 're-export run');
+  joins([z("export * as t from 'node:test';")], 're-export namespace');
+  // B: relative specifiers the guard cannot resolve.
+  for (const spec of ['../../scripts/a+b.cjs', './a b.mjs', './\u00e9.mjs', './c:d.mjs']) joins([z(`import h from '${spec}';`)], spec);
+  // C: the name in a regular expression, or in imported JSON data.
+  joins([z('export const g = (() => {})[/constructor/.source];')], 'regex');
+  joins([z("import k from './k.json' with { type: 'json' };\nexport const g = (() => {})[k.k];"), ['tools/broadcast/k.json', '{"k":"constructor"}']], 'json name');
+  assert.deepEqual(found([['tools/broadcast/ok.mjs', "import d from './d.json' with { type: 'json' };\nexport const t = d;"], ['tools/broadcast/d.json', '{"a":1}']]), []);
+  // D: a relay in tools/guards/ may not import the fixtures.
+  assert.ok(found([['tools/guards/relay.mjs', "export * from './fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/guards/relay.mjs:imports-guard-test-data'));
+});

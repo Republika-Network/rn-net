@@ -344,6 +344,8 @@ function analyze(program) {
         break;
       case 'Literal':
         if (typeof node.value === 'string' && FORBIDDEN_STRINGS.has(node.value)) problems.push(`forbidden-string:${node.value}`);
+        // A regular expression's source is a string too (`f[/constructor/.source]`; C2 final review).
+        if (node.regex && /constructor/.test(node.regex.pattern)) problems.push('forbidden-string:constructor');
         break;
       case 'TemplateElement':
         if (FORBIDDEN_STRINGS.has(node.value.cooked ?? node.value.raw)) problems.push(`forbidden-string:${node.value.cooked ?? node.value.raw}`);
@@ -634,9 +636,14 @@ export function networkCapability(path, content) {
   };
   const visit = (node, parent, key) => {
     if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) moduleReason(node.source.value);
-    // node:test's run() starts subprocesses; only its named test-writing exports are harmless.
-    if (node.type === 'ImportDeclaration' && /^(?:node:)?test$/.test(node.source.value)) {
+    // node:test's run() starts subprocesses; only its named test-writing exports, imported
+    // statically, are harmless. A dynamic import or any re-export gives the whole namespace or run().
+    const isTest = (v) => typeof v === 'string' && /^(?:node:)?test$/.test(v);
+    if (node.type === 'ImportDeclaration' && isTest(node.source.value)) {
       for (const b of node.specifiers) if (b.type !== 'ImportSpecifier' || (b.imported.name ?? b.imported.value) === 'run') reasons.add('module:test#run');
+    }
+    if ((node.type === 'ImportExpression' && node.source.type === 'Literal' && isTest(node.source.value)) || ((node.type === 'ExportAllDeclaration' || node.type === 'ExportNamedDeclaration') && isTest(node.source?.value))) {
+      reasons.add('module:test#run');
     }
     if (node.type === 'ImportExpression') {
       if (node.source.type === 'Literal') moduleReason(node.source.value);
@@ -663,6 +670,8 @@ export function networkCapability(path, content) {
       const comparison = parent?.type === 'BinaryExpression' && ['===', '!==', '==', '!='].includes(parent.operator);
       if (!comparison) reasons.add('constructor-access');
     }
+    // A regular expression's source is a string too (`fn[/constructor/.source]`).
+    if (node.type === 'Literal' && node.regex && /constructor/.test(node.regex.pattern) && !path.startsWith('packages/')) reasons.add('constructor-access');
     // Property descriptors and legacy accessors read a member without naming it in a member
     // expression (the Function constructor from a prototype's descriptors).
     if (node.type === 'Identifier' && PROPERTY_DESCRIPTOR_NAMES.has(node.name) && !path.startsWith('packages/')) reasons.add(`name:${node.name}`);
@@ -676,6 +685,8 @@ function checkWriteTransportClosure(files, add) {
   const edges = new Map();
   const network = new Set();
   const unanalysed = new Set();
+  const unresolvedImporters = new Set();
+  const contents = new Map(files.map((f) => [f.path, f.content]));
   for (const { path, content } of files) {
     if (content === null || !/\.(mjs|js|cjs|mts|cts|ts)$/.test(path) || exempt.has(path)) continue;
     let specifiers = rawImportsOf(content);
@@ -694,19 +705,28 @@ function checkWriteTransportClosure(files, add) {
       // specifier that still names no repository path (test data above the root) adds no edge.
       const bare = sp.replace(/[?#].*$/s, '');
       const target = resolve(path, bare) ?? resolve(path, safeDecode(bare).replace(/[?#].*$/s, ''));
+      // A relative specifier the guard cannot resolve (a +, a space, a non-ASCII letter, ...) gives
+      // no edge to follow, so its importer is counted as network itself (C2 final review B).
+      if (target === null) unresolvedImporters.add(path);
       if (target !== null) {
         targets.push(target);
         // A target the guard does not analyse as an ES module (no .mjs: extensionless, .js, .cjs,
         // ...) is counted as network: Node may load it as code (C2 final review B1, B3). JSON data
         // is the one exception.
-        if (!/\.(mjs|json)$/.test(target)) unanalysed.add(target);
+        if (!/\.mjs$/.test(target)) unanalysed.add(target);
         // Guard test data is meant to be refused; nothing outside the guard's own tests imports it.
-        if (GUARD_TEST_DATA.test(target) && !path.startsWith('tools/guards/')) add(path, 'imports-guard-test-data');
+        // Only the guard's own test files may import it, never a relay elsewhere in tools/guards/.
+        if (GUARD_TEST_DATA.test(target) && !GUARD_TEST_DATA.test(path) && !/^tools\/guards\/[^/]+\.test\.mjs$/.test(path)) add(path, 'imports-guard-test-data');
       }
     }
     edges.set(path, targets);
   }
-  for (const target of unanalysed) network.add(target);
+  for (const target of unanalysed) {
+    // JSON is data, unless it holds the constructor name, which code could read from it as a key.
+    if (target.endsWith('.json') && typeof contents.get(target) === 'string' && !/constructor/.test(contents.get(target))) continue;
+    network.add(target);
+  }
+  for (const importer of unresolvedImporters) if (!GUARD_TEST_DATA.test(importer)) network.add(importer);
   const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
   for (const path of edges.keys()) {
     if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;

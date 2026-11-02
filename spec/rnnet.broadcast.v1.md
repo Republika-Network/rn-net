@@ -385,9 +385,14 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
     or not the guard was given it;
   - a specifier that is a URL other than `node:` (`data:`, `file:`, `https:`, ...), an absolute
     path, or a bare specifier other than `acorn` (a `#` alias included);
-  - `node:sqlite`, and any import of `node:test` other than its named exports except `run`.
+  - `node:sqlite`, and any import of `node:test` other than a static named import of its exports
+    except `run` (a dynamic import or any re-export counts);
+  - a relative specifier the guard cannot resolve exactly (a `+`, a space, a non-ASCII letter): its
+    importer counts as network;
+  - a regular expression whose pattern holds `constructor`, and imported JSON that holds it.
 
-  Nothing outside the guard's own tests may import `tools/guards/fixtures/`. `signer/` and `txverify/` refuse any dynamic import of a non-relative
+  Nothing but the guard's own test files (and the fixtures themselves) may import
+  `tools/guards/fixtures/`. `signer/` and `txverify/` refuse any dynamic import of a non-relative
   specifier and any `export ... from` a library, so a library cannot be handed on whole around
   the named-import rule.
 - **The read-only entry point** may not reach `tools/submit/broadcaster.mjs`, however indirectly.
