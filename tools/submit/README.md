@@ -6,7 +6,7 @@
 |---|---|
 | `submit-anchor.mjs` | Entry point (disabled): `submitAnchor({ argv, deps })`. Exact flags, network allowlist, reviewed endpoints, private input files, the founder's typed approval per network and per submission, then `runBroadcast` |
 | `status-check.mjs` | Entry point (disabled), read-only: `statusCheck({ argv, deps })`, then `runStatusCheck`. The guard refuses any route from it to `broadcaster.mjs` |
-| `entry.mjs` | What both entry points share: argument parsing, `REVIEWED_PROVIDERS`, private-file reads, the approval check |
+| `entry.mjs` | What both entry points share: argument parsing, `REVIEWED_PROVIDERS`, `AGREED_DIRECTORIES` (none agreed in C2), private-file reads, the approval check |
 | `policy.mjs` | The request policy: the exact pre-submit reads per provider, then one write to the authorized provider (XRPL 7 requests, Sepolia 13); the status check's read-only policy |
 | `broadcaster.mjs` | `runBroadcast`: inputs, authorization, log, re-verification by both verifiers, pre-submit reads, `ATTEMPTING` and `attempt.json`, one write through a one-shot gate, classification, record, capture |
 | `status.mjs` | `runStatusCheck`: the separate read-only status check that writes `RESOLVED` (INCLUDED, EXPIRED or PENDING) |

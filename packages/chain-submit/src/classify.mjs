@@ -84,9 +84,10 @@ function classifyXrpl(base, envelope, expected) {
     const consistent = flags.accepted && flags.broadcast && !flags.queued;
     return consistent ? done(base, Outcome.ACCEPTED_PROVISIONAL, C.ACCEPTED) : done(base, Outcome.UNCERTAIN, C.UNCERTAIN_FLAGS);
   }
-  // tec* may be applied and claim the fee; tefALREADY and tefPAST_SEQ mean this transaction, or
-  // another with this Sequence, may already be in a ledger; terQUEUED is not confirmed under
-  // fail_hard (see the header).
+  // tec* is UNCERTAIN (see the header: an invariant failure is applied, and the blob stays valid);
+  // tefALREADY, tefPAST_SEQ and tefNO_TICKET mean this transaction, or another with this Sequence
+  // or Ticket, may already be in a ledger; terQUEUED cannot occur under fail_hard, so an answer
+  // that says it is inconsistent (see the header).
   if (cls === 'tes' || cls === 'tec' || UNCERTAIN_TEF.has(engine) || engine === 'terQUEUED') return done(base, Outcome.UNCERTAIN, C.UNCERTAIN_ENGINE_RESULT);
   // tem*, tel*, other ter* and tef*: refused locally. With fail_hard nothing may be kept, queued,
   // applied or relayed; any flag saying otherwise makes the answer inconsistent.

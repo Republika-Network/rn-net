@@ -140,7 +140,9 @@ present, then the class.
 The rippled source was read at tag `3.4.1` (commit `00e64075`), the `build_version` both Testnet
 providers reported. The finding is recorded in
 [rn-net-03b2c2-fail-hard-rippled-3.4.1](../docs/genesis/rn-net-03b2c2-fail-hard-rippled-3.4.1.md):
-- under `fail_hard`, a tec result is discarded, and no result other than tes is relayed or kept;
+- under `fail_hard`, a tec result is discarded and is neither relayed nor kept when it is answered,
+  except a tes that fails an invariant check: that becomes `tecINVARIANT_FAILED`, is applied, and
+  is relayed at the next ledger close;
 - `terQUEUED` cannot be returned (`TxQ::canBeHeld` gives `telCAN_NOT_QUEUE`);
 - `tesSUCCESS` means applied to one server's open ledger, never inclusion.
 
@@ -291,13 +293,19 @@ The submission flow, in order:
    provider or force option.
 2. **Network.** `--network` is `xrpl:testnet` or `evm:11155111` (`RNSA_NETWORK_NOT_ALLOWED`), and
    the authorization names the same one (`RNSA_NETWORK_MISMATCH`).
+   **Directories.** `--log-dir` and `--evidence-dir` are exactly the agreed directories,
+   `AGREED_DIRECTORIES` (`RNSA_DIRECTORY_NOT_AGREED`). The log is what makes an authorization
+   single-use, so a run may never choose another one: the same authorization against a fresh log
+   would otherwise be accepted again (C2 review F1). In C2 none are agreed (both `null`), so no run
+   can pass this step outside the tests.
 3. **Endpoints.** The endpoint file is exactly the reviewed providers, pinned in code as
    `REVIEWED_PROVIDERS` by id, network and URL (`RNSA_ENDPOINTS_NOT_REVIEWED`). A test pins that
    list to `config/rpc-endpoints.json`.
 4. **Files.** Each input is a private file: absolute path, regular file, not a symbolic link,
    owned by the user, mode `0600`, at most 64 KiB (`RNSA_FILE`). One final newline is removed from
    the intent and the signed transaction.
-5. **Approval.** The founder sees every value the run is bound to, and types
+5. **Approval.** The founder sees every value the run is bound to, including the log and evidence
+   directories, and types
    `<network> <last 16 hex digits of the authorization digest>` (`RNSA_APPROVAL_REFUSED`). Typing
    the network makes the approval separate per network; the digest makes it separate per
    submission. A refusal at steps 1 to 5 consumes nothing.
@@ -363,6 +371,11 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
   The one named verifier spawn is not counted. Every network-capable file under `tools/` must be
   listed in `NETWORK_CAPABLE_FILES`. The write side may not reach a network file, and no other file
   may reach both.
+- **Review follow-ups (C2 review F2, F3).** `process` used as a value (an alias, an argument, a
+  destructuring), `constructor` other than a class's own constructor method (or as a computed
+  member key), and `Reflect` outside `packages/` also make a file network-capable;
+  `tools/submit/` refuses `Reflect` outright. `signer/` and `txverify/` refuse any dynamic import
+  of a non-relative specifier, so a library cannot be imported whole around the named-import rule.
 - **The read-only entry point** may not reach `tools/submit/broadcaster.mjs`, however indirectly.
 - **`txverify/` (B3 review N2).** `secp256k1` may appear only as its import binding or as the
   object of a non-computed `.Signature` or `.verify`; any other use is
@@ -373,6 +386,8 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
 
 All of these are outside C2, and C2 authorizes none of them:
 - **Approvals:** ADR-RN-019 Amendment C1 accepted; this implementation reviewed and merged.
+- **The directories:** the agreed log and evidence directories, on one machine, set in
+  `AGREED_DIRECTORIES` by a reviewed change.
 - **The code change:** a reviewed change that names one entry point in `WRITE_TRANSPORT_JOINERS`,
   imports the transport there, adds the terminal route for the approval prompt, and sets
   `LIVE_NETWORK_ACCESS`.

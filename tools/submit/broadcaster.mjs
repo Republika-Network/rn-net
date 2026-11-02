@@ -65,6 +65,9 @@ const sameRecord = (a, b) => {
 };
 
 export const ATTEMPT_EVIDENCE_FORMAT = 'rnnet.submission-attempt.v1';
+/** Attempts to write RESULT after a conflict, with a growing synchronous wait (25 ms, 50 ms, ...). */
+const RESULT_TRIES = 8;
+const RESULT_WAIT = new Int32Array(new SharedArrayBuffer(4));
 
 /** A gate that lets exactly one write through per run; a second is refused by the harness. */
 export function createWriteGate() {
@@ -388,18 +391,22 @@ function finishRun(state, environment, outcome, code, extra) {
     writeNewFile(`${state.runDirectory}/capture.json`, `${JSON.stringify(capture)}\n`);
   }
   if (state.attemptEntry) {
-    // RESULT is written after the write whatever its outcome. A conflicting index is retried at the
-    // next free one: the entry must exist, and its content does not depend on the log's state.
+    // RESULT is written after the write whatever its outcome. A conflict (another run's entry at
+    // that index, or its temporary name while it writes) is retried at the next free index after a
+    // short wait: the entry must exist, and its content does not depend on the log's state. If it
+    // still cannot be written, the run throws and the attempt stays unresolved (spec §8), which
+    // refuses every later run for this sequence until a status check.
     for (let tries = 0; ; tries++) {
-      const log = readLog(environment.logDir);
       try {
+        const log = readLog(environment.logDir);
         appendEntry(environment.logDir, makeEntry(log.length, EntryKind.RESULT, {
           authorizationDigest: state.authorizationDigest, network: a.network, sender: a.sender, sequence: a.sequence,
           attemptEntry: state.attemptEntry, outcome, code, record: recordDigest,
         }));
         break;
       } catch (error) {
-        if (!(error instanceof BroadcastError && error.code === C.LOG_CONFLICT) || tries >= 2) throw error;
+        if (!(error instanceof BroadcastError && error.code === C.LOG_CONFLICT) || tries >= RESULT_TRIES - 1) throw error;
+        Atomics.wait(RESULT_WAIT, 0, 0, 25 * (tries + 1));
       }
     }
   }

@@ -15,7 +15,7 @@
 // authorization's digest.
 import { fileURLToPath } from 'node:url';
 import { readStatusAuthorization } from '../../packages/chain-submit/src/index.mjs';
-import { EntryCode, EntryError, entryNetwork, parseArguments, readPrivateText, requireApproval, reviewedEndpoints, REVIEWED_PROVIDERS } from './entry.mjs';
+import { checkAgreedDirectories, EntryCode, EntryError, entryNetwork, parseArguments, readPrivateText, requireApproval, reviewedEndpoints, REVIEWED_PROVIDERS } from './entry.mjs';
 import { runStatusCheck } from './status.mjs';
 
 /** False in RN-NET-03B2-C2. A test pins it, and the command line refuses while it is false. */
@@ -32,6 +32,7 @@ export async function statusCheck({ argv, deps }) {
   try {
     const args = parseArguments(argv, STATUS_FLAGS);
     const network = entryNetwork(args.network);
+    checkAgreedDirectories(args, deps.agreed);
     const readText = deps.readText ?? readPrivateText;
     const authorizationText = readText(args.authorization);
     let parsed;
@@ -59,6 +60,7 @@ export async function statusCheck({ argv, deps }) {
         `attempt entry ${authorization.attemptEntry}`,
         `sender ${authorization.sender}, sequence ${authorization.sequence}, transaction hash ${authorization.transactionHash}`,
         `scope: ${authorization.scope}`,
+        `submission log ${args['log-dir']}, evidence ${args['evidence-dir']}`,
       ],
     });
     const result = await runStatusCheck({

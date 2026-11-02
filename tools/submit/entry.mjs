@@ -18,6 +18,7 @@ export const EntryCode = Object.freeze({
   FILE: 'RNSA_FILE',
   AUTHORIZATION: 'RNSA_AUTHORIZATION',
   APPROVAL_REFUSED: 'RNSA_APPROVAL_REFUSED',
+  DIRECTORY_NOT_AGREED: 'RNSA_DIRECTORY_NOT_AGREED',
 });
 
 export class EntryError extends Error {
@@ -42,6 +43,24 @@ export const REVIEWED_PROVIDERS = Object.freeze([
   Object.freeze({ id: 'sepolia-publicnode', network: SubmitNetwork.SEPOLIA, url: 'https://ethereum-sepolia-rpc.publicnode.com/' }),
   Object.freeze({ id: 'sepolia-1rpc', network: SubmitNetwork.SEPOLIA, url: 'https://public.1rpc.io/sepolia' }),
 ]);
+
+/**
+ * The agreed submission-log and evidence directories (ADR-RN-019 §5: "a gate-E run starts by
+ * checking that its directory is the agreed one"). The log is what makes an authorization
+ * single-use, so a run may never choose another one: the same authorization against a fresh log
+ * would be accepted again (C2 review F1). Not agreed in RN-NET-03B2-C2, so both are null and no run
+ * can pass; agreeing them is a gate-E prerequisite and a reviewed change here.
+ */
+export const AGREED_DIRECTORIES = Object.freeze({ logDir: null, evidenceDir: null });
+
+/** Refuses unless --log-dir and --evidence-dir are exactly the agreed directories. */
+export function checkAgreedDirectories(args, agreed = AGREED_DIRECTORIES) {
+  if (agreed === null || typeof agreed !== 'object' || typeof agreed.logDir !== 'string' || typeof agreed.evidenceDir !== 'string') {
+    throw new EntryError(EntryCode.DIRECTORY_NOT_AGREED, 'no log and evidence directories are agreed');
+  }
+  if (args['log-dir'] !== agreed.logDir) throw new EntryError(EntryCode.DIRECTORY_NOT_AGREED, '--log-dir is not the agreed log directory');
+  if (args['evidence-dir'] !== agreed.evidenceDir) throw new EntryError(EntryCode.DIRECTORY_NOT_AGREED, '--evidence-dir is not the agreed evidence directory');
+}
 
 /**
  * Parses `argv` against exactly `flags` (each `--name value`, each exactly once, all required).

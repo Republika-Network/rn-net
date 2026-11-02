@@ -964,3 +964,28 @@ test('C2: no live joiner, and the entry points are exactly the two of ADR-RN-019
   assert.deepEqual(guard.WRITE_TRANSPORT_JOINERS, []);
   assert.deepEqual(guard.SUBMIT_ENTRY_POINTS, ['tools/submit/submit-anchor.mjs', 'tools/submit/status-check.mjs']);
 });
+
+test('C2 review F2 and F3: process aliases, .constructor, Reflect and dynamic library imports', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const entry = "import { submitAnchor } from '../submit/submit-anchor.mjs';";
+  for (const [label, code] of [
+    ['process alias', "const p = process;\nexport const t = p.getBuiltinModule('node:https');"],
+    ['process destructured', "const { getBuiltinModule: g } = process;\nexport const t = g('node:https');"],
+    ['constructor', "export const t = (() => {}).constructor('return this')().fetch;"],
+    ["['constructor']", "export const t = (() => {})['constructor']('return this')();"],
+    ['Reflect', "export const t = Reflect.get(Buffer, ['constr', 'uctor'].join(''));"],
+  ]) {
+    const findings = found([['tools/submit/broadcaster.mjs', 'export const x = 1;'], ['tools/submit/submit-anchor.mjs', "import { x } from './broadcaster.mjs';"], ['tools/broadcast/x.mjs', `${entry}\n${code}`]]);
+    assert.ok(findings.some((f) => f.startsWith('tools/broadcast/x.mjs:network-capable-file-not-allowed:')), `${label}: ${findings.join(' ')}`);
+    assert.ok(findings.includes('tools/broadcast/x.mjs:write-transport-join-transitive'), `${label}: ${findings.join(' ')}`);
+  }
+  assert.ok(rules('tools/submit/a.mjs', "const f = Reflect.get(Buffer, 'x');").includes('submit-reflect'));
+  // A class's own constructor method is not a route.
+  assert.deepEqual(found([['tools/broadcast/y.mjs', 'export class E extends Error { constructor(m) { super(m); } }']]), []);
+  // F3: no dynamic import of a library in txverify/ or signer/; relative ones stay allowed in tests.
+  for (const path of ['txverify/src/x.mjs', 'signer/src/x.mjs']) {
+    const r = rules(path, "const { secp256k1: curve } = await import('@noble/curves/secp256k1.js');\nexport const v = Object.values(curve);");
+    assert.ok(r.includes('dynamic-import-not-relative:@noble/curves/secp256k1.js'), `${path}: ${r.join(' ')}`);
+  }
+  assert.ok(!rules('txverify/test/x.test.mjs', "const api = await import('../src/index.mjs');").some((r) => r.startsWith('dynamic-import-not-relative')));
+});

@@ -573,9 +573,11 @@ export const NETWORK_BUILTINS = ['node:http', 'node:https', 'node:http2', 'node:
 //     a network module, a subprocess, worker, cluster, inspector, vm, repl or wasi module,
 //     node:module, node:process, or any underscore-prefixed legacy module (_http_client, _tls_wrap);
 //   - it names fetch, WebSocket, XMLHttpRequest, EventSource, createRequire, getBuiltinModule,
-//     require, importScripts, eval, Function, WebAssembly, globalThis or global;
+//     require, importScripts, eval, Function, WebAssembly, globalThis, global or Reflect;
 //   - it reads process.binding, _linkedBinding, dlopen, getBuiltinModule or execve, or a computed
-//     member of process;
+//     member of process, or uses `process` as a value (an alias, an argument, a destructuring);
+//   - it names `constructor` other than as a class's own constructor method (the Function
+//     constructor is reachable from any value);
 //   - it has a computed dynamic import (`import(x)`), which could load anything; or
 //   - it cannot be parsed.
 // SUBMIT_SUBPROCESS_FILES' one child_process import is the named Python verifier spawn and is not
@@ -585,7 +587,7 @@ export const NETWORK_CAPABLE_MODULES = [
   'http', 'https', 'http2', 'net', 'tls', 'dns', 'dns/promises', 'dgram', 'child_process', 'worker_threads', 'cluster', 'module', 'inspector', 'inspector/promises',
   'vm', 'repl', 'process', 'wasi',
 ];
-const NETWORK_CAPABLE_NAMES = new Set(['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource', 'createRequire', 'getBuiltinModule', 'require', 'importScripts', 'eval', 'Function', 'WebAssembly', 'globalThis', 'global']);
+const NETWORK_CAPABLE_NAMES = new Set(['fetch', 'WebSocket', 'XMLHttpRequest', 'EventSource', 'createRequire', 'getBuiltinModule', 'require', 'importScripts', 'eval', 'Function', 'WebAssembly', 'globalThis', 'global', 'Reflect']);
 const NETWORK_CAPABLE_PROCESS_MEMBERS = new Set(['binding', '_linkedBinding', 'dlopen', 'getBuiltinModule', 'execve']);
 export const NETWORK_CAPABLE_FILES = [
   TRANSPORT_FILE, // the reviewed transport (ADR-RN-013)
@@ -620,10 +622,19 @@ export function networkCapability(path, content) {
       if (node.source.type === 'Literal') moduleReason(node.source.value);
       else reasons.add('dynamic-import-non-literal');
     }
-    if (node.type === 'Identifier' && NETWORK_CAPABLE_NAMES.has(node.name) && !isPropertyName(node, parent, key)) reasons.add(`name:${node.name}`);
+    // Reflect is counted outside packages/ only: packages/ code is held to its own, stricter rules,
+    // and tx-intent reads own keys with it.
+    if (node.type === 'Identifier' && NETWORK_CAPABLE_NAMES.has(node.name) && !isPropertyName(node, parent, key) && !(node.name === 'Reflect' && path.startsWith('packages/'))) reasons.add(`name:${node.name}`);
     if (node.type === 'MemberExpression' && node.object.type === 'Identifier' && node.object.name === 'process' && (node.computed || NETWORK_CAPABLE_PROCESS_MEMBERS.has(node.property.name))) {
       reasons.add('process-internals');
     }
+    // `process` as a value (`const p = process; p.getBuiltinModule(...)`, an argument, a
+    // destructuring) hides which member is read (C2 review F2).
+    if (node.type === 'Identifier' && node.name === 'process' && !isPropertyName(node, parent, key) && !(parent?.type === 'MemberExpression' && key === 'object')) reasons.add('process-value');
+    // `.constructor` reaches the Function constructor from any value (C2 review F2); only a class's
+    // own constructor method may use the name.
+    if (node.type === 'Identifier' && node.name === 'constructor' && !(parent?.type === 'MethodDefinition' && parent.kind === 'constructor')) reasons.add('constructor-access');
+    if (node.type === 'Literal' && node.value === 'constructor' && parent?.type === 'MemberExpression' && key === 'property' && parent.computed) reasons.add('constructor-access');
     for (const [childKey, child] of children(node)) visit(child, node, childKey);
   };
   visit(program, null, null);
@@ -678,6 +689,18 @@ function checkWriteTransportClosure(files, add) {
   }
 }
 
+// A literal dynamic import of a non-relative specifier escapes the named-import checks of signer/
+// and txverify/ (C2 review F3): a dynamic import of a library entry point gives its whole module.
+function thirdPartyDynamicImports(program) {
+  const found = [];
+  const visit = (node) => {
+    if (node.type === 'ImportExpression' && !(node.source.type === 'Literal' && typeof node.source.value === 'string' && node.source.value.startsWith('.'))) found.push(node.source.type === 'Literal' ? String(node.source.value) : '(computed)');
+    for (const [, child] of children(node)) visit(child);
+  };
+  visit(program);
+  return found;
+}
+
 // signer/ (ADR-RN-017): parsed like packages/, with its own allowlist of built-ins, exports,
 // third-party specifiers and RN-NET packages.
 function checkSigner(path, content, add) {
@@ -703,6 +726,11 @@ function checkSigner(path, content, add) {
   }
   for (const problem of new Set(analysis.problems)) add(path, problem);
   for (const route of keyGenerationRoutes(content)) add(path, route);
+  try {
+    for (const specifier of thirdPartyDynamicImports(parse(content, PARSE_OPTIONS))) add(path, `dynamic-import-not-relative:${specifier}`);
+  } catch {
+    // reported as unsupported-syntax above
+  }
   const area = rest.startsWith('test/') ? 'test' : 'src';
   for (const { source, name } of analysis.builtinImports) {
     // Signer tests get the test built-ins, but not the test-only key APIs of packages/.
@@ -855,6 +883,8 @@ function checkSubmitTools(path, content, add) {
   const analysis = analyze(program);
   for (const problem of new Set(analysis.problems)) if (problem !== 'process-access') add(path, problem);
   for (const route of keyGenerationRoutes(content)) add(path, route);
+  // Reflect reads members by a name built at run time (C2 review F2); tools/submit/ has no use for it.
+  if (/(?<![\w$])Reflect(?![\w$])/.test(content)) add(path, 'submit-reflect');
   // process: only the listed members, never computed, aliased or destructured.
   const processMembers = entryPoint ? [...SUBMIT_PROCESS_PROPERTIES, ...SUBMIT_ENTRY_POINT_PROCESS_PROPERTIES] : SUBMIT_PROCESS_PROPERTIES;
   const visit = (node, parent, key) => {
@@ -984,6 +1014,7 @@ function checkTxverify(path, content, add) {
   const analysis = analyze(program);
   for (const problem of new Set(analysis.problems)) add(path, problem);
   for (const route of keyGenerationRoutes(content)) add(path, route);
+  for (const specifier of thirdPartyDynamicImports(program)) add(path, `dynamic-import-not-relative:${specifier}`);
   const area = rest.startsWith('test/') ? 'test' : 'src';
   for (const { source, name } of analysis.builtinImports) {
     const allowed = [...(TXVERIFY_BUILTIN_EXPORTS[source] ?? []), ...(area === 'test' ? [...(ALLOWED_BUILTIN_EXPORTS[source] ?? [])] : [])];

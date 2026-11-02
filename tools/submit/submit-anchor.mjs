@@ -14,6 +14,8 @@
 //      --signed-transaction --endpoints --log-dir --evidence-dir. There is no retry, fee, field,
 //      provider or force option. The budget is fixed in code (tools/submit/policy.mjs).
 //   2. --network is xrpl:testnet or evm:11155111, and the authorization names that same network;
+//      --log-dir and --evidence-dir are exactly the agreed directories (AGREED_DIRECTORIES, not
+//      yet agreed): the log makes an authorization single-use, so a run never picks its own;
 //   3. the endpoint file is exactly the reviewed providers (REVIEWED_PROVIDERS);
 //   4. the authorization, intent and signed transaction are private files (0600, not links);
 //   5. the founder approves this one run by typing the network and the authorization digest's
@@ -27,7 +29,7 @@
 import { fileURLToPath } from 'node:url';
 import { readAuthorization } from '../../packages/chain-submit/src/index.mjs';
 import { runBroadcast } from './broadcaster.mjs';
-import { EntryCode, EntryError, entryNetwork, parseArguments, readPrivateText, requireApproval, reviewedEndpoints, REVIEWED_PROVIDERS } from './entry.mjs';
+import { checkAgreedDirectories, EntryCode, EntryError, entryNetwork, parseArguments, readPrivateText, requireApproval, reviewedEndpoints, REVIEWED_PROVIDERS } from './entry.mjs';
 
 /** False in RN-NET-03B2-C2. A test pins it, and the command line refuses while it is false. */
 export const LIVE_NETWORK_ACCESS = false;
@@ -56,6 +58,7 @@ export async function submitAnchor({ argv, deps }) {
   try {
     const args = parseArguments(argv, SUBMIT_FLAGS);
     const network = entryNetwork(args.network);
+    checkAgreedDirectories(args, deps.agreed);
     const reviewed = deps.reviewed ?? REVIEWED_PROVIDERS;
     const readText = deps.readText ?? readPrivateText;
     const authorizationText = readText(args.authorization);
@@ -92,6 +95,7 @@ export async function submitAnchor({ argv, deps }) {
         `transaction hash ${authorization.transactionHash}`,
         `validity ${JSON.stringify(authorization.validity)}`,
         `scope: ${authorization.scope}`,
+        `submission log ${args['log-dir']}, evidence ${args['evidence-dir']}`,
       ],
     });
     const result = await runBroadcast({

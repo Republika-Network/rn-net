@@ -12,6 +12,7 @@ import { BroadcastCode, BroadcastError, entryDigest, Outcome, readAuthorization 
 import { FILE, withLog } from './broadcast/build-b3-fixtures.mjs';
 import { replayTextTransport } from './broadcast/simulated.mjs';
 import { runBroadcast } from './submit/broadcaster.mjs';
+import { verifySignedTransaction } from '../txverify/src/index.mjs';
 import { EntryCode, readPrivateText, REVIEWED_PROVIDERS, reviewedEndpoints } from './submit/entry.mjs';
 import { createReadOnlyPolicy, createRequestPolicy, SUBMIT_READ_PLAN, SUBMIT_RUN_REQUESTS } from './submit/policy.mjs';
 import { LIVE_NETWORK_ACCESS as SUBMIT_LIVE, main as submitMain, SUBMIT_EXIT, SUBMIT_FLAGS, submitAnchor } from './submit/submit-anchor.mjs';
@@ -66,7 +67,8 @@ function submitRun(c, dirs, overrides = {}) {
   const approve = overrides.approve ?? (async () => `${network} ${digestOf(files['/f/authorization.json'].trimEnd()).slice(-16)}`);
   // The fixtures' clock advances by clockStepPerRequest for every request sent.
   const now = () => c.now + (c.clockStepPerRequest ?? 0) * transport.seen.length;
-  return { argv, transport, deps: { readText, transport, referenceVerifier: () => structuredClone(c.referenceRecord), now, approve, reviewed } };
+  const agreed = overrides.agreed === undefined ? { logDir: dirs.logDir, evidenceDir: dirs.evidenceDir } : overrides.agreed;
+  return { argv, transport, deps: { readText, transport, referenceVerifier: () => structuredClone(c.referenceRecord), now, approve, reviewed, agreed } };
 }
 
 test('C2: both entry points are disabled for live network access and refuse as commands', () => {
@@ -136,6 +138,9 @@ test('C2: unauthorized runs are refused before anything is consumed or sent', as
     ['a retry option', { argv: [...SUBMIT_FLAGS.flatMap((f) => [`--${f}`, 'x']).slice(0, -2), '--retry', '3'] }, EntryCode.USAGE],
     ['a flag twice', { argv: [...SUBMIT_FLAGS.flatMap((f) => [`--${f}`, 'x']).slice(0, -2), '--network', 'xrpl:testnet'] }, EntryCode.USAGE],
     ['no arguments', { argv: [] }, EntryCode.USAGE],
+    ['no agreed directories (as in C2)', { agreed: null }, EntryCode.DIRECTORY_NOT_AGREED],
+    ['another log directory', { args: { 'log-dir': '/tmp/another-log' } }, EntryCode.DIRECTORY_NOT_AGREED],
+    ['another evidence directory', { args: { 'evidence-dir': '/tmp/another-evidence' } }, EntryCode.DIRECTORY_NOT_AGREED],
   ];
   for (const [label, overrides, code] of cases) {
     if (overrides.files && Object.values(overrides.files).includes(undefined)) {
@@ -175,9 +180,13 @@ test('C2: wrong payload, modified signed bytes, fees above the cap and expiry se
   for (const [label, c, overrides] of cases) {
     await withLog([], async (dirs) => {
       const run = submitRun(c, dirs, overrides);
-      run.deps.referenceVerifier = () => ({ ...structuredClone(c.referenceRecord), outcome: 'FAIL' });
+      // The second verifier agrees with the first (as rnnet_tx_reference.py does on these inputs),
+      // so the refusal shown is the verification's own code, not a disagreement (C2 review F5).
+      run.deps.referenceVerifier = (intentText, approvedDigest, signedTransaction) => verifySignedTransaction({ intent: JSON.parse(intentText), approvedDigest, signedTransaction });
       const out = await submitAnchor(run);
       assert.equal(out.result.outcome, Outcome.NOT_SENT, label);
+      assert.match(out.code, /^RNTX_/, `${label}: ${out.code}`);
+      assert.notEqual(out.code, BroadcastCode.VERIFIER_DISAGREEMENT, label);
       assert.equal(out.result.writes, 0, label);
       assert.equal(run.transport.seen.length, 0, `${label}: no request at all`);
     });
@@ -352,13 +361,13 @@ test('C2: status verification is separately read-only, and works on simulated pr
       const transport = spy(replayTextTransport(c.exchanges));
       const argv = ['--network', network, '--authorization', '/f/authorization.json', '--intent', '/f/intent.json', '--endpoints', '/f/endpoints.json', '--log-dir', dirs.logDir, '--evidence-dir', dirs.evidenceDir];
       const approve = async (prompt) => `${network} ${/digest: sha256:([0-9a-f]{64})/.exec(prompt)[1].slice(-16)}`;
-      const out = await statusCheck({ argv, deps: { readText: (p) => files[p], transport, now: () => c.now, approve, reviewed } });
+      const out = await statusCheck({ argv, deps: { readText: (p) => files[p], transport, now: () => c.now, approve, reviewed, agreed: { logDir: dirs.logDir, evidenceDir: dirs.evidenceDir } } });
       assert.equal(out.finding, c.expected.finding, id);
       assert.equal(out.exitCode, out.finding === 'UNRESOLVED' ? STATUS_EXIT.UNRESOLVED : STATUS_EXIT.RESOLVED, id);
       assert.ok(!transport.seen.some((m) => m === 'submit' || m === 'eth_sendRawTransaction'), id);
       // A refused approval reads nothing.
       const refused = spy(replayTextTransport(c.exchanges));
-      const no = await statusCheck({ argv, deps: { readText: (p) => files[p], transport: refused, now: () => c.now, approve: async () => 'no', reviewed } });
+      const no = await statusCheck({ argv, deps: { readText: (p) => files[p], transport: refused, now: () => c.now, approve: async () => 'no', reviewed, agreed: { logDir: dirs.logDir, evidenceDir: dirs.evidenceDir } } });
       assert.equal(no.code, EntryCode.APPROVAL_REFUSED);
       assert.equal(refused.seen.length, 0);
     });
@@ -404,4 +413,41 @@ test('C2: an existing log entry blocks the same index, whatever writes it', () =
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('C2 review F1: one authorization cannot be used again by pointing the run at another log', async () => {
+  const c = submitCase('xrpl-accepted');
+  await withLog([], async (first) => {
+    const out = await submitAnchor(submitRun(c, first));
+    assert.equal(out.result.writes, 1);
+    await withLog([], async (second) => {
+      // The agreed directories are the first run's; a fresh log elsewhere is refused before anything.
+      const run = submitRun(c, second, { agreed: { logDir: first.logDir, evidenceDir: first.evidenceDir } });
+      const again = await submitAnchor(run);
+      assert.equal(again.code, EntryCode.DIRECTORY_NOT_AGREED);
+      assert.equal(run.transport.seen.length, 0);
+      assert.deepEqual(readLog(second.logDir), []);
+    });
+  });
+});
+
+test('C2 review F4: RESULT is retried after a conflict, and a lasting one leaves the attempt unresolved', async () => {
+  const c = submitCase('xrpl-accepted');
+  await withLog([], async (dirs) => {
+    const replay = replayTextTransport(c.exchanges);
+    // A temporary name that appears during the write and is never removed (a stopped writer).
+    const transport = async (request) => {
+      const answer = await replay(request);
+      if (Buffer.from(request.body).toString('utf8').includes('"submit"')) writeFileSync(join(dirs.logDir, '.000002.json.tmp'), '{', { mode: 0o600 });
+      return answer;
+    };
+    await assert.rejects(() => submitAnchor(submitRun(c, dirs, { transport })), (e) => e.code === BroadcastCode.LOG_CONFLICT);
+    rmSync(join(dirs.logDir, '.000002.json.tmp'));
+    // Never NOT_SENT after the write: the attempt has no RESULT, so every later run is refused.
+    assert.deepEqual(readLog(dirs.logDir).map((e) => e.kind), ['RUN_STARTED', 'ATTEMPTING']);
+    const resend = JSON.parse(c.inputs.authorization);
+    Object.assign(resend, { authorizationId: 'after-lost-result', attempt: 2, kind: 'resend', previousAttempt: `sha256:${'0'.repeat(64)}` });
+    const next = await submitAnchor(submitRun(c, dirs, { files: { '/f/authorization.json': canonicalize(resend) } }));
+    assert.equal(next.code, BroadcastCode.LOG_UNRESOLVED_ATTEMPT);
+  });
 });
