@@ -385,14 +385,23 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
     or not the guard was given it;
   - a specifier that is a URL other than `node:` (`data:`, `file:`, `https:`, ...), an absolute
     path, or a bare specifier other than `acorn` (a `#` alias included);
-  - `node:sqlite`, and any import of `node:test` other than a static named import of its exports
-    except `run` (a dynamic import or any re-export counts);
+  - `node:sqlite`, and any import or re-export of `node:test` outside a `*.test.mjs` file (every
+    export of it reaches `run()`; test files run under the offline preload, which refuses
+    subprocesses);
   - a relative specifier the guard cannot resolve exactly (a `+`, a space, a non-ASCII letter): its
     importer counts as network;
-  - a regular expression whose pattern holds `constructor`, and imported JSON that holds it.
+  - a regular expression whose pattern holds `constructor`, and imported JSON that does not parse
+    or has `constructor` as a key or string (escapes included).
 
-  Nothing but the guard's own test files (and the fixtures themselves) may import
-  `tools/guards/fixtures/`. `signer/` and `txverify/` refuse any dynamic import of a non-relative
+  A target that matches a file only when case is ignored is a finding (`import-case-mismatch`), as
+  is, over the whole tree, a relative target that does not exist (`import-target-missing`). A
+  symbolic link anywhere in the repository is a finding.
+
+  Nothing but `tools/guards/dependency-boundaries.test.mjs` (and the fixtures themselves) may import
+  `tools/guards/fixtures/`.
+
+  Beyond a static lint, and documented as such: a member name assembled at run time
+  (`'constr' + 'uctor'`), and a module written at run time and then imported. `signer/` and `txverify/` refuse any dynamic import of a non-relative
   specifier and any `export ... from` a library, so a library cannot be handed on whole around
   the named-import rule.
 - **The read-only entry point** may not reach `tools/submit/broadcaster.mjs`, however indirectly.

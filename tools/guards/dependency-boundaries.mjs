@@ -464,7 +464,9 @@ export function check(files) {
     // Node resolves a symlinked module's imports from its real path, not from where it is linked;
     // a linked package directory moves everything under it.
     // tools/ too: a link (tools/sub -> tools/submit) would hide the write side from the import graph.
-    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/') || path === 'txverify' || path.startsWith('txverify/') || path === 'tools' || path.startsWith('tools/'))) {
+    // Anywhere in the repository (C2 final review): a link elsewhere (scripts/x.mjs -> x.cjs) would
+    // load a file the import graph never analyses. No tracked file is a symbolic link.
+    if (symlink) {
       add(path, 'symlink-in-package');
       continue;
     }
@@ -606,6 +608,18 @@ export const NETWORK_CAPABLE_FILES = [
 // Test data of the guard's own tests: sources that are meant to be refused.
 const GUARD_TEST_DATA = /^tools\/guards\/fixtures\//;
 
+/** Whether JSON text parses, and no key or string in it is `constructor` (escapes included). */
+function jsonIsPlainData(text) {
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return false;
+  }
+  const plain = (v) => (typeof v === 'string' ? v !== 'constructor' : Array.isArray(v) ? v.every(plain) : v !== null && typeof v === 'object' ? Object.entries(v).every(([k, x]) => k !== 'constructor' && plain(x)) : true);
+  return plain(value);
+}
+
 /** Why a source is network-capable (see above); an empty list if it is not. */
 export function networkCapability(path, content) {
   // Only ES modules are analysed as such. A CommonJS or TypeScript source (.cjs, .js and .ts
@@ -638,13 +652,13 @@ export function networkCapability(path, content) {
     if (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) moduleReason(node.source.value);
     // node:test's run() starts subprocesses; only its named test-writing exports, imported
     // statically, are harmless. A dynamic import or any re-export gives the whole namespace or run().
+    // node:test reaches run(), which starts subprocesses, from every export (`test.run`, `it.run`).
+    // Only test files (*.test.mjs) may import it: they run under the offline preload, which refuses
+    // subprocesses and the network. Anywhere else, any import or re-export of it counts.
     const isTest = (v) => typeof v === 'string' && /^(?:node:)?test$/.test(v);
-    if (node.type === 'ImportDeclaration' && isTest(node.source.value)) {
-      for (const b of node.specifiers) if (b.type !== 'ImportSpecifier' || (b.imported.name ?? b.imported.value) === 'run') reasons.add('module:test#run');
-    }
-    if ((node.type === 'ImportExpression' && node.source.type === 'Literal' && isTest(node.source.value)) || ((node.type === 'ExportAllDeclaration' || node.type === 'ExportNamedDeclaration') && isTest(node.source?.value))) {
-      reasons.add('module:test#run');
-    }
+    const testFile = /\.test\.mjs$/.test(path);
+    const source = node.type === 'ImportExpression' ? (node.source.type === 'Literal' ? node.source.value : undefined) : (node.type === 'ImportDeclaration' || node.type === 'ExportAllDeclaration' || node.type === 'ExportNamedDeclaration') ? node.source?.value : undefined;
+    if (isTest(source) && !testFile) reasons.add('module:test');
     if (node.type === 'ImportExpression') {
       if (node.source.type === 'Literal') moduleReason(node.source.value);
       else reasons.add('dynamic-import-non-literal');
@@ -716,14 +730,27 @@ function checkWriteTransportClosure(files, add) {
         if (!/\.mjs$/.test(target)) unanalysed.add(target);
         // Guard test data is meant to be refused; nothing outside the guard's own tests imports it.
         // Only the guard's own test files may import it, never a relay elsewhere in tools/guards/.
-        if (GUARD_TEST_DATA.test(target) && !GUARD_TEST_DATA.test(path) && !/^tools\/guards\/[^/]+\.test\.mjs$/.test(path)) add(path, 'imports-guard-test-data');
+        if (GUARD_TEST_DATA.test(target) && !GUARD_TEST_DATA.test(path) && !SIGNER_IMPORT_TEST_DATA.includes(path)) add(path, 'imports-guard-test-data');
       }
     }
     edges.set(path, targets);
   }
+  // A target that differs from a given file only in case loads that file on a case-insensitive
+  // file system (NTFS through /mnt/c, macOS), unanalysed; and when the whole tree is given (the
+  // root package.json is among the files), every relative target must exist (C2 final review).
+  const lower = new Map([...contents.keys()].map((k) => [k.toLowerCase(), k]));
+  const wholeTree = contents.has('package.json');
+  for (const [from, targets] of edges) {
+    if (GUARD_TEST_DATA.test(from)) continue;
+    for (const target of targets) {
+      if (contents.has(target)) continue;
+      if (lower.has(target.toLowerCase())) add(from, `import-case-mismatch:${target}`);
+      else if (wholeTree) add(from, `import-target-missing:${target}`);
+    }
+  }
   for (const target of unanalysed) {
     // JSON is data, unless it holds the constructor name, which code could read from it as a key.
-    if (target.endsWith('.json') && typeof contents.get(target) === 'string' && !/constructor/.test(contents.get(target))) continue;
+    if (target.endsWith('.json') && typeof contents.get(target) === 'string' && jsonIsPlainData(contents.get(target))) continue;
     network.add(target);
   }
   for (const importer of unresolvedImporters) if (!GUARD_TEST_DATA.test(importer)) network.add(importer);

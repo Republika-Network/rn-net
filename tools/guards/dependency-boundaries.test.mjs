@@ -1049,7 +1049,7 @@ test('C2 final review B1 to B4: CommonJS and extensionless targets, URL imports,
   joins([z("import { run } from 'node:test';")], 'node:test run');
   assert.ok(found([['tools/submit/a.mjs', "import { g } from '../guards/fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/submit/a.mjs:imports-guard-test-data'));
   // The legitimate forms stay clean.
-  assert.deepEqual(found([['tools/broadcast/ok.mjs', "import { test } from 'node:test';\nimport data from './d.json' with { type: 'json' };\nexport const t = test;"]]), []);
+  assert.deepEqual(found([['tools/broadcast/ok.test.mjs', "import { test } from 'node:test';\nimport data from './d.json' with { type: 'json' };\nexport const t = test;"], ['tools/broadcast/d.json', '{"a":1}']]), []);
 });
 
 test('C2 final re-review A to D: node:test namespaces, unresolvable specifiers, regex and JSON names, fixture relays', () => {
@@ -1072,4 +1072,27 @@ test('C2 final re-review A to D: node:test namespaces, unresolvable specifiers, 
   assert.deepEqual(found([['tools/broadcast/ok.mjs', "import d from './d.json' with { type: 'json' };\nexport const t = d;"], ['tools/broadcast/d.json', '{"a":1}']]), []);
   // D: a relay in tools/guards/ may not import the fixtures.
   assert.ok(found([['tools/guards/relay.mjs', "export * from './fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/guards/relay.mjs:imports-guard-test-data'));
+});
+
+test('C2 final re-review: node:test outside tests, symbolic links anywhere, escaped JSON names, test-named relays', () => {
+  const found = (files) => check(files.map(([path, content, symlink]) => ({ path, content, symlink: symlink === true }))).map((f) => `${f.path}:${f.rule}`);
+  const write = ['tools/submit/broadcaster.mjs', 'export const x = 1;'];
+  const z = (extra) => ['tools/broadcast/z.mjs', `import { x } from '../submit/broadcaster.mjs';\n${extra}`];
+  const joins = (files, label) => {
+    const f = found([write, ...files]);
+    assert.ok(f.includes('tools/broadcast/z.mjs:write-transport-join-transitive'), `${label}: ${f.join(' ')}`);
+  };
+  for (const code of ["import { test } from 'node:test';\ntest.run({ files: [] });", "import { it } from 'node:test';\nexport const r = it.run;", "import { test } from 'node:test';\nconst { run } = test;"]) joins([z(code)], code);
+  assert.ok(found([['scripts/link.mjs', null, true]]).includes('scripts/link.mjs:symlink-in-package'));
+  joins([z("import k from './k.json' with { type: 'json' };"), ['tools/broadcast/k.json', '{"k":"\\u0063onstructor"}']], 'escaped JSON');
+  joins([z("import k from './k.json' with { type: 'json' };"), ['tools/broadcast/k.json', 'not json']], 'unparseable JSON');
+  assert.ok(found([['tools/guards/relay.test.mjs', "export * from './fixtures/dependency-bypasses/b07-hidden-process.mjs';"]]).includes('tools/guards/relay.test.mjs:imports-guard-test-data'));
+});
+
+test('C2 final re-review: case-mismatched and, over the whole tree, missing import targets', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  assert.ok(found([['tools/broadcast/z.mjs', "import { g } from './CD.mjs';"], ['tools/broadcast/cd.mjs', 'export const g = 1;']]).includes('tools/broadcast/z.mjs:import-case-mismatch:tools/broadcast/CD.mjs'));
+  const tree = [['package.json', '{"name":"x","private":true}'], ['tools/broadcast/z.mjs', "import { g } from './gen.mjs';"]];
+  assert.ok(found(tree).includes('tools/broadcast/z.mjs:import-target-missing:tools/broadcast/gen.mjs'));
+  assert.ok(!found(tree.slice(1)).some((f) => f.includes('import-target-missing')));
 });
