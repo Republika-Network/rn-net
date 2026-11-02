@@ -1,0 +1,41 @@
+// Refusal codes of the founder key tool (RN-NET-03B2-C4). The sign-log replay refusals keep the
+// signer's codes (RNTX_ALREADY_SIGNED, RNTX_SEQUENCE_UNRESOLVED) so the two logs agree.
+
+export const KeyToolCode = Object.freeze({
+  USAGE: 'RNKEY_USAGE',
+  NOT_INTERACTIVE: 'RNKEY_NOT_INTERACTIVE',
+  NETWORK_PRESENT: 'RNKEY_NETWORK_PRESENT',
+  REAL_ROOT: 'RNKEY_REAL_ROOT',
+  LOCATION: 'RNKEY_LOCATION',
+  KEY_EXISTS: 'RNKEY_KEY_EXISTS',
+  KEY_MISSING: 'RNKEY_KEY_MISSING',
+  PARTIAL_FILE: 'RNKEY_PARTIAL_FILE',
+  FILE_INVALID: 'RNKEY_FILE_INVALID',
+  KEY_MISMATCH: 'RNKEY_KEY_MISMATCH',
+  PASSPHRASE_SHORT: 'RNKEY_PASSPHRASE_SHORT',
+  PASSPHRASE_MISMATCH: 'RNKEY_PASSPHRASE_MISMATCH',
+  INPUT_INVALID: 'RNKEY_INPUT_INVALID',
+  ABORTED: 'RNKEY_ABORTED',
+  CONFIRMATION_MISMATCH: 'RNKEY_CONFIRMATION_MISMATCH',
+  SIGNLOG_INVALID: 'RNKEY_SIGNLOG_INVALID',
+  SIGNLOG_INCOMPLETE: 'RNKEY_SIGNLOG_INCOMPLETE',
+  SIGNLOG_CONFLICT: 'RNKEY_SIGNLOG_CONFLICT',
+  KEY_NOT_REGISTERED: 'RNKEY_KEY_NOT_REGISTERED',
+  RESIGN_BASIS_INVALID: 'RNKEY_RESIGN_BASIS_INVALID',
+  OUTPUT_CONFLICT: 'RNKEY_OUTPUT_CONFLICT',
+  ALREADY_SIGNED: 'RNTX_ALREADY_SIGNED',
+  SEQUENCE_UNRESOLVED: 'RNTX_SEQUENCE_UNRESOLVED',
+});
+
+export class KeyToolError extends Error {
+  constructor(code, detail) {
+    super(detail === undefined ? code : `${code}: ${detail}`);
+    this.name = 'KeyToolError';
+    this.code = code;
+    if (detail !== undefined) this.detail = detail;
+  }
+}
+
+export const refuse = (code, detail) => {
+  throw new KeyToolError(code, detail);
+};

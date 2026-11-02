@@ -28,12 +28,17 @@ that evidence on public test networks.
 - an offline, **test-only** signing and verification toolchain (RN-NET-03B2-B1, ADR-RN-017):
   - the approved unsigned transaction intent and its digest (`packages/tx-intent/`);
   - XRPL and EIP-1559 encoding;
-  - a signer that has no key generation, key loader, file access or network
+  - a signer that has no key loader, file access or network
     (`signer/`, with exactly `@noble/hashes@2.4.0` and `@noble/curves@2.4.0`);
   - independent JavaScript and Python verification of signed bytes;
   - a broadcaster hand-off check with no transport (`packages/broadcast-handoff/`).
 
   It is exercised only with keys derived from public labels.
+- the founder's offline key tool (RN-NET-03B2-C4, ADR-RN-017 Amendment C1, Proposed;
+  [`tools/keytool/`](tools/keytool/README.md)): key generation (`signer/src/keygen.mjs`), encrypted
+  key files on WSL ext4, terminal-only passphrase and digest approval, and the persistent sign log
+  ([`rnnet.sign-log-entry.v1`](spec/rnnet.sign-log-entry.v1.md)). Tested only with synthetic keys
+  in disposable directories; running it for real is gate B or D, not authorized;
 - read-only preparation of those unsigned transactions (RN-NET-03B2-B2, ADR-RN-018,
   `packages/tx-prepare/`): it binds `Sequence`, nonce, expiry and fees from two providers' account
   and fee state and refuses stale, inconsistent or malformed data. It is exercised only offline,
@@ -98,6 +103,7 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 | [`rnnet.anchor-record.v1`](spec/rnnet.anchor-record.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
 | [`rnnet.live-observation-report.v1`](spec/rnnet.live-observation-report.v1.md) | [`packages/chain-readonly/`](packages/chain-readonly/) |
 | [`rnnet.unsigned-tx-intent.v1`](spec/rnnet.unsigned-tx-intent.v1.md) | [`packages/tx-intent/`](packages/tx-intent/README.md), [`signer/`](signer/README.md) |
+| [`rnnet.sign-log-entry.v1`](spec/rnnet.sign-log-entry.v1.md) | [`tools/keytool/`](tools/keytool/README.md) |
 
 Conformance vectors live in [`vectors/`](vectors/) (format described in
 [`vectors/README.md`](vectors/README.md)) and are checked by two implementations:

@@ -762,3 +762,108 @@ test('the transport path counts as network even when the file itself is not in t
   ]).filter((f) => f.rule === 'write-transport-join-transitive').map((f) => f.path);
   assert.deepEqual(found, ['tools/send.mjs']);
 });
+
+// RN-NET-03B2-C4 (ADR-RN-017 Amendment C1, K1 to K5): the narrow exceptions for key generation and
+// the terminal, each pinned, and the limits of the founder key tool.
+test('C4 key generation: randomness in signer/src/keygen.mjs only, through two exports only', () => {
+  const keygen = 'signer/src/keygen.mjs';
+  assert.deepEqual(rules(keygen, "import { generateKeyPairSync, randomBytes } from 'node:crypto';"), []);
+  for (const name of ['randomFillSync', 'randomInt', 'generateKeyPair', 'createSecretKey', 'getRandomValues', 'webcrypto']) {
+    assert.ok(rules(keygen, `import { ${name} } from 'node:crypto';`).includes(`builtin-export-not-allowed:node:crypto#${name}`), name);
+  }
+  // noble's key generation stays refused, in keygen.mjs too.
+  assert.ok(rules(keygen, "import { secp256k1 } from '@noble/curves/secp256k1.js';\nconst k = secp256k1.utils.randomSecretKey();").includes('key-generation:randomSecretKey'));
+  assert.ok(rules(keygen, 'const k = s.keygen();').includes('key-generation:keygen'));
+  assert.ok(rules(keygen, 'const r = crypto.getRandomValues(new Uint8Array(32));').includes('global-crypto'));
+  assert.ok(rules(keygen, "import { readFileSync } from 'node:fs';").includes('builtin-not-allowed:node:fs'));
+  // The same imports anywhere else in signer/ are refused, as before C4.
+  for (const path of ['signer/src/sign.mjs', 'signer/src/keyfile.mjs', 'signer/src/keygen2.mjs', 'signer/test/a.test.mjs']) {
+    assert.ok(rules(path, "import { randomBytes } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#randomBytes'), path);
+  }
+  // Only signer tests may import keygen.mjs inside signer/.
+  assert.deepEqual(rules('signer/src/sign.mjs', "import { generateKey } from './keygen.mjs';"), ['signer-keygen-import-not-allowed']);
+  assert.deepEqual(rules('signer/test/a.test.mjs', "import { test } from 'node:test';\nimport { generateKey } from '../src/keygen.mjs';"), []);
+  // Outside signer/, only the key tool's entry point, its tests and the C4 fixture generator.
+  assert.deepEqual(rules('tools/keytool/cli.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), []);
+  assert.deepEqual(rules('tools/signing/build-b1-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), ['keygen-importer-not-allowed']);
+  assert.deepEqual(rules('tools/broadcast/build-b3-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), ['keygen-importer-not-allowed']);
+  assert.ok(rules('tools/genesis/x.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';").includes('keygen-importer-not-allowed'));
+  assert.ok(rules('tools/submit/x.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';").includes('keygen-importer-not-allowed'));
+});
+
+test('C4 key tool: only cli.mjs imports signer/ (three files of it), and only terminal.mjs touches the terminal', () => {
+  const cli = 'tools/keytool/cli.mjs';
+  assert.deepEqual(rules(cli, "import { createSigner } from '../../signer/src/sign.mjs';\nimport { encryptKeyFile } from '../../signer/src/keyfile.mjs';"), []);
+  assert.ok(rules(cli, "import { bindKey } from '../../signer/src/keys.mjs';").includes('keytool-signer-import-not-allowed:signer/src/keys.mjs'));
+  assert.ok(rules(cli, "import { secp256k1SignDigest } from '../../signer/src/crypto.mjs';").includes('keytool-signer-import-not-allowed:signer/src/crypto.mjs'));
+  assert.ok(rules(cli, "import { fixtureKey } from '../../signer/test/fixture-keys.mjs';").includes('keytool-signer-import-not-allowed:signer/test/fixture-keys.mjs'));
+  for (const path of ['tools/keytool/keystore.mjs', 'tools/keytool/signlog.mjs', 'tools/keytool/new.mjs']) {
+    const found = rules(path, "import { createSigner } from '../../signer/src/sign.mjs';");
+    assert.ok(found.includes('signer-importer-not-allowed') && found.includes('keytool-signer-import-not-allowed:signer/src/sign.mjs'), path);
+  }
+  // The terminal.
+  assert.deepEqual(rules('tools/keytool/terminal.mjs', "import { isatty, ReadStream } from 'node:tty';\nconst f = '/dev/tty';\nconst s = (x) => x.setRawMode(true);"), []);
+  for (const content of ["import { ReadStream } from 'node:tty';", "const f = '/dev/tty';", 'const s = (x) => x.setRawMode(false);']) {
+    assert.ok(rules(cli, content).includes('keytool-terminal-outside-terminal-module'), content);
+    assert.ok(rules('tools/keytool/signlog.mjs', content).includes('keytool-terminal-outside-terminal-module'), content);
+  }
+  // Only cli.mjs is an entry point.
+  assert.deepEqual(rules(cli, '#!/usr/bin/env node\nconst a = process.argv;'), []);
+  assert.ok(rules('tools/keytool/signlog.mjs', 'const a = process.argv;').includes('keytool-entry-point'));
+  assert.ok(rules('tools/keytool/signlog.mjs', '#!/usr/bin/env node\n').includes('keytool-entry-point'));
+});
+
+test('C4 key tool: no environment variable, network, child process, code loader or randomness', () => {
+  const path = 'tools/keytool/cli.mjs';
+  for (const content of ['const p = process.env.PASS;', 'const p = process?.env;', "const p = process['env'];", 'const { env } = process;', 'const { argv, env: e } = process;', 'const p = process;']) {
+    assert.ok(rules(path, content).includes('keytool-environment'), content);
+  }
+  for (const mod of ['node:https', 'node:http', 'node:net', 'node:tls', 'node:dns', 'node:dgram', 'node:http2', 'node:child_process', 'node:worker_threads', 'node:cluster', 'node:vm', 'node:readline', 'node:module', 'node:inspector']) {
+    assert.ok(rules(path, `import x from '${mod}';`).includes(`keytool-module-not-allowed:${mod}`), mod);
+  }
+  for (const name of ['randomBytes', 'generateKeyPairSync', 'createPrivateKey', 'sign', 'scryptSync', 'createDecipheriv']) {
+    assert.ok(rules(path, `import { ${name} } from 'node:crypto';`).includes(`keytool-crypto-export-not-allowed:${name}`), name);
+  }
+  assert.deepEqual(rules(path, "import { createHash } from 'node:crypto';"), []);
+  assert.ok(rules(path, "const r = await fetch('https://example.org/');").length > 0);
+  assert.ok(rules(path, 'const m = await import(name);').includes('dynamic-import-non-literal'));
+  assert.ok(rules(path, "import { secp256k1 } from '@noble/curves/secp256k1.js';").includes('third-party-import:@noble/curves/secp256k1.js'));
+  assert.ok(rules(path, 'const r = crypto.getRandomValues(new Uint8Array(8));').includes('global-crypto'));
+  assert.ok(rules(path, 'const r = c.randomBytes(8);').includes('key-generation:randomBytes'));
+  // The command is named keygen: as a string or key it is allowed here, as a member it is not.
+  assert.deepEqual(rules(path, "const OPTIONS = { keygen: 1 };\nconst c = 'keygen';"), []);
+  assert.ok(rules(path, 'const k = s.keygen();').includes('key-generation:keygen'));
+  assert.ok(rules(path, "const k = s['keygen']();").includes('key-generation:keygen'));
+});
+
+test('C4 key tool: imports only its own files, canonical, tx-intent and txverify; never the network side', () => {
+  const path = 'tools/keytool/keystore.mjs';
+  for (const ok of ['./errors.mjs', '../../packages/canonical/src/index.mjs', '../../packages/tx-intent/src/index.mjs', '../../txverify/src/index.mjs']) assert.deepEqual(rules(path, `import { x } from '${ok}';`), [], ok);
+  for (const bad of ['../live/https-transport.mjs', '../submit/broadcaster.mjs', '../../packages/chain-readonly/src/index.mjs', '../../packages/chain-submit/src/index.mjs', '../../packages/tx-prepare/src/index.mjs', '../../packages/tx-intent/src/xrpl.mjs', '../verify-live-anchor.mjs', '../broadcast/simulated.mjs']) {
+    assert.ok(rules(path, `import { x } from '${bad}';`).some((r) => r.startsWith('keytool-import-not-allowed') || r === 'chain-submit-importer-not-allowed' || r === 'write-transport-join'), bad);
+  }
+  assert.deepEqual(rules('tools/keytool/notes.txt', 'x'), ['non-module-file']);
+  assert.deepEqual(rules('tools/keytool/README.md', 'x'), []);
+  assert.deepEqual(rules('tools/keytool/sub/x.mjs', ''), ['keytool-file-name']);
+  // Transitively: a key-tool file may not reach a network file through anything it imports.
+  const found = check([
+    { path: 'tools/keytool/a.mjs', content: "import { x } from './b.mjs';", symlink: false },
+    { path: 'tools/keytool/b.mjs', content: "import { request } from 'node:https';", symlink: false },
+  ]).map((f) => `${f.path}:${f.rule}`);
+  assert.ok(found.includes('tools/keytool/a.mjs:keytool-reaches-network'));
+  assert.ok(found.includes('tools/keytool/b.mjs:keytool-reaches-network'));
+  assert.ok(found.includes('tools/keytool/b.mjs:keytool-module-not-allowed:node:https'));
+});
+
+test('C4 does not widen B1/B3 isolation: the broadcaster, packages and txverify still cannot reach the signer', () => {
+  // Not through the key tool either.
+  for (const [path, spec] of [['tools/submit/x.mjs', '../keytool/cli.mjs'], ['tools/broadcast/x.mjs', '../keytool/signlog.mjs'], ['tools/genesis/x.mjs', '../keytool/%63li.mjs'], ['tools/x.mjs', './keytool/cli.mjs']]) {
+    assert.ok(rules(path, `import { run } from '${spec}';`).includes('keytool-importer-not-allowed'), `${path} ${spec}`);
+  }
+  assert.ok(rules('tools/x.mjs', 'const m = await import(`./keytool/${name}`);').includes('keytool-importer-not-allowed'));
+  assert.deepEqual(rules('tools/keytool.test.mjs', "import { run } from './keytool/cli.mjs';"), []);
+  assert.ok(rules('tools/submit/x.mjs', "import { createSigner } from '../../signer/src/sign.mjs';").includes('signer-importer-not-allowed'));
+  assert.ok(rules('packages/chain-submit/src/x.mjs', "import { x } from '../../../tools/keytool/cli.mjs';").includes('import-outside-packages'));
+  assert.ok(rules('txverify/src/x.mjs', "import { x } from '../../signer/src/keygen.mjs';").some((r) => r.startsWith('txverify-import-not-allowed')));
+  assert.ok(rules('packages/tx-intent/src/x.mjs', "import { randomBytes } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#randomBytes'));
+});
