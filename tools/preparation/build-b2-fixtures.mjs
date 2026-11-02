@@ -78,6 +78,8 @@ export const CASES = [
   { id: 'xrpl-same-ledger-other-hash', network: X, servers: xrplA({ account: (r) => { r.ledger_hash = xrplLedgerHash(1); } }), expect: ['RNTP_INCONSISTENT', XA] },
   { id: 'xrpl-other-account', network: X, servers: xrplB({ account: (r) => { r.account_data.Account = 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'; } }), expect: ['RNTP_INCONSISTENT', XB] },
   { id: 'xrpl-skew-5', network: X, servers: { [XA]: {}, [XB]: { seq: 5_000_005 } }, expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'xrpl-same-index-two-hashes', network: X, servers: { [XA]: {}, [XB]: { seq: 5_000_000, info: (i) => { i.validated_ledger.hash = xrplLedgerHash(9); }, account: (r) => { r.ledger_hash = xrplLedgerHash(9); } } }, expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'xrpl-ledger-near-uint32-limit', network: X, servers: { [XA]: { seq: 4_294_967_290 }, [XB]: { seq: 4_294_967_291 } }, expect: ['RNTP_INTENT_INVALID', null] },
   { id: 'xrpl-sequence-disagreement', network: X, servers: xrplB({ account: (r) => { r.account_data.Sequence = 4_999_002; } }), expect: ['RNTP_INCONSISTENT', null] },
   // XRPL: account suitability
   { id: 'xrpl-regular-key', network: X, servers: xrplA({ account: (r) => { r.account_data.RegularKey = 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'; } }), expect: ['RNTP_ACCOUNT_UNSUITABLE', XA] },
@@ -90,6 +92,9 @@ export const CASES = [
   { id: 'xrpl-balance-one-drop-short', network: X, servers: xrplA({ account: (r) => { r.account_data.Balance = '1000011'; } }), expect: ['RNTP_INSUFFICIENT_BALANCE', XA] },
   { id: 'xrpl-owner-reserve-short', network: X, servers: xrplB({ account: (r) => { r.account_data.OwnerCount = 3; r.account_data.Balance = '1600011'; } }), expect: ['RNTP_INSUFFICIENT_BALANCE', XB] },
   // XRPL: malformed data
+  { id: 'xrpl-owner-count-minus-zero', network: X, servers: xrplA({ raw: { account_info: (p) => { const r = xrplServer()('account_info', p); return reply(Buffer.from(r.body).toString('utf8').replace('"OwnerCount":0', '"OwnerCount":-0')); } } }), expect: ['RNTP_MALFORMED', XA] },
+  { id: 'xrpl-pass-5000-digit-integer-in-unused-field', network: X, servers: xrplA({ info: (i) => { i.peers = raw('9'.repeat(5000)); } }), expect: 'PASS' },
+  { id: 'xrpl-txn-not-found-answer', network: X, servers: xrplB({ raw: { account_info: xrplError('txnNotFound') } }), expect: ['RNTP_PROVIDER_ERROR', XB] },
   { id: 'xrpl-balance-number', network: X, servers: xrplA({ account: (r) => { r.account_data.Balance = 25_000_000; } }), expect: ['RNTP_MALFORMED', XA] },
   { id: 'xrpl-base-fee-fraction-of-drop', network: X, servers: xrplA({ info: (i) => { i.validated_ledger.base_fee_xrp = raw('0.0000105'); } }), expect: ['RNTP_MALFORMED', XA] },
   { id: 'xrpl-load-factor-below-1', network: X, servers: xrplA({ info: (i) => { i.load_factor = raw('0.5'); } }), expect: ['RNTP_MALFORMED', XA] },
@@ -118,6 +123,7 @@ export const CASES = [
   { id: 'sepolia-stale-block', network: S, servers: sepA({ timestamp: NOW - 61 }), expect: ['RNTP_STALE', SA] },
   { id: 'sepolia-block-in-future', network: S, servers: sepB({ timestamp: NOW + 15 }), expect: ['RNTP_STALE', SB] },
   { id: 'sepolia-skew-5', network: S, servers: sepB({ number: 9_437_189 }), expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'sepolia-same-number-two-hashes', network: S, servers: sepB({ number: 9_437_184, block: (b) => { b.hash = `0x${'ab'.repeat(32)}`; } }), expect: ['RNTP_INCONSISTENT', null] },
   { id: 'sepolia-nonce-disagreement', network: S, servers: sepB({ nonce: '0x1' }), expect: ['RNTP_INCONSISTENT', null] },
   { id: 'sepolia-estimate-below-intrinsic', network: S, servers: sepA({ estimate: q(21_000) }), expect: ['RNTP_INCONSISTENT', SA] },
   // Sepolia: nonce, code, fee, gas, balance
@@ -144,6 +150,7 @@ export const CASES = [
 // Input refusals: nothing is sent.
 export const INPUT_CASES = [
   { id: 'input-one-provider', network: X, input: { providers: 1 }, expect: ['RNTP_INPUT_INVALID', null] },
+  { id: 'input-same-operator', network: X, input: { providers: 'same-operator' }, expect: ['RNTP_INPUT_INVALID', null] },
   { id: 'input-provider-twice', network: S, input: { providers: 'twice' }, expect: ['RNTP_INPUT_INVALID', null] },
   { id: 'input-account-not-of-key', network: X, input: { account: 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh' }, expect: ['RNTP_INPUT_INVALID', null] },
   { id: 'input-from-uppercase', network: S, input: { from: SEPOLIA_FROM.toUpperCase().replace('0X', '0x') }, expect: ['RNTP_INPUT_INVALID', null] },
@@ -152,12 +159,13 @@ export const INPUT_CASES = [
 
 // --- building ---------------------------------------------------------------------------------------
 
-const publicProvider = ({ id, operator, url }) => ({ id, operator, url });
+const publicProvider = ({ id, network, operator, url }) => ({ id, network, operator, url });
 
 function inputFor(network, overrides = {}) {
   let providers = network === X ? xrplProviders() : sepoliaProviders();
   if (overrides.providers === 1) providers = providers.slice(0, 1);
   if (overrides.providers === 'twice') providers = [providers[0], providers[0]];
+  if (overrides.providers === 'same-operator') providers = [providers[0], { ...providers[1], operator: providers[0].operator }];
   const base = network === X
     ? { commitment: COMMITMENT, account: overrides.account ?? XRPL_ACCOUNT, signingPubKey: XRPL_SIGNING_PUB_KEY }
     : { commitment: COMMITMENT, from: overrides.from ?? SEPOLIA_FROM };

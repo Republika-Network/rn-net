@@ -42,7 +42,7 @@ test('the committed corpus is current and canonical', async () => {
 test('every case reproduces from its recorded exchanges', async () => {
   for (const c of corpus.cases) {
     const transport = replay(c.exchanges);
-    const providers = c.input.providers.map((p) => ({ ...p, network: c.network }));
+    const providers = c.input.providers;
     const prepare = c.network === 'xrpl:testnet' ? prepareXrplIntent : prepareSepoliaIntent;
     let got;
     try {
@@ -59,7 +59,7 @@ test('every case reproduces from its recorded exchanges', async () => {
 
 test('the corpus covers every refusal code and only synthetic hosts', () => {
   const codes = new Set(corpus.cases.map((c) => c.expected.code));
-  for (const code of ['RNTP_INPUT_INVALID', 'RNTP_PROVIDER_UNAVAILABLE', 'RNTP_PROVIDER_ERROR', 'RNTP_MALFORMED', 'RNTP_WRONG_NETWORK', 'RNTP_NOT_SYNCED', 'RNTP_STALE',
+  for (const code of ['RNTP_INTENT_INVALID', 'RNTP_INPUT_INVALID', 'RNTP_PROVIDER_UNAVAILABLE', 'RNTP_PROVIDER_ERROR', 'RNTP_MALFORMED', 'RNTP_WRONG_NETWORK', 'RNTP_NOT_SYNCED', 'RNTP_STALE',
     'RNTP_INCONSISTENT', 'RNTP_ACCOUNT_NOT_FOUND', 'RNTP_ACCOUNT_UNSUITABLE', 'RNTP_FEE_TOO_HIGH', 'RNTP_GAS_TOO_HIGH', 'RNTP_NONCE_PENDING', 'RNTP_INSUFFICIENT_BALANCE']) {
     assert.ok(codes.has(code), code);
   }
@@ -79,4 +79,7 @@ test('no live path: only the fixture builder and tests reach tx-prepare, and non
     const text = readFileSync(`${ROOT}/${f}`, 'utf8');
     assert.ok(!/https-transport|tools\/live|node:https|node:http\b|node:net|node:tls|\bfetch\(/.test(text), f);
   }
+  // The preparation readers are reached only through tx-prepare: no file outside packages/ names them.
+  const readers = files.filter((f) => !f.startsWith('packages/') && f !== 'tools/preparation.test.mjs' && /readXrplAccount|readSepoliaAccount/.test(readFileSync(`${ROOT}/${f}`, 'utf8')));
+  assert.deepEqual(readers, []);
 });

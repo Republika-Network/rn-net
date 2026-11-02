@@ -146,6 +146,7 @@ test('input refusals send nothing', async () => {
   const cases = [
     { providers: [XA] },
     { providers: [XA, XA] },
+    { providers: [XA, { ...XB, operator: XA.operator }] },
     { providers: [XA, { ...XB, network: 'evm:11155111' }] },
     { providers: [XA, XB, { ...XA, id: 'c', url: 'https://c.fixture.invalid/' }, { ...XA, id: 'd', url: 'https://d.fixture.invalid/' }, { ...XA, id: 'e', url: 'https://e.fixture.invalid/' }] },
     { account: 'rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh' },

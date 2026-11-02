@@ -19,7 +19,7 @@ It refuses data it cannot check, and it never relaxes a bound that ADR-RN-016 fi
 
 | Network | Inputs |
 |---|---|
-| both | `commitment` (`sha256:<64 lowercase hex>`); `now` (a positive safe integer of Unix seconds); 2 to 4 `providers`, each `{id, network, url, operator}`, distinct by `id` and by `url`, all on the network; an injected transport |
+| both | `commitment` (`sha256:<64 lowercase hex>`); `now` (a positive safe integer of Unix seconds); 2 to 4 `providers`, each `{id, network, url, operator}`, distinct by `id`, by `url` and by `operator`, all on the network; an injected transport |
 | `xrpl:testnet` | `signingPubKey` (`ED` + 64 upper-case hex) and `account`, which must be its classic address |
 | `evm:11155111` | `from`, a lower-case address |
 
@@ -56,10 +56,12 @@ Each response is checked when it arrives:
 - **Transport.** A transport error, a body over 256 KiB, or an HTTP status other than 200 is
   `RNTP_PROVIDER_UNAVAILABLE`.
 - **JSON.** The body must be strict JSON (live-observation-report §4), else `RNTP_MALFORMED`.
+  A number is an integer only when it is a safe integer other than `-0`; any other number,
+  however long, is kept as its text and fails every integer check.
 - **Envelope.**
   - XRPL: `result` must be an object. `status: "error"` is `RNTP_ACCOUNT_NOT_FOUND` when
     `error` is `actNotFound`, and `RNTP_PROVIDER_ERROR` otherwise. Any `status` other than
-    `"success"` is `RNTP_MALFORMED`.
+    `"success"` is `RNTP_MALFORMED`. (`txnNotFound` is `RNTP_PROVIDER_ERROR` too.)
   - Ethereum: `jsonrpc` must be `"2.0"` and `id` the integer 1, else `RNTP_MALFORMED`. An
     `error` member is `RNTP_PROVIDER_ERROR`. A missing `result` is `RNTP_MALFORMED`.
 - **Values**, in the order listed. A value of the wrong form is `RNTP_MALFORMED`.
@@ -141,12 +143,15 @@ These checks carry no provider id, except the balance check.
 
 **XRPL:**
 1. max − min of `validated_ledger.seq` ≤ 4, else `RNTP_INCONSISTENT`.
-2. Every `Sequence` is equal, else `RNTP_INCONSISTENT`.
+2. No ledger index appears, among all `validated_ledger` and `account_info` ledgers, with two
+   different hashes, else `RNTP_INCONSISTENT`.
+3. Every `Sequence` is equal, else `RNTP_INCONSISTENT`.
 
 **Sepolia:**
 1. max − min of the block numbers ≤ 4, else `RNTP_INCONSISTENT`.
-2. Every latest nonce is equal, else `RNTP_INCONSISTENT`.
-3. `maxFeePerGas` = min(2 × the highest base fee + 1 gwei, 20 gwei). Each provider's balance,
+2. No block number appears with two different hashes, else `RNTP_INCONSISTENT`.
+3. Every latest nonce is equal, else `RNTP_INCONSISTENT`.
+4. `maxFeePerGas` = min(2 × the highest base fee + 1 gwei, 20 gwei). Each provider's balance,
    in provider order, must be ≥ 30,000 × `maxFeePerGas`, else `RNTP_INSUFFICIENT_BALANCE` for
    that provider.
 
@@ -176,8 +181,8 @@ It also holds `exchanges`: one `{method, requestSha256, responseSha256}` per req
 The digests are `sha256:<hex>` of the exact request bytes and of the exact response body.
 
 **The intent** is `{format, network, purpose: "genesis-proof-01", commitment, transaction,
-preparation}`. It must pass `makeIntent`; a failure is `RNTP_INTENT_INVALID`, which no reachable
-input is known to produce. Its digest is the `rnnet.unsigned-tx-intent.v1` §3 digest, so it
+preparation}`. It must pass `makeIntent`; a failure is `RNTP_INTENT_INVALID`. One reachable case is a
+validated ledger within 20 of 2^32−1, which would make `LastLedgerSequence` overflow. Its digest is the `rnnet.unsigned-tx-intent.v1` §3 digest, so it
 covers the record.
 
 ## 6. What a prepared intent shows

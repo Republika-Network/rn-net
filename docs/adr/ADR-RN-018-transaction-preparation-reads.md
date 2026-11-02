@@ -46,9 +46,12 @@ synthetic fixtures. No live provider is contacted, and nothing is signed, funded
   addition exactly.
 - **`eth_estimateGas` executes a call simulation.** It changes no state. It sends the unsigned
   call to the provider, which is the same public data the transaction will carry.
-- **Pinned block.** Sepolia account reads name the latest block's number, not the `latest`
-  tag. All reads then describe one block, even if a new block arrives during the run. This is
-  stricter than design §6. The pending nonce is necessarily read with `pending`.
+- **Pinned block number.** Sepolia account reads name the latest block's number, not the
+  `latest` tag, so a new block arriving during the run does not change what they describe. This
+  is stricter than design §6. It is pinned by number, not hash: after a reorganization at that
+  height, the reads could describe a different block from the recorded hash. Pinning by hash
+  (EIP-1898 `{blockHash, requireCanonical: true}`) is left for the live milestone, where provider
+  support can be checked. The pending nonce is necessarily read with `pending`.
 
 ### 2. Where the code lives
 
@@ -86,13 +89,15 @@ Preparation **fails closed**: any refusal means no intent. Each refusal has one 
 in a fixed order (spec §4):
 
 - **Inputs** (`RNTP_INPUT_INVALID`):
-  - 2 to 4 providers, distinct by id and URL, all on the requested network;
+  - 2 to 4 providers, distinct by id, URL and operator, all on the requested network. Before
+    any live use, providers must also come from `loadEndpointConfig`, which normalizes URLs;
   - XRPL: `account` is the classic address of `signingPubKey`;
   - `now` is integer Unix seconds.
 - **Per provider, first while reading.** Each response is checked as it arrives, in request
   order (spec §3), and the first failure stops the run:
   - transport and HTTP failures (`RNTP_PROVIDER_UNAVAILABLE`);
-  - RPC errors (`RNTP_PROVIDER_ERROR`; an unfunded XRPL account is `RNTP_ACCOUNT_NOT_FOUND`);
+  - RPC errors, `txnNotFound` included (`RNTP_PROVIDER_ERROR`; an unfunded XRPL account is
+    `RNTP_ACCOUNT_NOT_FOUND`);
   - strict JSON and shape (`RNTP_MALFORMED`). This includes:
     - duplicate keys;
     - non-canonical hex quantities;
@@ -104,7 +109,8 @@ in a fixed order (spec §4):
 - **Per provider, then on what it reported**, in this order:
   - **XRPL:**
     - `server_state` is `full`, `proposing` or `validating` (`RNTP_NOT_SYNCED`);
-    - the validated ledger is at most 30 s old (`RNTP_STALE`);
+    - the validated ledger's `age`, as the provider reports it, is at most 30 s (`RNTP_STALE`).
+      This is the provider's claim: `now` is not compared with a ledger close time;
     - `account_info` is from a validated ledger 0 to 2 ledgers after `server_info`'s, with
       the same hash when it is the same ledger, and is for the requested account
       (`RNTP_INCONSISTENT`);
@@ -122,8 +128,10 @@ in a fixed order (spec §4):
     - the estimate is at most the 30,000 gas limit (`RNTP_GAS_TOO_HIGH`), and not below the
       intrinsic gas (`RNTP_INCONSISTENT`).
 - **Across providers:**
-  - XRPL: validated ledgers at most 4 apart, and equal `Sequence` (`RNTP_INCONSISTENT`);
-  - Sepolia: latest blocks at most 4 apart, and equal nonce (`RNTP_INCONSISTENT`). Every
+  - XRPL: validated ledgers at most 4 apart, no ledger index reported with two different hashes,
+    and equal `Sequence` (`RNTP_INCONSISTENT`);
+  - Sepolia: latest blocks at most 4 apart, no block number reported with two different hashes,
+    and equal nonce (`RNTP_INCONSISTENT`). Every
     provider's balance must cover 30,000 × `maxFeePerGas` (`RNTP_INSUFFICIENT_BALANCE`).
 
 ### 5. Binding
@@ -148,8 +156,8 @@ in a fixed order (spec §4):
 
 ### 6. Evidence
 
-- **Corpus.** `fixtures/preparation-b2/cases.json` holds 71 synthetic cases: 10 accepted and 61
-  refused, covering every code. The expected codes are stated by hand in the generator.
+- **Corpus.** `fixtures/preparation-b2/cases.json` holds 78 synthetic cases: 11 accepted and 67
+  refused, covering all 15 codes. The expected codes are stated by hand in the generator.
 - **What a case holds.** Each case records:
   - the exact request and response text of every exchange;
   - the expected intent and digest, or the refusal code and provider.

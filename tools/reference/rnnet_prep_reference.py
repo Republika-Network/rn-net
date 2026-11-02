@@ -120,6 +120,10 @@ def parse_strict(body: bytes):
         raise ReadFail("RNLO_INVALID_JSON")
 
     def integer(t):
+        # As the JavaScript parser: -0 and anything outside the safe range stay as text. Long
+        # literals are never converted (Python limits int() to 4300 digits).
+        if t == "-0" or len(t.lstrip("-")) > 16:
+            return Raw(t)
         n = int(t)
         return n if -SAFE <= n <= SAFE else Raw(t)
 
@@ -204,6 +208,8 @@ def refusal_of(fail: ReadFail, provider_id):
         return Refusal("RNTP_WRONG_NETWORK", provider_id)
     if fail.code in ("RNLO_INVALID_JSON", "RNLO_INVALID_RESPONSE"):
         return Refusal("RNTP_MALFORMED", provider_id)
+    if fail.code == "RNLO_NOT_FOUND":
+        return Refusal("RNTP_PROVIDER_ERROR", provider_id)
     if fail.code == "RNLO_RPC_ERROR":
         return Refusal("RNTP_ACCOUNT_NOT_FOUND" if fail.detail == "actNotFound" else "RNTP_PROVIDER_ERROR", provider_id)
     return Refusal("RNTP_PROVIDER_UNAVAILABLE", provider_id)
@@ -347,12 +353,15 @@ def check_input(case):
     providers = inp.get("providers")
     if not isinstance(providers, list) or not 2 <= len(providers) <= 4:
         raise Refusal("RNTP_INPUT_INVALID")
-    ids, urls = set(), set()
+    ids, urls, operators = set(), set(), set()
     for p in providers:
-        if not all(isinstance(p.get(k), str) for k in ("id", "url", "operator")) or p["id"] in ids or p["url"] in urls:
+        if not isinstance(p, dict) or not all(isinstance(p.get(k), str) for k in ("id", "url", "operator")):
+            raise Refusal("RNTP_INPUT_INVALID")
+        if p.get("network") != net or p["id"] in ids or p["url"] in urls or p["operator"] in operators:
             raise Refusal("RNTP_INPUT_INVALID")
         ids.add(p["id"])
         urls.add(p["url"])
+        operators.add(p["operator"])
     if net == "xrpl:testnet":
         key, account = inp.get("signingPubKey"), inp.get("account")
         if not isinstance(key, str) or not XRPL_KEY.fullmatch(key):
@@ -393,7 +402,8 @@ def prepare_xrpl(case, providers):
                 raise Refusal(code, p.id)
         readings.append((p, o))
     seqs = [o["seq"] for _, o in readings]
-    if max(seqs) - min(seqs) > 4 or len({o["sequence"] for _, o in readings}) != 1:
+    ledgers = [(o["seq"], o["hash"]) for _, o in readings] + [(o["a_index"], o["a_hash"]) for _, o in readings]
+    if max(seqs) - min(seqs) > 4 or len(dict(ledgers)) != len(set(ledgers)) or len({o["sequence"] for _, o in readings}) != 1:
         raise Refusal("RNTP_INCONSISTENT")
     payload = anchor_ref.encode_payload(inp["commitment"]).hex().upper()
     tx = {
@@ -435,7 +445,8 @@ def prepare_sepolia(case, providers):
                 raise Refusal(code, p.id)
         readings.append((p, o))
     heights = [int(o["block"]["number"], 16) for _, o in readings]
-    if max(heights) - min(heights) > 4 or len({o["latest"] for _, o in readings}) != 1:
+    blocks = {(o["block"]["number"], o["block"]["hash"]) for _, o in readings}
+    if max(heights) - min(heights) > 4 or len(dict(blocks)) != len(blocks) or len({o["latest"] for _, o in readings}) != 1:
         raise Refusal("RNTP_INCONSISTENT")
     base = max(int(o["block"]["baseFeePerGas"], 16) for _, o in readings)
     max_fee = min(2 * base + TIP, FEE_CAP)

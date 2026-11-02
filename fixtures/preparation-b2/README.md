@@ -3,8 +3,8 @@
 **Synthetic preparation cases.** No provider was contacted, and nothing here was or can be sent
 to a network.
 
-`cases.json` (`rnnet.preparation-b2-fixtures.v1`) holds 71 cases: 10 accepted and 61 refused,
-covering every `RNTP_*` code. Each case has:
+`cases.json` (`rnnet.preparation-b2-fixtures.v1`) holds 78 cases: 11 accepted and 67 refused,
+covering all 15 `RNTP_*` codes. Each case has:
 - the inputs (the commitment, the sender, `now` and the providers);
 - every exchange: the exact request text, and the response status and body or the transport
   error;

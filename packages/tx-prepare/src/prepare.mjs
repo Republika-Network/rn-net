@@ -76,10 +76,14 @@ function checkCommon({ commitment, providers, transport, now }, network) {
   if (!Array.isArray(providers) || providers.length < minProviders || providers.length > maxProviders) fail(`${minProviders} to ${maxProviders} providers are required`);
   const ids = new Set();
   const urls = new Set();
+  const operators = new Set();
   for (const p of providers) {
     if (p === null || typeof p !== 'object' || typeof p.id !== 'string' || typeof p.url !== 'string' || typeof p.operator !== 'string') fail('provider must have id, url and operator');
     if (p.network !== network) fail(`provider ${p.id} is not configured for ${network}`);
     if (ids.has(p.id) || urls.has(p.url)) fail(`provider ${p.id} is given twice`);
+    // Agreement is only meaningful between different operators (ADR-RN-014).
+    if (operators.has(p.operator)) fail(`provider ${p.id} has the same operator as another provider`);
+    operators.add(p.operator);
     ids.add(p.id);
     urls.add(p.url);
   }
@@ -99,6 +103,8 @@ function refusal(error, providerId) {
       return new PrepError(C.MALFORMED, providerId, error.detail || undefined);
     case 'RNLO_RPC_ERROR':
       return new PrepError(error.detail === 'actNotFound' ? C.ACCOUNT_NOT_FOUND : C.PROVIDER_ERROR, providerId, error.detail || undefined);
+    case 'RNLO_NOT_FOUND': // txnNotFound: an RPC error like any other here
+      return new PrepError(C.PROVIDER_ERROR, providerId, 'txnNotFound');
     default:
       return new PrepError(C.PROVIDER_UNAVAILABLE, providerId, error.code);
   }
@@ -181,6 +187,8 @@ export async function prepareXrplIntent(input) {
 
   const validated = readings.map((r) => r.o.validatedLedger.index);
   if (maxOf(validated) - minOf(validated) > rules.maxValidatedSkew) throw new PrepError(C.INCONSISTENT, null, 'providers are too far apart');
+  const ledgers = readings.flatMap((r) => [r.o.validatedLedger, r.o.accountLedger]);
+  if (ledgers.some((a) => ledgers.some((b) => a.index === b.index && a.hash !== b.hash))) throw new PrepError(C.INCONSISTENT, null, 'one ledger index with two hashes');
   if (new Set(readings.map((r) => r.o.sequence)).size !== 1) throw new PrepError(C.INCONSISTENT, null, 'providers disagree on Sequence');
 
   // The expiry counts from the lowest validated ledger every provider reported.
@@ -236,6 +244,8 @@ export async function prepareSepoliaIntent(input) {
 
   const heights = readings.map((r) => BigInt(r.o.block.number));
   if (maxOf(heights) - minOf(heights) > BigInt(rules.maxBlockSkew)) throw new PrepError(C.INCONSISTENT, null, 'providers are too far apart');
+  const blocks = readings.map((r) => r.o.block);
+  if (blocks.some((a) => blocks.some((b) => a.number === b.number && a.hash !== b.hash))) throw new PrepError(C.INCONSISTENT, null, 'one block number with two hashes');
   if (new Set(readings.map((r) => r.o.nonceLatest)).size !== 1) throw new PrepError(C.INCONSISTENT, null, 'providers disagree on the nonce');
   // The fee is set from the highest base fee any provider reported, then capped (ADR-RN-016).
   const maxFeePerGas = sepoliaMaxFee(`0x${maxOf(readings.map((r) => BigInt(r.o.block.baseFeePerGas))).toString(16)}`);
