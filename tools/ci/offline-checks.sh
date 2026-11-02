@@ -104,6 +104,7 @@ run_checks() {
   python3 -I -B tools/reference/rnnet_anchor_reference.py
   python3 -I -B tools/reference/rnnet_genesis_reference.py
   python3 -I -B tools/reference/rnnet_tx_reference.py
+  python3 -I -B tools/reference/rnnet_prep_reference.py
   echo "::endgroup::"
 }
 

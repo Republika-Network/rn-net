@@ -7,7 +7,7 @@ that evidence on public test networks.
 
 ## Status
 
-**Early implementation (RN-NET-01 to RN-NET-03B1; RN-NET-03B2-A preflight; RN-NET-03B2-B1 offline signing toolchain).** This repository contains:
+**Early implementation (RN-NET-01 to RN-NET-03B1; RN-NET-03B2-A preflight; RN-NET-03B2-B1 offline signing toolchain; RN-NET-03B2-B2 read-only preparation).** This repository contains:
 
 - the canonical JSON profile and the evidence commitment format;
 - an independent, offline evidence verifier for one original, synthetic evidence
@@ -34,6 +34,10 @@ that evidence on public test networks.
   - a broadcaster hand-off check with no transport (`packages/broadcast-handoff/`).
 
   It is exercised only with keys derived from public labels.
+- read-only preparation of those unsigned transactions (RN-NET-03B2-B2, ADR-RN-018,
+  `packages/tx-prepare/`): it binds `Sequence`, nonce, expiry and fees from two providers' account
+  and fee state and refuses stale, inconsistent or malformed data. It is exercised only offline,
+  against synthetic provider fixtures, and has no live entry point.
 
 It submits no transactions and holds no operational keys. Only `tools/verify-live-anchor.mjs`, when run in
 live mode, contacts a network, and only with read-only methods. What providers report stays a

@@ -38,7 +38,7 @@ An intent is a JSON object with exactly these members:
 | `purpose` | `"genesis-proof-01"` |
 | `commitment` | `sha256:<64 lowercase hex>`: the `rnnet.evidence-commitment.v1` commitment anchored |
 | `transaction` | The completed unsigned transaction. It must pass the ADR-RN-016 check for its network (`checkXrplAnchorTx` / `checkSepoliaAnchorTx`) |
-| `preparation` | An object recording how the transaction was bound (the read-only observations at gate D; `{"source": "synthetic"}` in fixtures). Covered by the digest |
+| `preparation` | An object recording how the transaction was bound: an [`rnnet.tx-preparation.v1`](rnnet.tx-preparation.v1.md) record when bound from read-only observations (RN-NET-03B2-B2), or `{"source": "synthetic", ...}` in the B1 fixtures. Covered by the digest |
 
 **Additional rules:**
 - **The intent must be plain JSON data.** No inherited members, accessors or proxies.

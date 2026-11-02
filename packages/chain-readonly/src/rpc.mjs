@@ -8,10 +8,22 @@ import { JsonError, parseRpcJson } from './json.mjs';
 
 export const Network = Object.freeze({ XRPL_TESTNET: 'xrpl:testnet', SEPOLIA: 'evm:11155111' });
 
-/** The only methods that may be called, per network. Exact names; there is no pattern matching. */
+/**
+ * The only methods that may be called, per network. Exact names; there is no pattern matching.
+ * The first group reads an anchor transaction (ADR-RN-013). The second group reads account and fee
+ * state for transaction preparation (ADR-RN-018); none of them writes, signs or holds a key.
+ */
 export const READ_ONLY_METHODS = Object.freeze({
-  [Network.XRPL_TESTNET]: Object.freeze(['server_info', 'tx', 'ledger']),
-  [Network.SEPOLIA]: Object.freeze(['eth_chainId', 'eth_getTransactionByHash', 'eth_getTransactionReceipt', 'eth_getBlockByHash', 'eth_getBlockByNumber']),
+  [Network.XRPL_TESTNET]: Object.freeze(['server_info', 'tx', 'ledger', 'account_info']),
+  [Network.SEPOLIA]: Object.freeze([
+    'eth_chainId', 'eth_getTransactionByHash', 'eth_getTransactionReceipt', 'eth_getBlockByHash', 'eth_getBlockByNumber',
+    'eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas',
+  ]),
+});
+/** The methods ADR-RN-018 added for preparation, per network (a subset of READ_ONLY_METHODS). */
+export const PREPARATION_METHODS = Object.freeze({
+  [Network.XRPL_TESTNET]: Object.freeze(['account_info']),
+  [Network.SEPOLIA]: Object.freeze(['eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas']),
 });
 
 export const LIMITS = Object.freeze({
@@ -35,6 +47,7 @@ export class ReadError extends Error {
     super(detail ? `${code}: ${detail}` : code);
     this.name = 'ReadError';
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -99,10 +112,14 @@ export function requestBytes(network, method, params) {
 
 /**
  * Calls one read-only method on one provider and returns the parsed `result`.
- * @param {{ provider, transport, budget: { remaining: number } }} context
+ * `maxAttempts`, when given, lowers the attempts per request (1 means no retry); it can never
+ * exceed LIMITS.maxAttempts.
+ * @param {{ provider, transport, budget: { remaining: number }, maxAttempts?: number }} context
  */
 export async function call(context, method, params) {
   const { provider, transport, budget } = context;
+  const attempts = context.maxAttempts ?? LIMITS.maxAttempts;
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > LIMITS.maxAttempts) throw new TypeError('maxAttempts must be an integer from 1 to LIMITS.maxAttempts');
   let body;
   try {
     body = requestBytes(provider.network, method, params);
@@ -111,7 +128,7 @@ export async function call(context, method, params) {
     throw new ReadError('RNLO_INVALID_RESPONSE', 'a provider value cannot be sent back in a request');
   }
   let lastError;
-  for (let attempt = 1; attempt <= LIMITS.maxAttempts; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     if (budget.remaining <= 0) throw new ReadError('RNLO_REQUEST_BUDGET');
     budget.remaining -= 1;
     try {

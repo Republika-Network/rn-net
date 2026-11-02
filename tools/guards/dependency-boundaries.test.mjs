@@ -539,6 +539,25 @@ test('new packages are registered with their allowlists', () => {
   assert.deepEqual(rules('packages/broadcast-handoff/src/a.mjs', "import https from 'node:https';"), ['builtin-export-not-allowed:node:https#default', 'builtin-not-allowed:node:https']);
 });
 
+// RN-NET-03B2-B2 (ADR-RN-018): tx-prepare reads through chain-readonly and binds through tx-intent,
+// and nothing else: no signer, no transport, no network module, no key API.
+test('tx-prepare is limited to chain-readonly, tx-intent and hashing', () => {
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { x } from '../../chain-readonly/src/index.mjs';\nimport { y } from '../../tx-intent/src/index.mjs';\nimport { createHash } from 'node:crypto';\nimport { Buffer } from 'node:buffer';"), []);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { x } from '../../chain-readonly/src/rpc.mjs';"), ['private-import:chain-readonly/src/rpc.mjs']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { x } from '../../anchor/src/index.mjs';"), ['package-not-allowed:anchor']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { x } from '../../broadcast-handoff/src/index.mjs';"), ['package-not-allowed:broadcast-handoff']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { x } from '../../../signer/src/sign.mjs';"), ['import-outside-packages']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { x } from '../../../tools/live/https-transport.mjs';"), ['import-outside-packages']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import https from 'node:https';"), ['builtin-export-not-allowed:node:https#default', 'builtin-not-allowed:node:https']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { sign } from 'node:crypto';"), ['builtin-export-not-allowed:node:crypto#sign']);
+  assert.deepEqual(rules('packages/tx-prepare/src/a.mjs', "import { types } from 'node:util';"), ['builtin-export-not-allowed:node:util#types', 'builtin-not-allowed:node:util']);
+  assert.ok(rules('packages/tx-prepare/src/a.mjs', "const r = await fetch('https://example.org/');").length > 0);
+  // Nothing depends on tx-prepare: not the signer, not the hand-off, not the read-only package.
+  assert.deepEqual(rules('packages/chain-readonly/src/a.mjs', "import { x } from '../../tx-prepare/src/index.mjs';"), ['package-not-allowed:tx-prepare']);
+  assert.deepEqual(rules('packages/broadcast-handoff/src/a.mjs', "import { x } from '../../tx-prepare/src/index.mjs';"), ['package-not-allowed:tx-prepare']);
+  assert.deepEqual(rules('signer/src/a.mjs', "import { x } from '../../packages/tx-prepare/src/index.mjs';"), ['signer-import-not-allowed:packages/tx-prepare/src/index.mjs']);
+});
+
 // RN-NET-03B2-B1 independent review, finding 6: routes the first guard version missed.
 test('key-generation routes and indirect signer imports are reported', () => {
   assert.ok(rules('signer/src/a.mjs', 'const r = crypto.getRandomValues(new Uint8Array(32));').includes('global-crypto'));
