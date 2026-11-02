@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { encodeAnchorPayload } from '../../anchor/src/index.mjs';
 import {
-  checkCapture, encodeLiveReport, LIMITS, loadEndpointConfig, MAX_EXCHANGES_PER_PROVIDER, parseRpcJson, RawNumber, READ_ONLY_METHODS,
+  checkCapture, encodeLiveReport, LIMITS, loadEndpointConfig, MAX_EXCHANGES_PER_PROVIDER, parseRpcJson, PREPARATION_METHODS, RawNumber, READ_ONLY_METHODS,
   recordingTransport, replayTransport, ReplayMismatch, requestBytes, verifyLiveAnchor,
 } from '../src/index.mjs';
 import { COMMITMENT, fakeEvm, fakeXrpl, PAYLOAD, provider } from './fake-chains.mjs';
@@ -194,11 +194,19 @@ test('a response value with no canonical form never becomes an observation', asy
 });
 
 test('only allowlisted read-only methods can be built', () => {
-  assert.deepEqual(READ_ONLY_METHODS['xrpl:testnet'], ['server_info', 'tx', 'ledger']);
-  for (const method of ['submit', 'sign', 'wallet_propose', 'submit_multisigned', 'channel_authorize']) {
+  assert.deepEqual(READ_ONLY_METHODS['xrpl:testnet'], ['server_info', 'tx', 'ledger', 'account_info']);
+  assert.deepEqual(READ_ONLY_METHODS['evm:11155111'], [
+    'eth_chainId', 'eth_getTransactionByHash', 'eth_getTransactionReceipt', 'eth_getBlockByHash', 'eth_getBlockByNumber',
+    'eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas',
+  ]);
+  // ADR-RN-018 adds only these, all read-only.
+  assert.deepEqual(PREPARATION_METHODS['xrpl:testnet'], ['account_info']);
+  assert.deepEqual(PREPARATION_METHODS['evm:11155111'], ['eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas']);
+  for (const [network, methods] of Object.entries(PREPARATION_METHODS)) for (const m of methods) assert.ok(READ_ONLY_METHODS[network].includes(m));
+  for (const method of ['submit', 'sign', 'sign_for', 'wallet_propose', 'submit_multisigned', 'channel_authorize', 'account_objects', 'account_tx', 'fee', 'Account_info', 'account_info ']) {
     assert.throws(() => requestBytes('xrpl:testnet', method, {}), TypeError, method);
   }
-  for (const method of ['eth_sendRawTransaction', 'eth_sendTransaction', 'eth_sign', 'personal_sign', 'eth_signTypedData_v4', 'eth_accounts', 'eth_call', 'ETH_CHAINID', 'eth_chainId ']) {
+  for (const method of ['eth_sendRawTransaction', 'eth_sendTransaction', 'eth_sign', 'eth_signTransaction', 'personal_sign', 'eth_signTypedData_v4', 'eth_accounts', 'eth_call', 'eth_gasPrice', 'eth_feeHistory', 'eth_maxPriorityFeePerGas', 'wallet_sendCalls', 'ETH_CHAINID', 'eth_chainId ', 'eth_getbalance']) {
     assert.throws(() => requestBytes('evm:11155111', method, []), TypeError, method);
   }
   assert.throws(() => requestBytes('evm:1', 'eth_chainId', []), TypeError);

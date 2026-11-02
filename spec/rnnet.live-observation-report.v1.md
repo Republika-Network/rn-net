@@ -87,8 +87,11 @@ supported in v1.
 
 | Network | Methods |
 |---|---|
-| `xrpl:testnet` | `server_info`, `tx`, `ledger` |
-| `evm:11155111` | `eth_chainId`, `eth_getTransactionByHash`, `eth_getTransactionReceipt`, `eth_getBlockByHash`, `eth_getBlockByNumber` |
+| `xrpl:testnet` | `server_info`, `tx`, `ledger`; for preparation (ADR-RN-018), `account_info` |
+| `evm:11155111` | `eth_chainId`, `eth_getTransactionByHash`, `eth_getTransactionReceipt`, `eth_getBlockByHash`, `eth_getBlockByNumber`; for preparation (ADR-RN-018), `eth_getTransactionCount`, `eth_getBalance`, `eth_getCode`, `eth_estimateGas` |
+
+Verification (§5, §6) uses only the first group. The preparation methods are used by
+[rnnet.tx-preparation.v1](rnnet.tx-preparation.v1.md); none of them writes, signs or holds a key.
 
 Request bodies are built only by the package, as canonical JSON:
 

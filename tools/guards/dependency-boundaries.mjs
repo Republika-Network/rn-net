@@ -27,6 +27,7 @@ export const ALLOWED_BUILTINS = {
   'chain-readonly': ['node:buffer', 'node:crypto'],
   'tx-intent': ['node:buffer', 'node:crypto', 'node:util'],
   'broadcast-handoff': ['node:buffer', 'node:crypto'],
+  'tx-prepare': ['node:buffer', 'node:crypto'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
@@ -123,6 +124,8 @@ export const ALLOWED_PACKAGES = {
   'chain-readonly': ['canonical', 'anchor'],
   'tx-intent': ['canonical', 'anchor'],
   'broadcast-handoff': ['tx-intent'],
+  // Read-only preparation (ADR-RN-018): reads through chain-readonly, binds through tx-intent.
+  'tx-prepare': ['chain-readonly', 'tx-intent'],
 };
 
 // Whitespace, block comments or line comments, as allowed between tokens.
