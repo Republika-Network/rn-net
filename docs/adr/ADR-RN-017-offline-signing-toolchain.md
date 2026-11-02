@@ -2,7 +2,7 @@
 
 - Status: Accepted for offline gate A only (founder approval of PR #14 as implemented, RN-NET-03B2-B1 acceptance)
 - Date: 2026-11-01
-- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. Until it is accepted, the Decision below applies unchanged, and no real key may exist.
+- Amendment C1: **Accepted for the reviewed offline key-tool implementation only** (recorded when the founder merges this documentation change; the implementation is RN-NET-03B2-C4, PR #23, merged as main `7d6f449`, whose tree `50229ed` equals the reviewed head `9c0ad80`). This authorizes no real key generation (gate B) and no operational signing (gate D): no real key may exist until the founder separately authorizes gate B for a network.
 - Amends: [ADR-RN-005](ADR-RN-005-guard-parser-dependency.md). Before this ADR, `acorn` was the only third-party package, and the guard read only `packages/`.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Specification: [rnnet.unsigned-tx-intent.v1](../../spec/rnnet.unsigned-tx-intent.v1.md)
@@ -190,11 +190,12 @@ The guard now reads `signer/**` with its own allowlist:
   - the Genesis fixture and the ADR-RN-016 construction;
   - `packages/chain-readonly`, which stays read-only.
 
-## Amendment C1 (Proposed): testnet key generation, terminal approval and the persistent sign log
+## Amendment C1 (Accepted, offline implementation only): testnet key generation, terminal approval and the persistent sign log
 
-- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted. Accepting it would allow the
-  tooling below to be **implemented and tested offline** (milestone C4). It would authorize no
-  key generation (gate B), no funding (C), no signing (D) and no broadcasting (E).
+- Status: **Accepted for the reviewed offline key-tool implementation only** (RN-NET-03B2-C2
+  governance handoff; the implementation is RN-NET-03B2-C4, PR #23). It authorizes no key
+  generation (gate B), no funding (C), no signing (D) and no broadcasting (E). See *What this
+  acceptance covers* at the end of this amendment.
 - Founder decisions behind it (2026-11-02):
   - WSL ext4 is the intended location of the encrypted testnet-only key files, outside every
     repository and worktree;
@@ -314,3 +315,33 @@ The guard now reads `signer/**` with its own allowlist:
   published.
 - The guard gains three narrow exceptions (K1 randomness, the K5 entry point, K2–K4 I/O in that
   entry point). Each is pinned by a test.
+
+### What this acceptance covers, and what it does not
+
+Three separate decisions are involved. This acceptance is only the first:
+
+| Decision | Status | What it would allow |
+|---|---|---|
+| **Acceptance of the offline implementation** (this amendment) | **Accepted**, for the code reviewed in PR #23 as merged | The key tool in `tools/keytool/`, `signer/src/keygen.mjs`, `rnnet.sign-log-entry.v1` and their fixtures and Python reference, **as offline tooling**. Its tests use test-only key material, inside a network namespace |
+| **Operational gate B** (key generation), per network | **Not authorized** | Creating one real, encrypted testnet key file for that network, on WSL ext4, by the founder at the terminal. B-SEP also needs the renewed `@noble/*` approval (§6) |
+| **Operational gate D** (signing), per network | **Not authorized** | Signing one approved intent with that key, by the founder at the terminal, with the persistent sign log. D-SEP also needs the renewed `@noble/*` approval |
+
+- **No real key may exist** until the founder authorizes gate B for a network, in writing and
+  separately. This acceptance does not authorize running `keygen` on any real key location.
+- **No operational signing** until gate D is authorized for that network, separately, after gates
+  B and C, with an intent approved by digest.
+- **Gates C (funding), E (broadcasting) and F (publication)** remain unauthorized. ADR-RN-019
+  Amendment C1 (live entry points) stays **Proposed** until RN-NET-03B2-C2 has been reviewed.
+- **Deviations from the text above, as implemented and reviewed in C4:**
+  - the tool is `tools/keytool/`, not `tools/keys/`, because `.gitignore` and the forbidden-paths
+    guard refuse every `keys/` directory;
+  - the full 64-hex digest is shown, and the founder types the last 16;
+  - new key files need a passphrase of at least 20 characters; decryption keeps the existing
+    12-character minimum;
+  - a `KEY_CREATED` entry, public data only, opens each key's sign log.
+- **Non-blocking follow-ups of the C4 review, not changed by this acceptance:**
+  - non-literal `import()` outside `tools/submit/` was not counted by the guard. RN-NET-03B2-C2
+    addresses this in its graph rule, under review;
+  - signer tests use keys from the operating system's source;
+  - truncation of the sign log's tail cannot be detected;
+  - a passphrase held as a JavaScript string cannot be erased from memory.
