@@ -46,6 +46,11 @@ request bytes are built as in `rnnet.live-observation-report.v1` §3: canonical 
 7. `eth_estimateGas` `[{from, to: from, value: "0x0", data: <payload>}, B]`, where the payload is the
    `0x`-prefixed lower-case hex of the 42-byte anchor payload.
 
+**Pinning.** In this version `B` is a block **number**, which is enough for offline fixtures.
+Before an intent prepared from live Sepolia reads may be signed, ADR-RN-018 requires an amended
+version. In it, steps 3, 5, 6 and 7 name one agreed block **hash**, as
+`{blockHash, requireCanonical: true}` (EIP-1898), and every provider reads at that same hash.
+
 ## 4. Checks and refusal codes
 
 The first failing check gives the only code. A code that names a provider carries its id.

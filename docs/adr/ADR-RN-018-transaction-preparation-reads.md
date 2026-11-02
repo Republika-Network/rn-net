@@ -49,9 +49,20 @@ synthetic fixtures. No live provider is contacted, and nothing is signed, funded
 - **Pinned block number.** Sepolia account reads name the latest block's number, not the
   `latest` tag, so a new block arriving during the run does not change what they describe. This
   is stricter than design §6. It is pinned by number, not hash: after a reorganization at that
-  height, the reads could describe a different block from the recorded hash. Pinning by hash
-  (EIP-1898 `{blockHash, requireCanonical: true}`) is left for the live milestone, where provider
-  support can be checked. The pending nonce is necessarily read with `pending`.
+  height, the reads could describe a different block from the recorded hash. The pending nonce is
+  necessarily read with `pending`.
+- **Requirement before live signing: one agreed block hash.** Number pinning is accepted for the
+  offline fixtures only. Before any intent prepared from live Sepolia reads may be signed
+  (gate D), the following must be reviewed and accepted, as an amendment to this ADR:
+  - **Pinning by hash.** Preparation must pin the account reads (`eth_getTransactionCount` latest,
+    `eth_getBalance`, `eth_getCode`, `eth_estimateGas`) to a block **hash**, using the EIP-1898
+    form `{blockHash, requireCanonical: true}`.
+  - **One agreed block.** Every provider's reads must be made at that **same** hash, and every
+    provider must return that hash for the block.
+  - **Refusal.** A provider that cannot serve the agreed hash is refused; it is never replaced by
+    a number or a tag.
+  - **Provider support.** Support for this form must be confirmed for each reviewed provider,
+    with a separately authorized read-only check.
 
 ### 2. Where the code lives
 
@@ -191,6 +202,11 @@ in a fixed order (spec §4):
   consensus proof. A colluding or compromised pair could still report a wrong `Sequence` or
   nonce. The consequence is a transaction that fails, not one that moves value, because every
   bound is fixed independently of the providers.
+- **Carried, unresolved: the 1RPC finalized-block lag.** SMOKE-02 saw Automata 1RPC's
+  `finalized` block lag by about 67 minutes (preflight blocker 7; design §11). This ADR does not
+  resolve it, and preparation does not depend on `finalized`. It remains open until a separately
+  authorized read-only comparison of both Sepolia providers explains it. Until then, 1RPC's
+  finality answers must not be relied on.
 - **Thresholds are judgment calls.** The 30 s / 60 s freshness limits and the 4-ledger or
   4-block skew are proposals for the founder's acceptance. A slow provider makes preparation
   refuse, never accept.
