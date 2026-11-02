@@ -103,10 +103,49 @@ export const SIGNER_THIRD_PARTY = ['@noble/hashes/sha3.js', '@noble/curves/secp2
 export const SIGNER_PACKAGES = ['canonical', 'tx-intent'];
 // The only tools/ files that may import signer/ (the B1 fixture generator and tests). A raw-text
 // check over tools/, which is otherwise exempt: defense in depth, with review as the control.
-export const SIGNER_IMPORTERS = ['tools/signing/build-b1-fixtures.mjs', 'tools/signing.test.mjs', 'tools/broadcast/build-b3-fixtures.mjs'];
+// RN-NET-03B2-C4 adds the founder key tool's entry point, its tests and the C4 fixture generator.
+export const SIGNER_IMPORTERS = [
+  'tools/signing/build-b1-fixtures.mjs',
+  'tools/signing.test.mjs',
+  'tools/broadcast/build-b3-fixtures.mjs',
+  'tools/keytool/cli.mjs',
+  'tools/keytool.test.mjs',
+  'tools/signing/build-c4-fixtures.mjs',
+];
 // The guard's own tests hold such imports as string test data; they are exempt from that check
 // only, by exact path.
 const SIGNER_IMPORT_TEST_DATA = ['tools/guards/dependency-boundaries.test.mjs'];
+
+// Key generation (RN-NET-03B2-C4; ADR-RN-017 Amendment C1, K1). Exactly one signer/ file may draw
+// randomness, through exactly these exports; noble's keygen and randomSecretKey stay refused
+// everywhere (keyGenerationRoutes). Inside signer/, only tests may import it; outside signer/, only
+// KEYGEN_IMPORTERS may name it (raw text).
+export const SIGNER_KEYGEN_FILE = 'signer/src/keygen.mjs';
+export const SIGNER_KEYGEN_EXPORTS = { 'node:crypto': ['randomBytes', 'generateKeyPairSync'] };
+export const KEYGEN_IMPORTERS = ['tools/keytool/cli.mjs', 'tools/keytool.test.mjs', 'tools/signing/build-c4-fixtures.mjs'];
+
+// The founder key tool (tools/keytool/, ADR-RN-017 Amendment C1, K2 to K5). Named keytool, not
+// keys/, because .gitignore and the forbidden-paths guard refuse every keys/ directory.
+//   - only cli.mjs is an entry point, and only cli.mjs may import signer/ (three files of it);
+//   - only terminal.mjs may open /dev/tty, import node:tty or change terminal modes;
+//   - no environment variable, no network module, no child process, worker or code loader;
+//   - node:crypto only to hash; no randomness (that is signer/src/keygen.mjs);
+//   - relative imports only of tools/keytool/, the canonical and tx-intent entry points and
+//     txverify's entry point; never tools/live/, tools/submit/, chain-readonly or chain-submit;
+//   - and no file of it may reach a network file through the import graph.
+export const KEYTOOL = 'tools/keytool/';
+export const KEYTOOL_ENTRY_POINT = 'tools/keytool/cli.mjs';
+export const KEYTOOL_TERMINAL_FILE = 'tools/keytool/terminal.mjs';
+export const KEYTOOL_SIGNER_IMPORTS = ['signer/src/keyfile.mjs', 'signer/src/keygen.mjs', 'signer/src/sign.mjs'];
+export const KEYTOOL_IMPORTS = /^(?:tools\/keytool\/[a-z-]+\.mjs|packages\/(?:canonical|tx-intent)\/src\/index\.mjs|txverify\/src\/index\.mjs)$/;
+export const KEYTOOL_FORBIDDEN_MODULES = [
+  'node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dns', 'node:dgram', 'node:child_process', 'node:worker_threads', 'node:cluster',
+  'node:vm', 'node:inspector', 'node:repl', 'node:readline', 'node:module', 'node:process', 'node:wasi', 'node:sqlite',
+];
+export const KEYTOOL_CRYPTO_EXPORTS = ['createHash'];
+// Files outside tools/keytool/ that may import it: its tests and the C4 fixture generator. Nothing
+// else (in particular not the keyless broadcaster) may reach the signer through the key tool.
+export const KEYTOOL_IMPORTERS = ['tools/keytool.test.mjs', 'tools/signing/build-c4-fixtures.mjs', 'tools/signing/keytool-python.check.mjs'];
 
 // txverify/ (ADR-RN-019 §3): a separate npm project for VERIFICATION ONLY, with the same pinned noble
 // packages as signer/. Founder-approved for verification-only use in RN-NET-03B2-B3; that approval
@@ -411,6 +450,7 @@ export function check(files) {
       checkTxverify(path, content, add);
       continue;
     }
+    if (path.startsWith(KEYTOOL)) checkKeytool(path, content, add);
     if (!path.startsWith('packages/') && /\.(mjs|js|cjs|mts|cts|ts)$/.test(path) && content !== null) {
       checkToolsSignerImports(path, content, add);
       checkWriteTransportJoin(path, content, add);
@@ -539,6 +579,12 @@ function checkWriteTransportClosure(files, add) {
     const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
     const reachesWrite = [...seen].some(isWrite);
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
+    // The key tool may not reach the network at all, however indirectly (RN-NET-03B2-C4).
+    if (path.startsWith(KEYTOOL) && reachesNetwork) add(path, 'keytool-reaches-network');
+    // Nor may anything else reach key generation or the key tool through an allowed file (review
+    // C4-5): only signer/, the key tool and their listed importers.
+    const inner = path.startsWith('signer/') || path.startsWith(KEYTOOL) || KEYGEN_IMPORTERS.includes(path) || KEYTOOL_IMPORTERS.includes(path);
+    if (!inner && [...seen].some((p) => p === SIGNER_KEYGEN_FILE || p.startsWith(KEYTOOL))) add(path, 'keygen-reached-transitively');
   }
 }
 
@@ -570,9 +616,16 @@ function checkSigner(path, content, add) {
   const area = rest.startsWith('test/') ? 'test' : 'src';
   for (const { source, name } of analysis.builtinImports) {
     // Signer tests get the test built-ins, but not the test-only key APIs of packages/.
-    const allowed = [...(SIGNER_BUILTIN_EXPORTS[source] ?? []), ...(area === 'test' ? ALLOWED_BUILTIN_EXPORTS[source] ?? [] : [])];
+    const allowed = [
+      ...(SIGNER_BUILTIN_EXPORTS[source] ?? []),
+      ...(area === 'test' ? ALLOWED_BUILTIN_EXPORTS[source] ?? [] : []),
+      ...(path === SIGNER_KEYGEN_FILE ? SIGNER_KEYGEN_EXPORTS[source] ?? [] : []),
+    ];
     if (!allowed.includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
   }
+  // Only signer tests (and keygen.mjs itself) may name keygen.mjs; the rest of signer/src stays
+  // without randomness.
+  if (area === 'src' && path !== SIGNER_KEYGEN_FILE && /keygen\.mjs/.test(content)) add(path, 'signer-keygen-import-not-allowed');
   const builtins = area === 'test' ? [...SIGNER_BUILTINS, ...TEST_BUILTINS] : SIGNER_BUILTINS;
   for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
     if (specifier.startsWith('node:')) {
@@ -602,6 +655,17 @@ function checkSigner(path, content, add) {
 // tools/ is trusted tooling and exempt from the import allowlists, except that only the files in
 // SIGNER_IMPORTERS may import signer/ or the signer's libraries.
 function checkToolsSignerImports(path, content, add) {
+  if (!KEYGEN_IMPORTERS.includes(path) && !SIGNER_IMPORT_TEST_DATA.includes(path) && path !== 'tools/guards/dependency-boundaries.mjs' && /keygen\.mjs/.test(content)) {
+    add(path, 'keygen-importer-not-allowed');
+  }
+  if (!path.startsWith(KEYTOOL) && !KEYTOOL_IMPORTERS.includes(path) && !SIGNER_IMPORT_TEST_DATA.includes(path) && path !== 'tools/guards/dependency-boundaries.mjs') {
+    const viaKeytool = /import\s*\(\s*`[^`]*\bkeytool\/|createRequire[^\n]*\bkeytool\//.test(content) ||
+      [...new Set(rawImportsOf(content))].some((sp) => {
+        const target = resolve(path, sp);
+        return target === null ? sp.startsWith('.') && /keytool/i.test(safeDecode(sp)) : target.startsWith(KEYTOOL);
+      });
+    if (viaKeytool) add(path, 'keytool-importer-not-allowed');
+  }
   if (SIGNER_IMPORTERS.includes(path) || SIGNER_IMPORT_TEST_DATA.includes(path)) return;
   // Routes the specifier patterns cannot read: a template-literal import(), or a require-style
   // loader on one line, naming the signer directory.
@@ -713,6 +777,72 @@ function checkSubmitTools(path, content, add) {
     if (target === null) add(path, `unsupported-specifier:${specifier}`);
     else if (target.startsWith('tools/live/')) add(path, 'submit-imports-transport');
     else if (target.startsWith('signer/') || target.startsWith('tools/signing/')) add(path, 'signer-importer-not-allowed');
+  }
+}
+
+// tools/keytool/: the founder key tool (RN-NET-03B2-C4). See KEYTOOL above.
+function checkKeytool(path, content, add) {
+  if (!path.endsWith('.mjs')) {
+    if (path !== `${KEYTOOL}README.md`) add(path, 'non-module-file');
+    return;
+  }
+  if (!/^tools\/keytool\/[a-z-]+\.mjs$/.test(path)) add(path, 'keytool-file-name');
+  if (content === null) {
+    add(path, 'unreadable-module');
+    return;
+  }
+  for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
+  if (path !== KEYTOOL_ENTRY_POINT && (content.startsWith('#!') || /process\s*\.\s*argv|import\s*\.\s*meta\s*\.\s*main/.test(content))) add(path, 'keytool-entry-point');
+  if (path !== KEYTOOL_TERMINAL_FILE && /\/dev\/tty|setRawMode|node:tty|\btty\b['"]/.test(content)) add(path, 'keytool-terminal-outside-terminal-module');
+  // No other input or output route for a secret (review C4-5): the environment file, standard
+  // input, file descriptors, /dev/stderr and the user database.
+  if (/\/proc\/[^'"`\s]*environ|\/dev\/(?:stdin|stdout|stderr|fd\b)|\bstdin\s*\.\s*(?:read|on|once|pipe|setEncoding)\b|readFileSync\s*\(\s*0\b|\buserInfo\b/.test(content)) add(path, 'keytool-io-route');
+  // No environment variable: not process.env, not a destructured or computed process member.
+  if (/process\s*(?:\?\.\s*|\.\s*)env\b|\benv\s*[,}][^;]*=\s*process\b/.test(content)) add(path, 'keytool-environment');
+  let program;
+  try {
+    program = parse(content, PARSE_OPTIONS);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    add(path, 'unsupported-syntax');
+    return;
+  }
+  const analysis = analyze(program);
+  for (const problem of new Set(analysis.problems)) if (problem !== 'process-access') add(path, problem);
+  // The founder named the command `keygen`, so the word may appear as a string or an object key
+  // here; as a member access (noble's `secp256k1.keygen()`) it is still reported.
+  let keygenMember = false;
+  const findKeygenMember = (node) => {
+    if (node.type === 'MemberExpression' && (node.computed ? node.property.type === 'Literal' && node.property.value === 'keygen' : node.property.name === 'keygen')) keygenMember = true;
+    for (const [, child] of children(node)) findKeygenMember(child);
+  };
+  findKeygenMember(program);
+  for (const route of keyGenerationRoutes(content)) if (route !== 'key-generation:keygen' || keygenMember) add(path, route);
+  const visit = (node) => {
+    if (node.type === 'MemberExpression' && node.object.type === 'Identifier' && node.object.name === 'process' && (node.computed || node.property.name === 'env')) add(path, 'keytool-environment');
+    if (node.type === 'VariableDeclarator' && node.id.type === 'ObjectPattern' && node.init?.type === 'Identifier' && node.init.name === 'process') add(path, 'keytool-environment');
+    if (node.type === 'VariableDeclarator' && node.id.type === 'Identifier' && node.init?.type === 'Identifier' && node.init.name === 'process') add(path, 'keytool-environment');
+    for (const [, child] of children(node)) visit(child);
+  };
+  visit(program);
+  for (const { source, name } of analysis.builtinImports) {
+    if (source === 'node:crypto' && !KEYTOOL_CRYPTO_EXPORTS.includes(name)) add(path, `keytool-crypto-export-not-allowed:${name}`);
+  }
+  for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
+    if (specifier.startsWith('node:')) {
+      if (KEYTOOL_FORBIDDEN_MODULES.includes(specifier)) add(path, `keytool-module-not-allowed:${specifier}`);
+      if (specifier === 'node:tty' && path !== KEYTOOL_TERMINAL_FILE) add(path, 'keytool-terminal-outside-terminal-module');
+      continue;
+    }
+    if (!specifier.startsWith('.')) {
+      add(path, `third-party-import:${specifier}`);
+      continue;
+    }
+    const target = resolve(path, specifier);
+    if (target === null) add(path, `unsupported-specifier:${specifier}`);
+    else if (target.startsWith('signer/')) {
+      if (path !== KEYTOOL_ENTRY_POINT || !KEYTOOL_SIGNER_IMPORTS.includes(target)) add(path, `keytool-signer-import-not-allowed:${target}`);
+    } else if (!KEYTOOL_IMPORTS.test(target)) add(path, `keytool-import-not-allowed:${target}`);
   }
 }
 

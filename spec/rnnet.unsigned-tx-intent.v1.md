@@ -180,8 +180,9 @@ this interface and has no transport and no RPC write method.
 | `ciphertext` | The encrypted 32-byte secret (hex) |
 
 **Encryption:**
-- **Key:** scrypt(passphrase NFC UTF-8, salt), 32 bytes. The passphrase is at least 12
-  characters.
+- **Key:** scrypt(passphrase NFC UTF-8, salt), 32 bytes. Decryption accepts a passphrase of at
+  least 12 characters (unchanged since B1). Making a new file requires at least 20 (RN-NET-03B2-C4);
+  the format is unchanged.
 - **Authenticated data:** the canonical JSON of every member except `ciphertext` and
   `cipher.tag`.
 - **After decryption:** the public key and address are re-derived and must match the file.
@@ -189,8 +190,11 @@ this interface and has no transport and no RPC write method.
 **Errors:** a wrong passphrase or any changed member is `RNTX_KEYFILE_DECRYPT`; a malformed file
 is `RNTX_KEYFILE_INVALID`.
 
-In RN-NET-03B2-B1 this format is implemented and tested **in memory only**. Nothing reads or
-writes key files, and nothing generates keys.
+In RN-NET-03B2-B1 this format was implemented and tested **in memory only**. RN-NET-03B2-C4 adds
+the file storage (exclusive, durable, `0600` in a private `0700` ext4 directory outside every
+repository) and key generation, in [`tools/keytool/`](../tools/keytool/README.md) and
+`signer/src/keygen.mjs`, tested offline with synthetic keys only; at gate B the salt and IV come
+from the operating system. No real key file exists until gate B is authorized.
 
 ## 8. Signer refusals
 

@@ -1,9 +1,12 @@
 // rnnet.testnet-key-file.v1 (ADR-RN-017; spec/rnnet.unsigned-tx-intent.v1.md §7): an encrypted
 // testnet key, bound to one network and purpose.
 //
-// RN-NET-03B2-B1 implements and tests the format IN MEMORY ONLY: nothing here reads or writes a
-// file, generates a key or draws randomness. The caller supplies the salt and IV; storing,
-// loading and generating real key files are later milestones, each with its own approval.
+// Nothing here reads or writes a file, generates a key or draws randomness: the caller supplies
+// the salt and IV. RN-NET-03B2-C4 stores and loads key files in tools/keytool/ (ADR-RN-017 Amendment
+// C1, K2), with the salt and IV from the key generator.
+//
+// Passphrase length: decryption accepts at least 12 characters, exactly as in B1, so every file
+// B1 could make still opens. Encryption (making a new file) requires at least 20 (C4, K3).
 //
 //   KDF:    scrypt, N = 2^17, r = 8, p = 1, 16-byte salt, 32-byte key (about 128 MiB, so maxmem
 //           is raised above the 32 MiB default)
@@ -19,25 +22,37 @@ export const KEY_FILE_FORMAT = 'rnnet.testnet-key-file.v1';
 export const KDF = Object.freeze({ name: 'scrypt', N: 131_072, r: 8, p: 1 });
 const MAXMEM = 256 * 1024 * 1024;
 const MIN_PASSPHRASE = 12;
+/** The minimum passphrase length, in code points after NFC, for a NEW key file (RN-NET-03B2-C4). */
+export const MIN_CREATION_PASSPHRASE = 20;
 const HEX = (bytes) => new RegExp(`^[0-9a-f]{${bytes * 2}}$`);
 const TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const FIELDS = ['address', 'cipher', 'ciphertext', 'createdAt', 'format', 'kdf', 'network', 'publicKey', 'purpose'];
 
 const invalid = (detail) => new TxError(TxErrorCode.KEYFILE_INVALID, detail);
 
-function passphraseBytes(passphrase) {
-  if (typeof passphrase !== 'string' || [...passphrase.normalize('NFC')].length < MIN_PASSPHRASE) throw invalid(`passphrase must be at least ${MIN_PASSPHRASE} characters`);
+function passphraseBytes(passphrase, minimum) {
+  if (typeof passphrase !== 'string' || [...passphrase.normalize('NFC')].length < minimum) throw invalid(`passphrase must be at least ${minimum} characters`);
   return Buffer.from(passphrase.normalize('NFC'), 'utf8');
 }
 
-const derive = (passphrase, salt) => scryptSync(passphraseBytes(passphrase), salt, 32, { N: KDF.N, r: KDF.r, p: KDF.p, maxmem: MAXMEM });
+function derive(passphrase, salt, minimum) {
+  const bytes = passphraseBytes(passphrase, minimum);
+  try {
+    return scryptSync(bytes, salt, 32, { N: KDF.N, r: KDF.r, p: KDF.p, maxmem: MAXMEM });
+  } finally {
+    bytes.fill(0);
+  }
+}
 
 function aad(file) {
   const { ciphertext, cipher, ...rest } = file;
   return Buffer.from(canonicalBytes({ ...rest, cipher: { name: cipher.name, iv: cipher.iv } }));
 }
 
-/** Encrypts a key; returns the key-file object. `salt` (16 bytes) and `iv` (12 bytes) are required. */
+/**
+ * Encrypts a key; returns the key-file object. `salt` (16 bytes) and `iv` (12 bytes) are required,
+ * and the passphrase must be at least MIN_CREATION_PASSPHRASE characters.
+ */
 export function encryptKeyFile(key, passphrase, { salt, iv, createdAt }) {
   const bound = bindKey(key);
   if (!(salt instanceof Uint8Array) || salt.length !== 16) throw invalid('salt must be 16 bytes');
@@ -54,10 +69,16 @@ export function encryptKeyFile(key, passphrase, { salt, iv, createdAt }) {
     cipher: { name: 'aes-256-gcm', iv: Buffer.from(iv).toString('hex'), tag: '' },
     ciphertext: '',
   };
-  const encryption = createCipheriv('aes-256-gcm', derive(passphrase, salt), iv, { authTagLength: 16 });
-  encryption.setAAD(aad(file));
-  file.ciphertext = Buffer.concat([encryption.update(bound.secretKey), encryption.final()]).toString('hex');
-  file.cipher.tag = encryption.getAuthTag().toString('hex');
+  const key32 = derive(passphrase, salt, MIN_CREATION_PASSPHRASE);
+  try {
+    const encryption = createCipheriv('aes-256-gcm', key32, iv, { authTagLength: 16 });
+    encryption.setAAD(aad(file));
+    file.ciphertext = Buffer.concat([encryption.update(bound.secretKey), encryption.final()]).toString('hex');
+    file.cipher.tag = encryption.getAuthTag().toString('hex');
+  } finally {
+    key32.fill(0);
+    bound.secretKey.fill(0);
+  }
   return file;
 }
 
@@ -85,21 +106,32 @@ export function decryptKeyFile(input, passphrase) {
   const file = JSON.parse(Buffer.from(canonicalBytes(input)).toString('utf8'));
   checkShape(file);
   let secretKey;
+  let key32 = null;
   try {
-    const decryption = createDecipheriv('aes-256-gcm', derive(passphrase, Buffer.from(file.kdf.salt, 'hex')), Buffer.from(file.cipher.iv, 'hex'), { authTagLength: 16 });
+    key32 = derive(passphrase, Buffer.from(file.kdf.salt, 'hex'), MIN_PASSPHRASE);
+    const decryption = createDecipheriv('aes-256-gcm', key32, Buffer.from(file.cipher.iv, 'hex'), { authTagLength: 16 });
     decryption.setAAD(aad(file));
     decryption.setAuthTag(Buffer.from(file.cipher.tag, 'hex'));
-    secretKey = Uint8Array.from(Buffer.concat([decryption.update(Buffer.from(file.ciphertext, 'hex')), decryption.final()]));
+    const plain = Buffer.concat([decryption.update(Buffer.from(file.ciphertext, 'hex')), decryption.final()]);
+    secretKey = Uint8Array.from(plain);
+    plain.fill(0);
   } catch (error) {
     if (error instanceof TxError) throw error;
     throw new TxError(TxErrorCode.KEYFILE_DECRYPT, 'wrong passphrase or a changed key file');
+  } finally {
+    key32?.fill(0);
   }
   let bound;
   try {
     bound = bindKey({ network: file.network, purpose: file.purpose, secretKey });
   } catch {
     throw invalid('the decrypted secret is not a valid key for the file network');
+  } finally {
+    secretKey.fill(0);
   }
-  if (bound.publicKey !== file.publicKey || bound.address !== file.address) throw invalid('the decrypted secret does not match the public key and address');
+  if (bound.publicKey !== file.publicKey || bound.address !== file.address) {
+    bound.secretKey.fill(0);
+    throw invalid('the decrypted secret does not match the public key and address');
+  }
   return { network: bound.network, purpose: bound.purpose, secretKey: bound.secretKey };
 }
