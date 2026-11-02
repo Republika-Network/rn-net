@@ -1,11 +1,11 @@
 # ADR-RN-017: Offline test-only signing toolchain and its dependencies
 
-- Status: Proposed (RN-NET-03B2-B1)
+- Status: Accepted for offline gate A only (founder approval of PR #14 as implemented, RN-NET-03B2-B1 acceptance)
 - Date: 2026-11-01
 - Amends: [ADR-RN-005](ADR-RN-005-guard-parser-dependency.md). Before this ADR, `acorn` was the only third-party package, and the guard read only `packages/`.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Specification: [rnnet.unsigned-tx-intent.v1](../../spec/rnnet.unsigned-tx-intent.v1.md)
-- Design: [RN-NET-03B2-B signing design](../genesis/rn-net-03b2b-signing-design.md). This link resolves once PR #13 merges.
+- Design: [RN-NET-03B2-B signing design](../genesis/rn-net-03b2b-signing-design.md).
 
 ## Context
 
@@ -179,6 +179,11 @@ The guard now reads `signer/**` with its own allowlist:
 - **Supply chain.** Two more packages are fetched in CI, verified against the lockfile
   integrity, with install scripts disabled. Changing a version is a reviewed change to this ADR
   and to the guard's pins.
+- **What this acceptance covers.** It accepts the decisions above as implemented in PR #14
+  (`11ea4e3`), for the offline, test-only toolchain within gate A. It authorizes none of gates
+  B to F: no key generation or key file on disk, no funding, no operational signing and no
+  broadcasting. It does not renew the noble approval for gate B-SEP or D-SEP (§6), and it does
+  not accept ADR-RN-018 or ADR-RN-019.
 - **Unchanged:**
   - every existing format, specification, vector and commitment;
   - the Genesis fixture and the ADR-RN-016 construction;
