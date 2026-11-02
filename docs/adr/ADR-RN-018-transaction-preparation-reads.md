@@ -2,6 +2,7 @@
 
 - Status: Accepted for the offline read-only preparation architecture only (founder approval of PR #16 as implemented, RN-NET-03B2-B2 governance closure)
 - Date: 2026-11-01
+- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. It is the amendment §1 requires before live Sepolia signing; until it is accepted, the Decision below applies unchanged.
 - Amends: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md). It adds read-only methods to the allowlist and changes nothing else in that ADR.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md)
 - Specification: [rnnet.tx-preparation.v1](../../spec/rnnet.tx-preparation.v1.md)
@@ -228,3 +229,143 @@ in a fixed order (spec §4):
 - **Thresholds are judgment calls.** The 30 s / 60 s freshness limits and the 4-ledger or
   4-block skew are proposals for the founder's acceptance. A slow provider makes preparation
   refuse, never accept.
+
+## Amendment C1 (Proposed): EIP-1898 block-hash pinning and Sepolia provider freshness
+
+- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted. Accepting it would allow the live
+  preparation entry point to be **implemented and tested offline** (milestone C3). It would
+  authorize no live RPC call: the provider check in P5 and every preparation run need their own
+  read-only authorization, with an exact budget.
+- Readiness analysis: [RN-NET-03B2-C operational readiness](../genesis/rn-net-03b2c-operational-readiness.md) §4.
+
+### P1. One agreed block, chosen before any account read
+
+Sepolia preparation runs in two passes over the same two providers, in a fixed order:
+
+1. **Head pass.** On each provider: `eth_chainId`, then `eth_getBlockByNumber(["latest", false])`.
+   The §4 freshness and skew rules apply to these blocks unchanged:
+   - at most 60 s before `now`, less than 15 s after it;
+   - at most 4 blocks apart;
+   - no number reported with two hashes.
+2. **The pin.** P = (the **lowest** reported latest number) − 2. Two blocks of depth make it
+   less likely that P is reorganized away during the run, at a cost of about 24 s of freshness.
+3. **Pin pass.** On each provider, `eth_getBlockByNumber([P, false])`. Every provider must return
+   the **same** hash H for P (otherwise `RNTP_INCONSISTENT`), and a timestamp at most 90 s
+   before `now` (otherwise `RNTP_STALE`).
+4. **Pinned reads.** Each provider is read at
+   `{"blockHash": H, "requireCanonical": true}`:
+   - `eth_getTransactionCount` (latest);
+   - `eth_getBalance`;
+   - `eth_getCode`;
+   - `eth_estimateGas` (see P4).
+
+   The pending nonce stays `[from, "pending"]`: a pending state has no hash. It must still equal
+   the pinned nonce on every provider (`RNTP_NONCE_PENDING`). A transaction from the sender that
+   is mined after P makes the two differ, so the run refuses rather than binding a stale nonce.
+
+### P2. Refusal, never fallback
+
+- **A provider that cannot serve H is refused.** Any JSON-RPC error on a pinned read is
+  `RNTP_PROVIDER_ERROR`. That includes an unsupported block-hash parameter, an unknown block,
+  and a block that is no longer canonical.
+- **Never replaced.** A pinned read is never retried by number or by tag, and never sent to
+  another provider.
+- **No new codes.** These refusals use the existing codes (`RNTP_PROVIDER_ERROR`,
+  `RNTP_INCONSISTENT`, `RNTP_STALE`), so the refusal list of `rnnet.tx-preparation.v1` does not
+  change.
+
+### P3. Request list and budget per provider
+
+| Network | Requests, in order | Count |
+|---|---|---|
+| XRPL | `server_info`, `account_info` (unchanged) | 2 |
+| Sepolia | `eth_chainId`, `eth_getBlockByNumber` (latest), `eth_getBlockByNumber` (P), `eth_getTransactionCount` (H), `eth_getTransactionCount` (pending), `eth_getBalance` (H), `eth_getCode` (H), `eth_estimateGas` (H) | 8 |
+
+- **Totals per run, two providers:** 4 requests on XRPL, 16 on Sepolia.
+- **One attempt each, no retry**, with the 10 s deadline and 256 KiB response limit of ADR-RN-013.
+- **The head pass completes on both providers before the pin pass starts.**
+
+### P4. `eth_estimateGas` and EIP-1898
+
+- **EIP-1898 does not list `eth_estimateGas`.** It names `eth_getBalance`, `eth_getStorageAt`,
+  `eth_getTransactionCount`, `eth_getCode`, `eth_call` and `eth_getProof`. Whether
+  `eth_estimateGas` accepts the block-hash object depends on the client behind each provider.
+- **So P5 must check it for each provider.** If a provider refuses it, P2 applies and that
+  provider refuses preparation. RN-NET then has no working Sepolia pair.
+- **The way out is a separate founder decision**, not part of this amendment: allow only
+  `eth_estimateGas` by the number P. The estimate binds no field: it is only checked against the
+  fixed 30,000 limit and the intrinsic cost.
+
+### P5. Provider compatibility check, before C3 is used live
+
+One separately authorized, read-only run (milestone C6), with an exact budget, on
+`sepolia-publicnode` and `sepolia-1rpc`. On each provider it checks:
+
+- each pinned method with `{blockHash, requireCanonical: true}` at a recent hash;
+- the error each provider returns for an unknown hash;
+- whether `eth_estimateGas` accepts the object form;
+- the 1RPC `finalized` lag (below).
+
+The run reads **public, synthetic addresses only**. It reads no Genesis key's address, because
+none exists before gate B.
+
+### P6. The record format does not change
+
+- **`block` holds the pinned block P.** In the `rnnet.tx-preparation.v1` record, the provider's
+  `block` member `{number, hash, timestamp, baseFeePerGas}` now describes P, not the head.
+- **The head blocks are still covered.** Their request and response digests stay in `exchanges`,
+  like every other request.
+- **The fee rule is unchanged** and uses P's `baseFeePerGas`: `maxFeePerGas` = min(2 × the
+  highest base fee + 1 gwei, 20 gwei). The newest head can be up to 6 blocks past P (4 of skew
+  and 2 of depth). Over 6 full blocks the base fee can rise by up to 1.125^6 ≈ 2.03 times, just
+  past the factor of 2. In that extreme case the broadcaster's pre-submit base-fee check
+  (ADR-RN-019 §6) refuses before any write (`NOT_SENT`), and a new gate D follows. Nothing is
+  sent when the latest base fee is already too high. A rise after the submission can still leave
+  the transaction pending (ADR-RN-019 §8).
+- **No version bump.** No field or type changes, and every record that exists today is a
+  synthetic fixture, so the format identifier stays `rnnet.tx-preparation.v1`.
+- **What C3 changes.** The specification text (request list, meaning of `block`) and the B2
+  fixtures and Python reference are changed in C3 and reviewed there. This PR changes no code.
+
+### P7. Finality, which preparation does not use
+
+- **Preparation never reads `finalized`.** A reorganization after the run cannot change any
+  bound value without being caught: the broadcaster's pre-submit reads (ADR-RN-019 §6) re-check
+  the latest and pending nonce, the balance and the base fee.
+- **Inclusion is checked at gate F.** It is `PROVIDER_REPORTED_FINALIZED` by the parent-hash
+  walk. On Sepolia that is normally two epochs, about 13 minutes or more after inclusion.
+- **The 1RPC `finalized` lag stays unresolved** (§ Consequences above). Until P5 explains it, a
+  1RPC finality answer alone is not relied on.
+
+### P8. XRPL freshness, unchanged
+
+The XRPL rules stay as in §4:
+- the validated ledger `age`, as the provider reports it, is at most 30 s;
+- providers are at most 4 ledgers apart;
+- the reported ledger hashes agree.
+
+XRPL has no block-hash pinning issue: `account_info` names `validated`, and §4 already requires
+it to be 0 to 2 ledgers after `server_info`'s, with the same hash when it is the same ledger. The
+only XRPL change is the ADR-RN-016 Amendment C1 offset (+ 80 in place of + 20 in §5).
+
+### P9. The live entry point
+
+- **One named file.** `tools/prepare/prepare-live.mjs` (C3) would be the only file allowed to
+  join `packages/tx-prepare` to the network transport. Once this amendment is accepted and that
+  file is reviewed, it replaces §2's "no live entry point".
+- **What it does:**
+  - it takes the providers by id from `config/rpc-endpoints.json`, through `loadEndpointConfig`;
+  - its budget is fixed in code as in P3, never set by an argument;
+  - it refuses to run without a founder-written read authorization for that one run;
+  - it writes the intent and its captures to a new private directory (`0700`, files `0600`,
+    `wx`) outside every repository.
+- **It cannot sign or submit.** It has no access to a key, `signer/` or `chain-submit`.
+
+### Consequences
+
+- Sepolia preparation costs one more request per provider (8 in place of 7), and binds every
+  account read to one block that both providers agree on.
+- If a provider cannot serve the block-hash form, preparation refuses on that provider. P4 is
+  the likeliest case, and P5 finds out before any key exists.
+- The commitment, the payload, the intent format, the record format and the fee, nonce and gas
+  bounds are unchanged.

@@ -2,6 +2,7 @@
 
 - Status: Accepted for the offline architecture and simulated implementation only (founder approval of the PR #18 design, RN-NET-03B2-B3 Gate A). No real broadcast, live RPC call or operational key is authorized
 - Date: 2026-11-01
+- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. Until it is accepted, the Decision below applies unchanged, and `WRITE_TRANSPORT_JOINERS` stays empty.
 - Builds on: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md), [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-018](ADR-RN-018-transaction-preparation-reads.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md), [ADR-RN-015](ADR-RN-015-live-finality-trust-semantics.md)
 - Specification: [rnnet.unsigned-tx-intent.v1](../../spec/rnnet.unsigned-tx-intent.v1.md) §5 and §6. The submission formats in §7 below become a specification when B3 is implemented.
 - Design and plan: [RN-NET-03B2-B3 broadcaster design](../genesis/rn-net-03b2b3-broadcaster-design.md)
@@ -351,3 +352,119 @@ its own read-only authorization, with its request budget.
   - **The submission log is local.** If the founder runs from two machines, it cannot prevent
     reuse there. Gate E is run from one machine, by one operator.
 - **Cost.** Testnet value only; see the design §6. Nothing here spends real funds.
+
+## Amendment C1 (Proposed): live entry points, request budgets, single-attempt authorization and uncertain outcomes
+
+- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted. Accepting it would allow the entry
+  points below to be **implemented and tested offline, against simulated providers** (milestone
+  C2). It would authorize no write request, no live read, and none of gates B to F. The live
+  broadcasting authorization stays separate from the accepted offline architecture (founder
+  decision, 2026-11-02).
+- Readiness analysis: [RN-NET-03B2-C operational readiness](../genesis/rn-net-03b2c-operational-readiness.md) §3.
+
+### E1. The live entry points, all of them
+
+| Entry point | Milestone | Joins | Network use | Governed by |
+|---|---|---|---|---|
+| `tools/prepare/prepare-live.mjs` | C3 | `tx-prepare` + transport | read-only | ADR-RN-018 Amendment C1 (P9) |
+| `tools/submit/submit-anchor.mjs` | C2 | `tools/submit/broadcaster.mjs` + `chain-submit` + transport | 1 write and its pre-submit reads | this amendment |
+| `tools/submit/status-check.mjs` | C2 | `tools/submit/status.mjs` + transport | read-only | this amendment |
+| `tools/verify-live-anchor.mjs` | exists | `chain-readonly` + transport | read-only | ADR-RN-013 |
+| `tools/keys/…` (signer command line) | C4 | `signer/` | **none** (`unshare -rn`) | ADR-RN-017 Amendment C1 |
+
+- **The one write joiner.** `submit-anchor.mjs` would become the only member of
+  `WRITE_TRANSPORT_JOINERS`.
+- **Narrow guard exemptions.** `status-check.mjs` would be the only other `tools/submit/` file
+  allowed to import the transport, and only for reads. Each exemption is pinned by a test.
+- **Rules for every live entry point:**
+  - `process.argv` only in the entry file;
+  - providers by id from `config/rpc-endpoints.json`;
+  - the budget fixed in code (E2), never an argument;
+  - no retry option, fee option or field option;
+  - evidence written to a new private directory outside every repository (§7).
+- **Prerequisites before C2 can be merged.** The PR #20 review's follow-ups N1 to N5 must be
+  fixed and reviewed first (readiness §3). N1 matters most: hand-written network code in
+  `tools/` must count as network in the graph rule before a file there may join the transport.
+
+### E2. Request budgets, per run
+
+| Run | XRPL Testnet | Ethereum Sepolia |
+|---|---|---|
+| Preparation (gate D reads) | 4: 2 per provider | 16: 8 per provider (ADR-RN-018 Amendment C1, P3) |
+| Submission (gate E) | 7: 6 pre-submit reads (§6) + **1** `submit` | 13: 12 pre-submit reads (§6) + **1** `eth_sendRawTransaction` |
+| Status check (after `UNCERTAIN`) | The verifier run, plus at most 3 absence reads per provider | The same |
+| Gate F verification | The verifier's ADR-RN-013 limits, `--compare-providers` | The same; a finality walk is at most 262 calls per provider |
+
+- **One attempt per request** on the preparation and submission runs, with no retry, no
+  fallback and no polling.
+- **The exact count goes in the authorization.** For status checks and gate F, the verifier's
+  existing cap (`LIMITS.maxRequestsPerProvider`) bounds the run. C2 must state each network's
+  expected count, and the authorization names it.
+
+### E3. One authorization, one attempt
+
+- **Who writes it.** Each `rnnet.broadcast-authorization.v1` is written by the founder, for one
+  network, one provider and one attempt. The format is unchanged.
+- **A draft, not a hand-typed record.** To fit the XRPL window (ADR-RN-016 Amendment C1), the
+  signer's command line prints a **draft** after signing, with the recomputed:
+  - intent digest;
+  - blob SHA-256;
+  - expected transaction hash;
+  - `LastLedgerSequence`.
+
+  The founder checks it, adds the scope statement, and saves it with mode `0600`. The
+  broadcaster cannot tell who wrote a file, so who writes it remains a procedural control.
+- **Sepolia validity.** `notAfter` is at most 60 minutes after the authorization is written.
+- **Who runs gate E.** The founder runs E-XRPL at the terminal, in the same sitting as D-XRPL.
+  E-SEP may follow later, under its own authorization.
+- **Every run consumes its authorization,** a `--dry-run` included (§5).
+- **No implicit retry.** Re-sending the same blob, or using the other provider after `NOT_SENT`
+  or `REJECTED`, is a new authorization with the next attempt number.
+- **The `RESOLVED` rule.** After `UNCERTAIN`, nothing may be sent for that `Sequence` or nonce
+  until a status check records `RESOLVED` (§5 rule 2).
+
+### E4. The XRPL margin, stated once
+
+The broadcaster refuses before any write when `LastLedgerSequence` − (a validated ledger it
+reads) ≤ 4, so at least 5 ledgers must remain.
+
+This is §5's "void once a validated ledger reaches `LastLedgerSequence` − 4", and the code
+(`validatedLedger >= lastLedgerSequence - 4`). The founder kept it unchanged. Two texts say it
+differently and should be read this way:
+- §6's "at least 4 ledgers must remain" means "more than 4";
+- C2 corrects the broadcaster's message "fewer than 4 ledgers remain" to match.
+
+### E5. Uncertain outcomes
+
+Every outcome other than `ACCEPTED_PROVISIONAL` and `NOT_SENT` stops the run (§6). The next step
+is never automatic. Each is its own founder-authorized run (`rnnet.status-authorization.v1`):
+
+| Network, outcome | Wait before the status check | Possible findings | What follows |
+|---|---|---|---|
+| XRPL, `UNCERTAIN` | Until a validated ledger is past `LastLedgerSequence` (about 5 minutes with the + 80 offset), and **within 1,000 ledgers** of the attempt's observed ledger (`MAX_LEDGER_RANGE`, about 50 to 80 minutes) | `INCLUDED`, or `EXPIRED` (a ranged `tx` with `searched_all: true` and an unchanged `Sequence`, on both providers) | `INCLUDED`: gate F. `EXPIRED`: a new gate D with the **same** `Sequence`, with the status record as the sign log's `RESIGN_BASIS` (ADR-RN-017 Amendment C1, K4). Neither finding: stop, and report to the founder |
+| XRPL, `REJECTED` | none | — | Same bytes: a new authorization, attempt + 1, before expiry. Changed bytes: a new gate D |
+| Sepolia, `UNCERTAIN` | Long enough for finality (about 15 minutes), and inside the finality walk window (about 60 minutes after inclusion; readiness §4) | `INCLUDED` (finalized on PublicNode, §8) or `PENDING` | `INCLUDED`: gate F. `PENDING`: another separately authorized status check later, or a same-nonce replacement (not built; its own founder decision). **Never a new nonce** |
+
+- **History.** A status check needs both XRPL providers to hold complete history for the range.
+  C6 checks `complete_ledgers` (readiness §4).
+- **No outcome is proof.** As before, `CHAIN_PROVEN` is never produced.
+
+### E6. `fail_hard`, still unresolved
+
+Until the rippled source is read and the finding recorded, XRPL `tec*` and `terQUEUED` stay
+`UNCERTAIN` (§6):
+- the source is read at the release tag that both Testnet providers report as `build_version`;
+- that is a reading of public source code, not an RPC call;
+- the finding is recorded in C2.
+
+**A hypothesis to check, not a finding:** rippled discards a `tec` result when the `tapFAIL_HARD`
+flag is set, so the transaction is neither applied nor relayed. If the source confirms this,
+`tec*` under `fail_hard` would become `REJECTED` (nothing applied). That change would need a
+reviewed amendment, with the classifier and its Python reference changed together.
+
+### Consequences
+
+- The keyless architecture, the formats (`rnnet.broadcast-authorization.v1`,
+  `rnnet.submission-record.v1`, `rnnet.submission-log-entry.v1`,
+  `rnnet.submission-status.v1`) and the outcome classes are unchanged.
+- The only changes are which files may run live, and the budgets, procedures and wording above.

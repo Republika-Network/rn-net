@@ -2,6 +2,7 @@
 
 - Status: Accepted (founder approval of PR #10 as implemented, RN-NET-03B2-A acceptance)
 - Date: 2026-11-01
+- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. Until it is accepted, the Decision below applies unchanged.
 - Builds on: [ADR-RN-009](ADR-RN-009-anchor-payload-encoding.md), [ADR-RN-010](ADR-RN-010-xrpl-testnet-memo-anchoring.md), [ADR-RN-011](ADR-RN-011-sepolia-transaction-data-anchoring.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Design: [Genesis Proof 01 preflight](../genesis/genesis-proof-01-preflight.md), [authorization](../genesis/genesis-proof-01-authorization.md)
 
@@ -91,3 +92,78 @@ are.
 - **What the anchor shows.** As ADR-RN-012 allows, the anchors show the same commitment payload
   in the data reported for both networks. They say nothing about whether the synthetic evidence is
   true. `CHAIN_PROVEN` is still never produced.
+
+## Amendment C1 (Proposed): XRPL expiry offset and submission margin
+
+- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted, and accepting it would authorize
+  none of gates B to F.
+- Founder decision behind it (2026-11-02): draft a proposal raising the offset from 20 to 80
+  validated ledgers, and keep the broadcaster's refusal when four or fewer ledgers remain. This
+  is a testnet execution proposal. It does not authorize signing or broadcasting.
+- Readiness analysis: [RN-NET-03B2-C operational readiness](../genesis/rn-net-03b2c-operational-readiness.md) §2.
+
+### Why
+
+Decision §1 sets `LastLedgerSequence` = the latest validated ledger + 20. XRPL closes a ledger
+every 3 to 5 s, so the transaction is valid for about 60 to 100 s after preparation. ADR-RN-019
+§5 also voids the broadcast authorization once 4 or fewer ledgers remain, leaving about 48 to
+80 s. Every step after preparation must fit in that time:
+
+1. the founder reviews the printed intent and approves it by digest (gate D);
+2. the passphrase prompt and the scrypt key derivation;
+3. one signature, the signer's self-check and the two verifications;
+4. the founder writes the `rnnet.broadcast-authorization.v1`. It binds the blob SHA-256 and the
+   transaction hash, so it cannot be written before signing;
+5. the broadcaster's own two verifications and its 6 pre-submit reads, then the submission.
+
+That does not fit reliably with a person at every step. An expired attempt is safe (nothing is
+sent once the authorization is void), but it is slow: the signer's sign log then refuses a
+second signature for that `Sequence` until a status check past `LastLedgerSequence` records the
+first transaction as absent (ADR-RN-019 §8), and a new gate D follows.
+
+### Proposed change
+
+1. **Offset.** `LastLedgerSequence` = the **lowest** validated ledger reported by the
+   preparation providers + **80** (ADR-RN-018 §5 binding, with 80 in place of 20).
+2. **Submission margin, unchanged.** The broadcaster refuses, before any write, once a validated
+   ledger it reads satisfies `LastLedgerSequence` − ledger ≤ 4 (ADR-RN-019 §5 and the code's
+   `validatedLedger >= lastLedgerSequence - 4`). So at least 5 ledgers must remain at the
+   pre-submit read. The amendment to ADR-RN-019 corrects §6's wording to match.
+3. **Testnet only, no format change.** `LastLedgerSequence` is already an intent field, bound at
+   gate D and covered by the intent digest. The ADR-RN-016 check accepts any `UInt32` value, so
+   neither the check, the intent format, the payload nor any commitment changes.
+4. **What changes in code, in a later reviewed PR (C3), not here:** `XRPL.lastLedgerOffset` in
+   `packages/tx-intent/src/genesis.mjs`, the `+ 20` in
+   `tools/reference/rnnet_prep_reference.py`, `spec/rnnet.tx-preparation.v1.md` §5 (binding and
+   the overflow case, which becomes "within 80 of 2^32−1"), the preflight template text, and the
+   B2 fixtures and expected intent digests that follow from them. Until that PR merges, the code
+   still binds + 20.
+
+### Window it gives
+
+| | Ledgers | At 3 s | At 4 s | At 5 s |
+|---|---|---|---|---|
+| Offset from the lowest provider's validated ledger | 80 | 240 s | 320 s | 400 s |
+| Worst case, measured from the highest provider (4-ledger skew, ADR-RN-018 §4) | 76 | 228 s | 304 s | 380 s |
+| Usable before the authorization is void (≤ 4 left refused) | 72 | 216 s | 288 s | 360 s |
+| Left for the submission itself after the last pre-submit read | ≥ 5 | ≥ 15 s | ≥ 20 s | ≥ 25 s |
+
+### Consequences
+
+- **Feasible, with conditions.** About 3.6 minutes in the worst case is enough for the steps above
+  only if:
+  - the founder does not type the authorization fields by hand; tooling prints a draft with
+    the recomputed digests for the founder to check and save (ADR-RN-019 Amendment C1, E3; readiness §8);
+  - the sequence is rehearsed end to end against simulated providers first, with timings;
+  - D-XRPL and E-XRPL run in one sitting, on one machine, with the WSL clock checked.
+- **No added risk.** XRPL sets no upper bound on `LastLedgerSequence`. A longer window:
+  - lets a queued transaction be included later, not earlier;
+  - does not let the transaction move value (a zero-value `AccountSet`);
+  - delays the earliest expiry finding by about 4 to 5 minutes.
+- **Mainnet replay, unchanged in practice.** Replay needs a Mainnet account with the signed
+  `Sequence` and a Mainnet ledger at or below `LastLedgerSequence` (signing design §8). The
+  Testnet ledger index (21,917,563 at SMOKE-01) is far below Mainnet's, so a 60-ledger change
+  does not alter that. This is a stated assumption: RN-NET has no reviewed Mainnet provider and
+  makes no Mainnet read.
+- **Unchanged:** the fee (12 drops, cap 1,000), the key, the memo, `Sequence` handling, and every
+  gate.
