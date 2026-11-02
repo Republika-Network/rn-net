@@ -390,3 +390,29 @@ only XRPL change is the ADR-RN-016 Amendment C1 offset (+ 80 in place of + 20 in
   the likeliest case, and P5 finds out before any key exists.
 - The commitment, the payload, the intent format, the record format and the fee, nonce and gas
   bounds are unchanged.
+
+### C3 implementation record (RN-NET-03B2-C3)
+
+This amendment stays **Proposed**. RN-NET-03B2-C3 implements it offline, with live network access
+disabled. It accepts nothing and authorizes nothing.
+- **P1 to P3.** `packages/tx-prepare` reads Sepolia in three passes (head, pin, pinned) over one
+  request budget of 8 per provider.
+  - Every pinned read carries `{blockHash, requireCanonical: true}`, and the pending nonce `"pending"`.
+  - A pinned read is never sent another way.
+  - `tools/prepare/policy.mjs` also refuses, before the transport, any request not in the plan or
+    not in its planned form.
+- **P2 and P4.** A JSON-RPC error on a pinned read is `RNTP_PROVIDER_ERROR`, with no new code,
+  marked `blocked` (`BLOCK_HASH_READ_REFUSED`, or `GAS_ESTIMATION_UNAVAILABLE` for
+  `eth_estimateGas`). The entry point reports it as `BLOCKED`.
+  - Support is not assumed: `SEPOLIA_COMPATIBILITY` is unrecorded for both providers.
+  - While it is unrecorded, Sepolia preparation is `BLOCKED` before any read, until C6 (P5)
+    records support.
+  - No alternative estimation strategy was built.
+- **P6.** The record's `block` is the pin, and the fee is set from its base fee; the format is
+  unchanged. Heads are still held to the 19 gwei cap, as before.
+- **The entry point.** `tools/prepare/prepare-live.mjs` is specified in
+  `spec/rnnet.preparation-authorization.v1.md`, the read-only authorization this amendment's status
+  line requires. As a command it refuses with `RNPL_LIVE_DISABLED`.
+- **Found by the offline rehearsal.** The time preparation checks freshness against is read after
+  the founder's approval, not before it. Otherwise blocks made while the founder reads the prompt
+  would be refused as "in the future".

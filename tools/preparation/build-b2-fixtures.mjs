@@ -33,7 +33,7 @@ import {
 } from '../../packages/tx-prepare/test/fake-providers.mjs';
 
 export const PATH = fileURLToPath(new URL('../../fixtures/preparation-b2/cases.json', import.meta.url));
-export const FIXTURES_FORMAT = 'rnnet.preparation-b2-fixtures.v1';
+export const FIXTURES_FORMAT = 'rnnet.preparation-b2-fixtures.v2';
 
 const X = 'xrpl:testnet';
 const S = 'evm:11155111';
@@ -47,14 +47,18 @@ const q = (n) => `0x${BigInt(n).toString(16)}`;
 
 // --- the cases ------------------------------------------------------------------------------------
 // Each XRPL case: servers for a and b (xrplServer options); each Sepolia case likewise.
-// `expect` is [code, providerId] for a refusal, or 'PASS'.
+// `expect` is [code, providerId] or [code, providerId, blockedReason] for a refusal, or 'PASS'.
 
 const xrplDefault = { [XA]: {}, [XB]: { seq: B } };
 const xrplB = (opts) => ({ [XA]: {}, [XB]: { seq: B, ...opts } });
 const xrplA = (opts) => ({ [XA]: opts, [XB]: { seq: B } });
-const sepDefault = { [SA]: {}, [SB]: { number: 9_437_185, timestamp: NOW - 1 } };
-const sepB = (opts) => ({ [SA]: {}, [SB]: { number: 9_437_185, timestamp: NOW - 1, ...opts } });
-const sepA = (opts) => ({ [SA]: opts, [SB]: { number: 9_437_185, timestamp: NOW - 1 } });
+const sepDefault = { [SA]: {}, [SB]: { number: 9_437_185 } };
+const sepB = (opts) => ({ [SA]: {}, [SB]: { number: 9_437_185, ...opts } });
+const sepA = (opts) => ({ [SA]: opts, [SB]: { number: 9_437_185 } });
+// The same change on both providers (a property of the chain, such as a block's base fee).
+const sepBoth = (opts) => ({ [SA]: opts, [SB]: { number: 9_437_185, ...opts } });
+// A raw hook for the pinned block only (eth_getBlockByNumber by number, not `latest`).
+const atPin = (answer) => (params) => (params[0] === 'latest' ? undefined : answer(params));
 const xrplError = (error) => () => reply(JSON.stringify({ result: { status: 'error', error, request: {} } }));
 const evmError = () => reply(JSON.stringify({ jsonrpc: '2.0', id: 1, error: { code: -32000, message: 'synthetic failure' } }));
 
@@ -110,20 +114,39 @@ export const CASES = [
   { id: 'xrpl-timeout', network: X, servers: xrplB({ raw: { server_info: transportError('RNLO_TIMEOUT') } }), expect: ['RNTP_PROVIDER_UNAVAILABLE', XB] },
   { id: 'xrpl-http-503-no-retry', network: X, servers: xrplA({ raw: { account_info: () => reply('busy', 503) } }), expect: ['RNTP_PROVIDER_UNAVAILABLE', XA] },
 
-  // Sepolia: accepted
+  // Sepolia (ADR-RN-018 Amendment C1): head pass, pin P = lowest head - 2 (9,437,182 by default),
+  // pinned pass at {blockHash, requireCanonical: true}. Accepted:
   { id: 'sepolia-pass', network: S, servers: sepDefault, expect: 'PASS' },
-  { id: 'sepolia-pass-fee-capped', network: S, servers: sepB({ baseFee: q(15n * GWEI), balance: q(600_000n * GWEI) }), expect: 'PASS' },
-  { id: 'sepolia-pass-base-fee-19-gwei', network: S, servers: { [SA]: { baseFee: q(19n * GWEI), balance: q(600_000n * GWEI) }, [SB]: { number: 9_437_185, timestamp: NOW - 1, balance: q(600_000n * GWEI) } }, expect: 'PASS' },
-  { id: 'sepolia-pass-block-60s-old', network: S, servers: sepA({ timestamp: NOW - 60 }), expect: 'PASS' },
-  { id: 'sepolia-pass-skew-4', network: S, servers: sepB({ number: 9_437_188 }), expect: 'PASS' },
+  { id: 'sepolia-pass-fee-capped', network: S, servers: sepBoth({ pinBaseFee: q(15n * GWEI), balance: q(600_000n * GWEI) }), expect: 'PASS' },
+  { id: 'sepolia-pass-base-fee-19-gwei', network: S, servers: sepBoth({ baseFee: q(19n * GWEI), balance: q(600_000n * GWEI) }), expect: 'PASS' },
+  { id: 'sepolia-pass-block-60s-old', network: S, servers: sepBoth({ shift: 47 }), expect: 'PASS' },
+  { id: 'sepolia-pass-skew-4', network: S, servers: sepB({ number: 9_437_188, timestamp: NOW - 1 }), expect: 'PASS' },
+  { id: 'sepolia-pass-lagging-provider-sets-the-pin', network: S, servers: sepB({ number: 9_437_181 }), expect: 'PASS' },
+  { id: 'sepolia-pass-pin-90s-old', network: S, servers: sepBoth({ pin: (b) => { b.timestamp = q(NOW - 90); } }), expect: 'PASS' },
   // Sepolia: network
   { id: 'sepolia-wrong-chain-mainnet', network: S, servers: sepB({ chainId: '0x1' }), expect: ['RNTP_WRONG_NETWORK', SB] },
   { id: 'sepolia-chain-id-uppercase', network: S, servers: sepA({ chainId: '0xAA36A7' }), expect: ['RNTP_MALFORMED', SA] },
-  // Sepolia: freshness and consistency
-  { id: 'sepolia-stale-block', network: S, servers: sepA({ timestamp: NOW - 61 }), expect: ['RNTP_STALE', SA] },
+  // Sepolia: head pass, freshness and consistency
+  { id: 'sepolia-stale-block', network: S, servers: sepBoth({ shift: 48 }), expect: ['RNTP_STALE', SA] },
   { id: 'sepolia-block-in-future', network: S, servers: sepB({ timestamp: NOW + 15 }), expect: ['RNTP_STALE', SB] },
-  { id: 'sepolia-skew-5', network: S, servers: sepB({ number: 9_437_189 }), expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'sepolia-skew-5', network: S, servers: sepB({ number: 9_437_189, timestamp: NOW - 1 }), expect: ['RNTP_INCONSISTENT', null] },
   { id: 'sepolia-same-number-two-hashes', network: S, servers: sepB({ number: 9_437_184, block: (b) => { b.hash = `0x${'ab'.repeat(32)}`; } }), expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'sepolia-chain-shorter-than-pin-depth', network: S, servers: { [SA]: { number: 1, timestamp: NOW - 6 }, [SB]: { number: 1, timestamp: NOW - 6 } }, expect: ['RNTP_INCONSISTENT', null] },
+  // Sepolia: the pin
+  { id: 'sepolia-pin-hash-disagreement', network: S, servers: sepB({ pin: (b) => { b.hash = `0x${'cd'.repeat(32)}`; } }), expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'sepolia-pin-contents-disagree', network: S, servers: sepB({ pin: (b) => { b.timestamp = q(NOW - 40); } }), expect: ['RNTP_INCONSISTENT', null] },
+  { id: 'sepolia-pin-not-the-block-asked-for', network: S, servers: sepA({ pin: (b) => { b.number = q(9_437_183); } }), expect: ['RNTP_INCONSISTENT', SA] },
+  { id: 'sepolia-pin-newer-than-head', network: S, servers: sepA({ pin: (b) => { b.timestamp = q(NOW - 5); } }), expect: ['RNTP_INCONSISTENT', SA] },
+  { id: 'sepolia-pin-stale-missed-slots', network: S, servers: sepBoth({ pin: (b) => { b.timestamp = q(NOW - 91); } }), expect: ['RNTP_STALE', SA] },
+  { id: 'sepolia-pin-base-fee-above-19-gwei', network: S, servers: sepBoth({ pinBaseFee: q(19n * GWEI + 1n) }), expect: ['RNTP_FEE_TOO_HIGH', SA] },
+  { id: 'sepolia-pin-rpc-error', network: S, servers: sepB({ raw: { eth_getBlockByNumber: atPin(evmError) } }), expect: ['RNTP_PROVIDER_ERROR', SB] },
+  { id: 'sepolia-pin-null-block', network: S, servers: sepA({ raw: { eth_getBlockByNumber: atPin(() => reply('{"jsonrpc":"2.0","id":1,"result":null}')) } }), expect: ['RNTP_MALFORMED', SA] },
+  // Sepolia: pinned pass. A JSON-RPC error on a pinned read blocks preparation (no fallback).
+  { id: 'sepolia-eip1898-unsupported', network: S, servers: sepA({ eip1898: false }), expect: ['RNTP_PROVIDER_ERROR', SA, 'BLOCK_HASH_READ_REFUSED'] },
+  { id: 'sepolia-estimate-gas-block-hash-unsupported', network: S, servers: sepB({ estimateGasBlockHash: false }), expect: ['RNTP_PROVIDER_ERROR', SB, 'GAS_ESTIMATION_UNAVAILABLE'] },
+  { id: 'sepolia-pinned-hash-no-longer-canonical', network: S, servers: sepB({ raw: { eth_getBalance: () => reply('{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"hash is not currently canonical"}}') } }), expect: ['RNTP_PROVIDER_ERROR', SB, 'BLOCK_HASH_READ_REFUSED'] },
+  { id: 'sepolia-rpc-error', network: S, servers: sepB({ raw: { eth_estimateGas: evmError } }), expect: ['RNTP_PROVIDER_ERROR', SB, 'GAS_ESTIMATION_UNAVAILABLE'] },
+  { id: 'sepolia-estimate-gas-timeout-not-blocked', network: S, servers: sepA({ raw: { eth_estimateGas: transportError('RNLO_TIMEOUT') } }), expect: ['RNTP_PROVIDER_UNAVAILABLE', SA] },
   { id: 'sepolia-nonce-disagreement', network: S, servers: sepB({ nonce: '0x1' }), expect: ['RNTP_INCONSISTENT', null] },
   { id: 'sepolia-estimate-below-intrinsic', network: S, servers: sepA({ estimate: q(21_000) }), expect: ['RNTP_INCONSISTENT', SA] },
   // Sepolia: nonce, code, fee, gas, balance
@@ -132,7 +155,7 @@ export const CASES = [
   { id: 'sepolia-base-fee-above-19-gwei', network: S, servers: sepA({ baseFee: q(19n * GWEI + 1n) }), expect: ['RNTP_FEE_TOO_HIGH', SA] },
   { id: 'sepolia-estimate-above-limit', network: S, servers: sepB({ estimate: q(30_001) }), expect: ['RNTP_GAS_TOO_HIGH', SB] },
   { id: 'sepolia-balance-short', network: S, servers: sepA({ balance: q(30_000n * 3_400_000_000n - 1n) }), expect: ['RNTP_INSUFFICIENT_BALANCE', SA] },
-  { id: 'sepolia-balance-short-for-other-providers-fee', network: S, servers: { [SA]: { balance: q(30_000n * 3_400_000_000n) }, [SB]: { number: 9_437_185, timestamp: NOW - 1, baseFee: q(2n * GWEI) } }, expect: ['RNTP_INSUFFICIENT_BALANCE', SA] },
+  { id: 'sepolia-balance-short-at-the-pinned-fee', network: S, servers: { [SA]: { pinBaseFee: q(2n * GWEI), balance: q(30_000n * 3_400_000_000n) }, [SB]: { number: 9_437_185, pinBaseFee: q(2n * GWEI) } }, expect: ['RNTP_INSUFFICIENT_BALANCE', SA] },
   // Sepolia: malformed data
   { id: 'sepolia-base-fee-missing', network: S, servers: sepA({ block: (b) => { delete b.baseFeePerGas; } }), expect: ['RNTP_MALFORMED', SA] },
   { id: 'sepolia-quantity-leading-zero', network: S, servers: sepA({ balance: '0x02386f26fc10000' }), expect: ['RNTP_MALFORMED', SA] },
@@ -142,7 +165,6 @@ export const CASES = [
   { id: 'sepolia-balance-number', network: S, servers: sepA({ balance: raw('1e18') }), expect: ['RNTP_MALFORMED', SA] },
   { id: 'sepolia-envelope-id-2', network: S, servers: sepA({ raw: { eth_chainId: () => reply('{"jsonrpc":"2.0","id":2,"result":"0xaa36a7"}') } }), expect: ['RNTP_MALFORMED', SA] },
   // Sepolia: provider failures (one attempt, no retry)
-  { id: 'sepolia-rpc-error', network: S, servers: sepB({ raw: { eth_estimateGas: evmError } }), expect: ['RNTP_PROVIDER_ERROR', SB] },
   { id: 'sepolia-http-429-no-retry', network: S, servers: sepA({ raw: { eth_getBalance: () => reply('slow down', 429) } }), expect: ['RNTP_PROVIDER_UNAVAILABLE', SA] },
   { id: 'sepolia-connection-failure', network: S, servers: sepB({ raw: { eth_getCode: transportError('RNLO_CONNECTION') } }), expect: ['RNTP_PROVIDER_UNAVAILABLE', SB] },
 ];
@@ -176,14 +198,14 @@ async function run(network, input, transport) {
   const prepare = network === X ? prepareXrplIntent : prepareSepoliaIntent;
   try {
     const { intent, digest } = await prepare({ ...input, transport });
-    return { outcome: 'PASS', code: null, providerId: null, digest, intent };
+    return { outcome: 'PASS', code: null, providerId: null, blocked: null, digest, intent };
   } catch (error) {
     if (error?.name !== 'PrepError') throw error;
-    return { outcome: 'FAIL', code: error.code, providerId: error.providerId, digest: null, intent: null };
+    return { outcome: 'FAIL', code: error.code, providerId: error.providerId, blocked: error.blocked, digest: null, intent: null };
   }
 }
 
-const sameExpectation = (result, expect) => (expect === 'PASS' ? result.outcome === 'PASS' : result.code === expect[0] && result.providerId === expect[1]);
+const sameExpectation = (result, expect) => (expect === 'PASS' ? result.outcome === 'PASS' : result.code === expect[0] && result.providerId === expect[1] && result.blocked === (expect[2] ?? null));
 
 export async function buildCases() {
   const cases = [];
@@ -213,7 +235,7 @@ function entry(c, input, exchanges, result) {
     network: c.network,
     input: { ...rest, providers: providers.map(publicProvider) },
     exchanges,
-    expected: { outcome: result.outcome, code: result.code, providerId: result.providerId, digest: result.digest, intent: result.intent },
+    expected: { outcome: result.outcome, code: result.code, providerId: result.providerId, blocked: result.blocked, digest: result.digest, intent: result.intent },
   };
 }
 

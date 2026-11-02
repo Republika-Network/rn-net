@@ -12,15 +12,23 @@ Its `preparation` member records the observations and the SHA-256 of every excha
 
 - **Fails closed.** Every refusal is a `PrepError` with one `RNTP_*` code and the provider it
   concerns, and gives no intent.
-- **Exact requests.** XRPL: `server_info`, `account_info`. Sepolia: `eth_chainId`, the latest
-  block, then the nonce (pinned and `pending`), balance, code and gas estimate, pinned to that
-  block. One attempt each, no retry.
+- **Exact requests.** XRPL: `server_info`, `account_info` (2 per provider). Sepolia (ADR-RN-018
+  Amendment C1), 8 per provider in three passes:
+  - `eth_chainId` and the latest block on every provider;
+  - the pin (the lowest head − 2) by number, with one hash on every provider;
+  - the nonce, balance, code and gas estimate at `{blockHash, requireCanonical: true}`, and the
+    pending nonce.
+
+  One attempt each, no retry, no fallback. A refused pinned read is `RNTP_PROVIDER_ERROR`, marked
+  `blocked`.
+- **XRPL expiry.** `LastLedgerSequence` = the lower validated ledger + 80 (ADR-RN-016 Amendment C1).
 - **Bounds stay fixed.** The fee, gas, chain and form bounds are ADR-RN-016's, re-checked by
   `makeIntent` after binding. The providers can make preparation refuse; they cannot widen a
   bound.
 - **No key, no signing, no write method, no network code.** The package depends only on
   `packages/chain-readonly`, `packages/tx-intent`, `Buffer` and `createHash`. Nothing depends on
   it.
-- **Offline only.** In RN-NET-03B2-B2, the only transports are simulated providers and the
-  recorded exchanges of [`fixtures/preparation-b2/`](../../fixtures/preparation-b2/). There is no
-  live entry point. A live preparation run belongs to gate D and needs its own approval.
+- **Offline only.** The only transports are simulated providers and the recorded exchanges of
+  [`fixtures/preparation-b2/`](../../fixtures/preparation-b2/). The live entry point
+  ([`tools/prepare/`](../../tools/prepare/), RN-NET-03B2-C3) is disabled for live network access.
+  A live preparation run needs its own `rnnet.preparation-authorization.v1`.

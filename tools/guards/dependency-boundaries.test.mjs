@@ -918,6 +918,51 @@ test('C2 N1: tools/submit/ cannot reach the network or load code without a stati
   }
 });
 
+test('tools/prepare/ (C3): read-only and keyless; never the transport, the write path, signer/ or the key tool', () => {
+  const r = (content, path = 'tools/prepare/a.mjs') => rules(path, content);
+  assert.deepEqual(r("import { createHash } from 'node:crypto';\nimport { readFileSync } from 'node:fs';\nimport { x } from '../../packages/tx-prepare/src/index.mjs';\nimport { y } from '../../packages/chain-readonly/src/index.mjs';\nimport { z } from './policy.mjs';"), []);
+  for (const [code, rule] of [
+    ["import { httpsTransport } from '../live/https-transport.mjs';", 'prepare-imports-transport'],
+    ["import { x } from '../live/other.mjs';", 'prepare-imports-transport'],
+    ["const name = 'https-transport';", 'prepare-imports-transport'],
+    ["import { x } from '../../packages/chain-submit/src/index.mjs';", 'chain-submit-importer-not-allowed'],
+    ["import { x } from '../../packages/chain-submit/src/index.mjs';", 'prepare-import-not-allowed:packages/chain-submit/src/index.mjs'],
+    ["import { x } from '../submit/entry.mjs';", 'prepare-import-not-allowed:tools/submit/entry.mjs'],
+    ["import { runBroadcast } from '../submit/broadcaster.mjs';", 'chain-submit-importer-not-allowed'],
+    ["import { createSigner } from '../../signer/src/sign.mjs';", 'signer-importer-not-allowed'],
+    ["import { run } from '../keytool/cli.mjs';", 'prepare-import-not-allowed:tools/keytool/cli.mjs'],
+    ["import { x } from '../../txverify/src/index.mjs';", 'prepare-import-not-allowed:txverify/src/index.mjs'],
+    ["import { x } from '../../packages/tx-prepare/test/fake-providers.mjs';", 'prepare-import-not-allowed:packages/tx-prepare/test/fake-providers.mjs'],
+    ["import { x } from '../../packages/chain-readonly/src/rpc.mjs';", 'prepare-import-not-allowed:packages/chain-readonly/src/rpc.mjs'],
+    ["import { execFileSync } from 'node:child_process';", 'prepare-module-not-allowed:node:child_process'],
+    ["import x from 'node:https';", 'prepare-module-not-allowed:node:https'],
+    ["import { randomBytes } from 'node:crypto';", 'prepare-builtin-export-not-allowed:node:crypto#randomBytes'],
+    ["import { linkSync } from 'node:fs';", 'prepare-builtin-export-not-allowed:node:fs#linkSync'],
+    ['const k = Reflect.get(o, n);', 'prepare-reflect'],
+    ['const p = process.env.HOME;', 'prepare-process-access'],
+    ['const [, , file] = process.argv;', 'prepare-entry-point'],
+    ['#!/usr/bin/env node\nexport const a = 1;', 'prepare-entry-point'],
+    ['const m = await import(name);', 'dynamic-import-non-literal'],
+    ["import x from 'acorn';", 'third-party-import:acorn'],
+  ]) assert.ok(r(code).includes(rule), `${code} -> ${r(code).join(' ')}`);
+  assert.ok(rules('tools/prepare/a.js', 'export const a = 1;').includes('non-module-file'));
+  assert.ok(rules('tools/prepare/sub/a.mjs', 'export const a = 1;').includes('prepare-file-name'));
+  // Only prepare-live.mjs may have a command line, and it too may never reach the transport.
+  const entry = 'tools/prepare/prepare-live.mjs';
+  assert.deepEqual(r('#!/usr/bin/env node\nprocess.exitCode = main(process.argv.slice(2));\nprocess.stderr.write(x);', entry), []);
+  assert.ok(r("import { httpsTransport } from '../live/https-transport.mjs';", entry).includes('prepare-imports-transport'));
+});
+
+test('the offline rehearsal (C3) may never reach the network, however indirectly', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const rehearsal = "import { x } from './helper.mjs';\nexport const r = x;";
+  for (const helper of ["import { httpsTransport } from '../live/https-transport.mjs';\nexport const x = httpsTransport;", "export const x = async (u) => fetch(u);", "import https from 'node:https';\nexport const x = https;"]) {
+    const out = found([['tools/rehearsal/rehearse.mjs', rehearsal], ['tools/rehearsal/helper.mjs', helper], ['tools/live/https-transport.mjs', "import https from 'node:https';\nexport const httpsTransport = https;"]]);
+    assert.ok(out.includes('tools/rehearsal/rehearse.mjs:rehearsal-reaches-network'), out.join(' '));
+  }
+  assert.ok(!found([['tools/rehearsal/rehearse.mjs', rehearsal], ['tools/rehearsal/helper.mjs', 'export const x = 1;']]).some((f) => f.endsWith(':rehearsal-reaches-network')));
+});
+
 test('C2 N1 residual: hand-written network code anywhere in tools/ counts as network in the graph', () => {
   const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
   const entry = "#!/usr/bin/env node\nimport { runBroadcast } from '../submit/broadcaster.mjs';\nimport { t } from '../net.mjs';\nawait runBroadcast({ argv: process.argv, t });";

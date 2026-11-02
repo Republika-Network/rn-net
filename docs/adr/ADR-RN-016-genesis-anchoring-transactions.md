@@ -171,3 +171,30 @@ first transaction as absent (ADR-RN-019 §8), and a new gate D follows.
   makes no Mainnet read.
 - **Unchanged:** the fee (12 drops, cap 1,000), the key, the memo, `Sequence` handling, and every
   gate.
+
+### C3 implementation record (RN-NET-03B2-C3)
+
+This amendment stays **Proposed**. RN-NET-03B2-C3 implements it offline and records what was built.
+It accepts nothing and authorizes nothing. The code binds `+ 80` from this merge on, as the
+amendment's own sequence requires (implementation, then review, then acceptance). No run can bind
+it live: every live entry point is disabled, and gate D still needs this amendment accepted.
+- **The offset.** `XRPL.lastLedgerOffset` is 80 (`packages/tx-intent/src/genesis.mjs`), and the
+  Python preparation reference binds `+ 80` (`XRPL_LAST_LEDGER_OFFSET`).
+- **Documents.** `spec/rnnet.tx-preparation.v1.md` §5 binds `+ 80` and states the overflow case
+  "within 80 of 2^32−1". The preflight template reads "lowest validated ledger of the two
+  providers + 80".
+- **Fixtures.** The B2 fixtures were regenerated (`rnnet.preparation-b2-fixtures.v2`). Their XRPL
+  exchanges are unchanged, so each accepted XRPL intent differs from its B2 version only by
+  `LastLedgerSequence` (+ 60). The Python reference reproduces every digest.
+- **Unchanged.** The submission margin (refusal once 4 or fewer remain), the fee, the memo, the
+  42-byte payload and the Genesis commitment. `fixtures/genesis-proof-01` is immutable and
+  byte-identical: its preflight rehearsal keeps the recorded offset 20
+  (`PREFLIGHT_LAST_LEDGER_OFFSET`), pinned by a test next to `XRPL.lastLedgerOffset` = 80.
+- **The window, rehearsed offline** (`fixtures/rehearsal-c3`). The latest gate-D review that still
+  submits, with every other step at its nominal time:
+  - 148 s at 3 s per ledger;
+  - 222 s at 4 s per ledger;
+  - 297 s at 5 s per ledger.
+
+  The run then submits with exactly 5 ledgers left; one second more leaves 4, and the broadcaster
+  refuses before any write.

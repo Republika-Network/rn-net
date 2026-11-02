@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Independent reproduction of RN-NET-03B2-B2 read-only transaction preparation (ADR-RN-018).
+"""Independent reproduction of read-only transaction preparation (ADR-RN-018; RN-NET-03B2-B2, and
+RN-NET-03B2-C3 for ADR-RN-016 Amendment C1 (+ 80) and ADR-RN-018 Amendment C1 (Sepolia two-pass,
+block-hash pinning, and the "blocked" mark on a pinned-read JSON-RPC error).
 
 Re-implements, without the JavaScript packages:
   - the exact read-only request bytes of each preparation step (spec/rnnet.tx-preparation.v1.md §3),
@@ -52,6 +54,8 @@ RPC_ERROR_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 
 SYNCED = ("full", "proposing", "validating")
 XRPL_FEE = 12
+# ADR-RN-016 Amendment C1 (RN-NET-03B2-C3): LastLedgerSequence = lowest validated ledger + 80.
+XRPL_LAST_LEDGER_OFFSET = 80
 SEPOLIA_GAS_LIMIT = 30_000
 TIP = 1 * GWEI
 FEE_CAP = 20 * GWEI
@@ -65,10 +69,11 @@ class Raw:
 
 
 class Refusal(Exception):
-    def __init__(self, code, provider=None):
+    def __init__(self, code, provider=None, blocked=None):
         super().__init__(code)
         self.code = code
         self.provider = provider
+        self.blocked = blocked
 
 
 class Mismatch(Exception):
@@ -159,6 +164,7 @@ class Provider:
         self.digests = []
 
     def call(self, method, params):
+        self.last_method = method
         body = request_bytes(self.network, method, params)
         if not self.queue:
             raise Mismatch(f"{self.id}: no recorded exchange for {method}")
@@ -317,28 +323,37 @@ def quantity(v):
     return v
 
 
-def read_sepolia(p: Provider, sender, data):
-    if quantity(p.call("eth_chainId", [])) != "0xaa36a7":
-        raise ReadFail("RNLO_WRONG_NETWORK")
-    block = p.call("eth_getBlockByNumber", ["latest", False])
+def block_of(block):
     if not isinstance(block, dict):
         raise bad()
     number = quantity(block.get("number"))
     if not isinstance(block.get("hash"), str) or not EVM_HASH.fullmatch(block["hash"]):
         raise bad()
-    timestamp = quantity(block.get("timestamp"))
-    base_fee = quantity(block.get("baseFeePerGas"))
-    latest = quantity(p.call("eth_getTransactionCount", [sender, number]))
+    return {"number": number, "hash": block["hash"], "timestamp": quantity(block.get("timestamp")), "baseFeePerGas": quantity(block.get("baseFeePerGas"))}
+
+
+def read_sepolia_head(p: Provider):
+    if quantity(p.call("eth_chainId", [])) != "0xaa36a7":
+        raise ReadFail("RNLO_WRONG_NETWORK")
+    return block_of(p.call("eth_getBlockByNumber", ["latest", False]))
+
+
+def read_sepolia_pin(p: Provider, number):
+    return block_of(p.call("eth_getBlockByNumber", [number, False]))
+
+
+def read_sepolia_pinned(p: Provider, sender, data, block_hash):
+    at = {"blockHash": block_hash, "requireCanonical": True}
+    latest = quantity(p.call("eth_getTransactionCount", [sender, at]))
     pending = quantity(p.call("eth_getTransactionCount", [sender, "pending"]))
     if int(latest, 16) >= 2**64 or int(pending, 16) >= 2**64:
         raise bad()
-    balance = quantity(p.call("eth_getBalance", [sender, number]))
-    code = p.call("eth_getCode", [sender, number])
+    balance = quantity(p.call("eth_getBalance", [sender, at]))
+    code = p.call("eth_getCode", [sender, at])
     if not isinstance(code, str) or not HEX_DATA.fullmatch(code):
         raise bad()
-    estimate = quantity(p.call("eth_estimateGas", [{"from": sender, "to": sender, "value": "0x0", "data": data}, number]))
-    return {"block": {"number": number, "hash": block["hash"], "timestamp": timestamp, "baseFeePerGas": base_fee},
-            "latest": latest, "pending": pending, "balance": balance, "code": code, "estimate": estimate}
+    estimate = quantity(p.call("eth_estimateGas", [{"from": sender, "to": sender, "value": "0x0", "data": data}, at]))
+    return {"latest": latest, "pending": pending, "balance": balance, "code": code, "estimate": estimate}
 
 
 # --- preparation -----------------------------------------------------------------------------------
@@ -408,7 +423,7 @@ def prepare_xrpl(case, providers):
     payload = anchor_ref.encode_payload(inp["commitment"]).hex().upper()
     tx = {
         "TransactionType": "AccountSet", "Account": inp["account"], "Fee": str(XRPL_FEE), "Sequence": readings[0][1]["sequence"],
-        "LastLedgerSequence": min(seqs) + 20, "Memos": [{"Memo": {"MemoType": b"rnnet.anchor-payload.v1".hex().upper(), "MemoData": payload}}],
+        "LastLedgerSequence": min(seqs) + XRPL_LAST_LEDGER_OFFSET, "Memos": [{"Memo": {"MemoType": b"rnnet.anchor-payload.v1".hex().upper(), "MemoData": payload}}],
         "SigningPubKey": inp["signingPubKey"],
     }
     record = preparation(inp["now"], [{"id": p.id, "operator": p.operator, "validatedLedger": {"index": o["seq"], "hash": o["hash"]},
@@ -417,6 +432,7 @@ def prepare_xrpl(case, providers):
 
 
 def prepare_sepolia(case, providers):
+    """ADR-RN-018 Amendment C1: head pass, pin P = lowest head - 2 agreed by hash, pinned pass."""
     inp = case["input"]
     now = inp["now"]
     payload = anchor_ref.encode_payload(inp["commitment"])
@@ -424,32 +440,55 @@ def prepare_sepolia(case, providers):
     zeros = payload.count(0)
     tokens = zeros + 4 * (len(payload) - zeros)
     intrinsic = max(21000 + 4 * tokens, 21000 + 10 * tokens)
+
+    def read(p, fn, *args, pinned=False):
+        try:
+            return fn(p, *args)
+        except ReadFail as fail:
+            r = refusal_of(fail, p.id)
+            if pinned and fail.code == "RNLO_RPC_ERROR":
+                r.blocked = "GAS_ESTIMATION_UNAVAILABLE" if p.last_method == "eth_estimateGas" else "BLOCK_HASH_READ_REFUSED"
+            raise r
+
+    def fresh(block, max_age, pid):
+        ts = int(block["timestamp"], 16)
+        for code, failed in [("RNTP_STALE", now - ts > max_age), ("RNTP_STALE", ts - now >= 15), ("RNTP_FEE_TOO_HIGH", int(block["baseFeePerGas"], 16) > 19 * GWEI)]:
+            if failed:
+                raise Refusal(code, pid)
+
+    heads = []
+    for p in providers:
+        head = read(p, read_sepolia_head)
+        fresh(head, 60, p.id)
+        heads.append(head)
+    heights = [int(b["number"], 16) for b in heads]
+    if max(heights) - min(heights) > 4 or len({b["number"] for b in heads}) != len({(b["number"], b["hash"]) for b in heads}):
+        raise Refusal("RNTP_INCONSISTENT")
+    pin_number = min(heights) - 2
+    if pin_number < 0:
+        raise Refusal("RNTP_INCONSISTENT")
+    pins = []
+    for p, head in zip(providers, heads):
+        pin = read(p, read_sepolia_pin, hex(pin_number))
+        if pin["number"] != hex(pin_number) or pin["hash"] == head["hash"] or int(pin["timestamp"], 16) > int(head["timestamp"], 16):
+            raise Refusal("RNTP_INCONSISTENT", p.id)
+        fresh(pin, 90, p.id)
+        pins.append(pin)
+    if len({b["hash"] for b in pins}) != 1 or len({(b["timestamp"], b["baseFeePerGas"]) for b in pins}) != 1:
+        raise Refusal("RNTP_INCONSISTENT")
+    pin = pins[0]
     readings = []
     for p in providers:
-        try:
-            o = read_sepolia(p, inp["from"], data)
-        except ReadFail as fail:
-            raise refusal_of(fail, p.id)
-        ts, est = int(o["block"]["timestamp"], 16), int(o["estimate"], 16)
-        checks = [
-            ("RNTP_STALE", now - ts > 60),
-            ("RNTP_STALE", ts - now >= 15),
-            ("RNTP_FEE_TOO_HIGH", int(o["block"]["baseFeePerGas"], 16) > 19 * GWEI),
-            ("RNTP_NONCE_PENDING", o["pending"] != o["latest"]),
-            ("RNTP_ACCOUNT_UNSUITABLE", o["code"] != "0x"),
-            ("RNTP_GAS_TOO_HIGH", est > SEPOLIA_GAS_LIMIT),
-            ("RNTP_INCONSISTENT", est < intrinsic),
-        ]
-        for code, failed in checks:
+        o = read(p, read_sepolia_pinned, inp["from"], data, pin["hash"], pinned=True)
+        est = int(o["estimate"], 16)
+        for code, failed in [("RNTP_NONCE_PENDING", o["pending"] != o["latest"]), ("RNTP_ACCOUNT_UNSUITABLE", o["code"] != "0x"),
+                             ("RNTP_GAS_TOO_HIGH", est > SEPOLIA_GAS_LIMIT), ("RNTP_INCONSISTENT", est < intrinsic)]:
             if failed:
                 raise Refusal(code, p.id)
         readings.append((p, o))
-    heights = [int(o["block"]["number"], 16) for _, o in readings]
-    blocks = {(o["block"]["number"], o["block"]["hash"]) for _, o in readings}
-    if max(heights) - min(heights) > 4 or len(dict(blocks)) != len(blocks) or len({o["latest"] for _, o in readings}) != 1:
+    if len({o["latest"] for _, o in readings}) != 1:
         raise Refusal("RNTP_INCONSISTENT")
-    base = max(int(o["block"]["baseFeePerGas"], 16) for _, o in readings)
-    max_fee = min(2 * base + TIP, FEE_CAP)
+    max_fee = min(2 * int(pin["baseFeePerGas"], 16) + TIP, FEE_CAP)
     for p, o in readings:
         if int(o["balance"], 16) < SEPOLIA_GAS_LIMIT * max_fee:
             raise Refusal("RNTP_INSUFFICIENT_BALANCE", p.id)
@@ -457,13 +496,13 @@ def prepare_sepolia(case, providers):
         "type": "0x2", "chainId": "0xaa36a7", "nonce": readings[0][1]["latest"], "from": inp["from"], "to": inp["from"], "value": "0x0",
         "input": data, "gas": hex(SEPOLIA_GAS_LIMIT), "maxFeePerGas": hex(max_fee), "maxPriorityFeePerGas": hex(TIP), "accessList": [],
     }
-    record = preparation(now, [{"id": p.id, "operator": p.operator, "block": o["block"], "estimateGas": o["estimate"], "exchanges": p.digests}
+    record = preparation(now, [{"id": p.id, "operator": p.operator, "block": dict(pin), "estimateGas": o["estimate"], "exchanges": p.digests}
                                for p, o in readings])
     return tx, record
 
 
 def reproduce(case):
-    """(outcome, code, provider id, digest, intent, unused exchange count)."""
+    """(outcome, code, provider id, blocked, digest, intent, unused exchange count)."""
     providers = []
     try:
         check_input(case)
@@ -471,19 +510,19 @@ def reproduce(case):
         prepare = prepare_xrpl if case["network"] == "xrpl:testnet" else prepare_sepolia
         tx, record = prepare(case, providers)
     except Refusal as r:
-        return "FAIL", r.code, r.provider, None, None, sum(len(p.queue) for p in providers)
+        return "FAIL", r.code, r.provider, r.blocked, None, None, sum(len(p.queue) for p in providers)
     intent = {"format": "rnnet.unsigned-tx-intent.v1", "network": case["network"], "purpose": "genesis-proof-01",
               "commitment": case["input"]["commitment"], "transaction": tx, "preparation": record}
     if not tx_ref.intent_ok(intent):
-        return "FAIL", "RNTP_INTENT_INVALID", None, None, None, 0
-    return "PASS", None, None, tx_ref.intent_digest(intent), intent, sum(len(p.queue) for p in providers)
+        return "FAIL", "RNTP_INTENT_INVALID", None, None, None, None, 0
+    return "PASS", None, None, None, tx_ref.intent_digest(intent), intent, sum(len(p.queue) for p in providers)
 
 
 def checks(root: Path):
     raw = (root / "fixtures/preparation-b2/cases.json").read_bytes()
     doc = json.loads(raw)
     yield "fixtures file is canonical", raw == tx_ref.canon(doc) + b"\n"
-    yield "fixtures format", doc["format"] == "rnnet.preparation-b2-fixtures.v1" and doc["status"].startswith("SYNTHETIC")
+    yield "fixtures format", doc["format"] == "rnnet.preparation-b2-fixtures.v2" and doc["status"].startswith("SYNTHETIC")
     cases = doc["cases"]
     yield "corpus size", len(cases) >= 60 and sum(c["expected"]["outcome"] == "PASS" for c in cases) >= 8
     yield "case ids unique", len({c["id"] for c in cases}) == len(cases)
@@ -491,14 +530,22 @@ def checks(root: Path):
     for case in cases:
         exp = case["expected"]
         try:
-            outcome, code, provider, digest, intent, unused = reproduce(case)
+            outcome, code, provider, blocked, digest, intent, unused = reproduce(case)
         except Mismatch as m:
             yield f"{case['id']}: {m}", False
             continue
-        same = (outcome, code, provider, digest) == (exp["outcome"], exp["code"], exp["providerId"], exp["digest"])
+        same = (outcome, code, provider, blocked, digest) == (exp["outcome"], exp["code"], exp["providerId"], exp["blocked"], exp["digest"])
         if outcome == "PASS":
             same = same and tx_ref.canon(intent) == tx_ref.canon(exp["intent"])
         yield f"{case['id']} -> {code or 'PASS'}", same and unused == 0
+    sep = [c for c in cases if c["network"] == "evm:11155111" and c["exchanges"]]
+    yield "every Sepolia account read is pinned to a block hash", all(
+        json.loads(e["request"])["params"][1] == "pending" or isinstance(json.loads(e["request"])["params"][1], dict)
+        for c in sep for e in c["exchanges"] if json.loads(e["request"])["method"] in ("eth_getTransactionCount", "eth_getBalance", "eth_getCode", "eth_estimateGas"))
+    yield "no Sepolia read uses an unpinned state tag other than the head and the pending nonce", all(
+        json.loads(e["request"])["params"] in (["latest", False],) or json.loads(e["request"])["method"] != "eth_getBlockByNumber" or QUANTITY.fullmatch(str(json.loads(e["request"])["params"][0]))
+        for c in sep for e in c["exchanges"])
+    yield "both blocked reasons are covered", {c["expected"]["blocked"] for c in cases} >= {"BLOCK_HASH_READ_REFUSED", "GAS_ESTIMATION_UNAVAILABLE"}
 
 
 def main(root: Path) -> int:

@@ -1,13 +1,14 @@
 # rnnet.tx-preparation.v1
 
-- Status: Draft (RN-NET-03B2-B2)
-- Decision record: [ADR-RN-018](../docs/adr/ADR-RN-018-transaction-preparation-reads.md)
+- Status: Draft (RN-NET-03B2-B2; amended in RN-NET-03B2-C3 for ADR-RN-016 Amendment C1 and ADR-RN-018 Amendment C1, both still Proposed)
+- Decision record: [ADR-RN-018](../docs/adr/ADR-RN-018-transaction-preparation-reads.md), Amendment C1 (P1 to P6); [ADR-RN-016](../docs/adr/ADR-RN-016-genesis-anchoring-transactions.md) Amendment C1 (the `+ 80` offset)
 - Depends on: [rnnet.unsigned-tx-intent.v1](rnnet.unsigned-tx-intent.v1.md), [rnnet.live-observation-report.v1](rnnet.live-observation-report.v1.md) §3 and §4 (requests, transport, strict JSON)
 - Implementations:
   - `packages/chain-readonly/src/preparation.mjs` (readers);
   - `packages/tx-prepare` (checks and binding);
   - `tools/reference/rnnet_prep_reference.py` (independent).
-- Vectors: `fixtures/preparation-b2/cases.json` (synthetic)
+- Vectors: `fixtures/preparation-b2/cases.json` (synthetic, `rnnet.preparation-b2-fixtures.v2`)
+- Live entry point: `tools/prepare/prepare-live.mjs` ([rnnet.preparation-authorization.v1](rnnet.preparation-authorization.v1.md)), disabled for live network access
 
 ## 1. Purpose
 
@@ -27,29 +28,36 @@ Anything else is `RNTP_INPUT_INVALID`, and nothing is sent.
 
 ## 3. Requests
 
-Providers are read one after another, in the order given. Each provider is read and checked
-(§4.1, §4.2) before the next is contacted. Each request has **one attempt** and no retry. The
-request bytes are built as in `rnnet.live-observation-report.v1` §3: canonical JSON; XRPL
-`{method, params: [params]}`; Ethereum `{jsonrpc: "2.0", id: 1, method, params}`.
+Each request has **one attempt** and no retry. The request bytes are built as in
+`rnnet.live-observation-report.v1` §3: canonical JSON; XRPL `{method, params: [params]}`;
+Ethereum `{jsonrpc: "2.0", id: 1, method, params}`.
 
-**XRPL**, 2 requests:
+**XRPL**, 2 requests per provider. Providers are read one after another, in the order given, and
+each is read and checked (§4.1, §4.2) before the next is contacted:
 1. `server_info` `{api_version: 2}`;
 2. `account_info` `{account, ledger_index: "validated", signer_lists: true, api_version: 2}`.
 
-**Sepolia**, 7 requests, where `B` is the `number` of the block read in step 2:
-1. `eth_chainId` `[]`;
-2. `eth_getBlockByNumber` `["latest", false]`;
-3. `eth_getTransactionCount` `[from, B]`;
-4. `eth_getTransactionCount` `[from, "pending"]`;
-5. `eth_getBalance` `[from, B]`;
-6. `eth_getCode` `[from, B]`;
-7. `eth_estimateGas` `[{from, to: from, value: "0x0", data: <payload>}, B]`, where the payload is the
-   `0x`-prefixed lower-case hex of the 42-byte anchor payload.
+**Sepolia**, 8 requests per provider, in three passes over the providers in the order given
+(ADR-RN-018 Amendment C1, P1 and P3). A pass ends on every provider before the next pass starts:
+1. **Head pass**, on each provider: `eth_chainId` `[]`, then `eth_getBlockByNumber`
+   `["latest", false]`. Each head is checked (§4.2) when it arrives; then the heads are checked
+   across providers (§4.3).
+2. **The pin.** `P` = the lowest head number − 2, as a quantity. On each provider:
+   `eth_getBlockByNumber` `[P, false]`. Every provider must return the same hash `H`.
+3. **Pinned pass**, on each provider, where `A` = `{"blockHash": H, "requireCanonical": true}`:
+   1. `eth_getTransactionCount` `[from, A]`;
+   2. `eth_getTransactionCount` `[from, "pending"]` (a pending state has no hash);
+   3. `eth_getBalance` `[from, A]`;
+   4. `eth_getCode` `[from, A]`;
+   5. `eth_estimateGas` `[{from, to: from, value: "0x0", data: <payload>}, A]`, where the payload
+      is the `0x`-prefixed lower-case hex of the 42-byte anchor payload.
 
-**Pinning.** In this version `B` is a block **number**, which is enough for offline fixtures.
-Before an intent prepared from live Sepolia reads may be signed, ADR-RN-018 requires an amended
-version. In it, steps 3, 5, 6 and 7 name one agreed block **hash**, as
-`{blockHash, requireCanonical: true}` (EIP-1898), and every provider reads at that same hash.
+**No fallback.** A pinned read is always sent with `A`. It is never sent again with `latest`,
+`pending`, a block number or no block parameter, and never to another provider. `eth_estimateGas`
+is not listed by EIP-1898; it is still sent only with `A` (P4), and a provider that refuses it
+refuses preparation.
+
+**Totals per run, two providers:** XRPL 4, Sepolia 16.
 
 ## 4. Checks and refusal codes
 
@@ -130,14 +138,31 @@ Each response is checked when it arrives:
 | `base_fee_drops × load_factor` ≤ 12 | `RNTP_FEE_TOO_HIGH` |
 | `Balance` ≥ `reserve_base` + `OwnerCount` × `reserve_inc` + 12 (drops) | `RNTP_INSUFFICIENT_BALANCE` |
 
-**Sepolia**, in order, with `ts` the block timestamp:
+**Sepolia**, with `ts` a block's timestamp.
+
+The head, on each provider, in the head pass:
 
 | Check | Code |
 |---|---|
 | `now` − `ts` ≤ 60 | `RNTP_STALE` |
 | `ts` − `now` < 15 | `RNTP_STALE` |
 | `baseFeePerGas` ≤ 19 gwei | `RNTP_FEE_TOO_HIGH` |
-| pending nonce = latest nonce | `RNTP_NONCE_PENDING` |
+
+The pin, on each provider, in order:
+
+| Check | Code |
+|---|---|
+| its `number` is `P` | `RNTP_INCONSISTENT` |
+| its hash is not this provider's head hash, and its `ts` is not after the head's | `RNTP_INCONSISTENT` |
+| `now` − `ts` ≤ 90 | `RNTP_STALE` |
+| `ts` − `now` < 15 | `RNTP_STALE` |
+| `baseFeePerGas` ≤ 19 gwei | `RNTP_FEE_TOO_HIGH` |
+
+The pinned reads, on each provider, in order:
+
+| Check | Code |
+|---|---|
+| pending nonce = pinned nonce | `RNTP_NONCE_PENDING` |
 | code = `0x` | `RNTP_ACCOUNT_UNSUITABLE` |
 | estimate ≤ 30,000 | `RNTP_GAS_TOO_HIGH` |
 | estimate ≥ the intrinsic gas of the payload (22,680 for Genesis Proof 01) | `RNTP_INCONSISTENT` |
@@ -153,18 +178,34 @@ These checks carry no provider id, except the balance check.
 3. Every `Sequence` is equal, else `RNTP_INCONSISTENT`.
 
 **Sepolia:**
-1. max − min of the block numbers ≤ 4, else `RNTP_INCONSISTENT`.
-2. No block number appears with two different hashes, else `RNTP_INCONSISTENT`.
-3. Every latest nonce is equal, else `RNTP_INCONSISTENT`.
-4. `maxFeePerGas` = min(2 × the highest base fee + 1 gwei, 20 gwei). Each provider's balance,
-   in provider order, must be ≥ 30,000 × `maxFeePerGas`, else `RNTP_INSUFFICIENT_BALANCE` for
-   that provider.
+1. After the head pass: max − min of the head numbers ≤ 4, and no number with two hashes, else
+   `RNTP_INCONSISTENT`. `P` < 0 is `RNTP_INCONSISTENT`.
+2. After the pin: every provider's pin has the same hash, else `RNTP_INCONSISTENT`; and the same
+   timestamp and base fee, else `RNTP_INCONSISTENT`.
+3. After the pinned pass: every pinned nonce is equal, else `RNTP_INCONSISTENT`.
+4. `maxFeePerGas` = min(2 × the pin's base fee + 1 gwei, 20 gwei) (ADR-RN-018 Amendment C1, P6).
+   Each provider's balance, in provider order, must be ≥ 30,000 × `maxFeePerGas`, else
+   `RNTP_INSUFFICIENT_BALANCE` for that provider.
+
+### 4.4 Blocked: a refused pinned read
+
+A JSON-RPC `error` answer to a pinned read (§3, Sepolia pass 3) is `RNTP_PROVIDER_ERROR` for that
+provider, like any RPC error, with no new code (P2). It is also marked **blocked**, because the
+reviewed strategy has no fallback to try:
+- `GAS_ESTIMATION_UNAVAILABLE` when the refused read is `eth_estimateGas`;
+- `BLOCK_HASH_READ_REFUSED` for any other pinned read (an unsupported block-hash form, an unknown
+  hash, or a hash that is no longer canonical).
+
+A transport failure or a malformed answer on a pinned read is not blocked: its code is as in §4.1.
+Nothing is retried in either case. The entry point reports a blocked refusal as `BLOCKED`.
 
 ## 5. Binding and the record
 
 **XRPL.** `xrplAnchorTemplate(commitment, {Account, Sequence, LastLedgerSequence, SigningPubKey})`:
 - `Sequence` is the agreed `Sequence`;
-- `LastLedgerSequence` = min(`validated_ledger.seq`) + 20.
+- `LastLedgerSequence` = min(`validated_ledger.seq`) + 80 (ADR-RN-016 Amendment C1; was + 20). The
+  broadcaster still refuses before any write once a validated ledger it reads is
+  `LastLedgerSequence` − 4 or later, so at least 5 ledgers must remain (ADR-RN-019 §5).
 
 **Sepolia.** `sepoliaAnchorTemplate(commitment, {nonce, from, maxFeePerGas})`:
 - `nonce` is the agreed latest nonce;
@@ -180,14 +221,17 @@ These checks carry no provider id, except the balance check.
 Each entry, in provider order, holds `id` and `operator`, then:
 - **XRPL:** `validatedLedger` `{index, hash}`, from `server_info`, and `accountLedger`
   `{index, hash}`, from `account_info`;
-- **Sepolia:** `block` `{number, hash, timestamp, baseFeePerGas}` and `estimateGas`, as received.
+- **Sepolia:** `block` `{number, hash, timestamp, baseFeePerGas}` of the **pinned** block `P` (the
+  same on every provider), and `estimateGas`, as received. The head blocks are covered by their
+  exchange digests.
 
-It also holds `exchanges`: one `{method, requestSha256, responseSha256}` per request, in order.
+It also holds `exchanges`: one `{method, requestSha256, responseSha256}` per request of that
+provider, in its order (8 on Sepolia, across the three passes).
 The digests are `sha256:<hex>` of the exact request bytes and of the exact response body.
 
 **The intent** is `{format, network, purpose: "genesis-proof-01", commitment, transaction,
 preparation}`. It must pass `makeIntent`; a failure is `RNTP_INTENT_INVALID`. One reachable case is a
-validated ledger within 20 of 2^32−1, which would make `LastLedgerSequence` overflow. Its digest is the `rnnet.unsigned-tx-intent.v1` §3 digest, so it
+validated ledger within 80 of 2^32−1, which would make `LastLedgerSequence` overflow. Its digest is the `rnnet.unsigned-tx-intent.v1` §3 digest, so it
 covers the record.
 
 ## 6. What a prepared intent shows

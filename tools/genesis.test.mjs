@@ -13,11 +13,13 @@ import {
   checkXrplAnchorTx,
   intrinsicGas,
   memosSerializedLength,
+  PREFLIGHT_LAST_LEDGER_OFFSET,
   rehearsalObservations,
   rehearsalTransactions,
   SEPOLIA,
   sepoliaAnchorTemplate,
   sepoliaMaxFee,
+  XRPL,
   xrplAnchorTemplate,
 } from './genesis/prepare.mjs';
 
@@ -29,6 +31,15 @@ const OTHER = 'sha256:7082efeb67d3252191c9a1b7d59c757ed82382b943460cc512c16859ba
 test('the committed Genesis fixture is exactly what the generator builds', () => {
   const built = build();
   for (const name of FILES) assert.ok(Buffer.from(read(name)).equals(Buffer.from(built[name])), name);
+});
+
+test('the immutable golden file keeps its preflight offset; preparation binds + 80 (ADR-RN-016 Amendment C1)', () => {
+  // RN-NET-03B2-C3 changed the binding offset, not the Genesis evidence, commitment or payload.
+  assert.equal(PREFLIGHT_LAST_LEDGER_OFFSET, 20);
+  assert.equal(golden.xrpl.lastLedgerOffset, PREFLIGHT_LAST_LEDGER_OFFSET);
+  assert.equal(XRPL.lastLedgerOffset, 80);
+  assert.equal(golden.envelope.commitment, 'sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7');
+  assert.equal(golden.anchorPayload.length, 42);
 });
 
 test('the golden values are pinned', () => {

@@ -52,8 +52,12 @@ export const XRPL = Object.freeze({
   feeDrops: '12',
   /** Hard cap: a description with a higher fee is refused (0.001 XRP). */
   maxFeeDrops: 1000n,
-  /** Proposed validity window: LastLedgerSequence = latest validated ledger + this. */
-  lastLedgerOffset: 20,
+  /**
+   * Validity window: LastLedgerSequence = the lowest validated ledger the preparation providers
+   * report + this (ADR-RN-016 Amendment C1, implemented in RN-NET-03B2-C3; was 20). The
+   * broadcaster still refuses once 4 or fewer ledgers remain (ADR-RN-019 §5).
+   */
+  lastLedgerOffset: 80,
   /** The serialized Memos field may be at most 1 KB (XRPL common fields). */
   maxMemosBytes: 1024,
 });

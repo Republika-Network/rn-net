@@ -24,10 +24,17 @@ const HEX_DATA = /^0x(?:[0-9a-f]{2})*$/;
 const isUint32 = (v) => Number.isInteger(v) && v >= 0 && v <= 0xffff_ffff;
 const isSafeNonNegative = (v) => Number.isSafeInteger(v) && v >= 0;
 
-/** The exact request list of one preparation reading, per provider, in order. */
+/**
+ * The exact request list of one preparation reading, per provider, in order. Sepolia follows
+ * ADR-RN-018 Amendment C1 (P1, P3; RN-NET-03B2-C3): the head pass (2), the pin block (1), then five
+ * reads pinned to the agreed block hash, the pending nonce excepted (5). 8 in all.
+ */
 export const PREPARATION_REQUESTS = Object.freeze({
   [Network.XRPL_TESTNET]: Object.freeze(['server_info', 'account_info']),
-  [Network.SEPOLIA]: Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getTransactionCount', 'eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas']),
+  [Network.SEPOLIA]: Object.freeze([
+    'eth_chainId', 'eth_getBlockByNumber', 'eth_getBlockByNumber',
+    'eth_getTransactionCount', 'eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas',
+  ]),
 });
 
 const DECIMAL = /^(0|[1-9][0-9]{0,29})(?:\.([0-9]{1,30}))?(?:[eE]([+-]?[0-9]{1,2}))?$/;
@@ -131,34 +138,56 @@ const quantity = (value, what) => {
   return value;
 };
 
-/**
- * Reads eth_chainId and the latest block, then, pinned to that block's number, the sender's
- * nonce, balance and code and the gas estimate of the exact unsigned call; the pending nonce is
- * read with the `pending` tag. Returns hex quantities as received. Throws ReadError:
- * RNLO_WRONG_NETWORK before any account read; RNLO_RPC_ERROR; RNLO_INVALID_RESPONSE.
- * @param {{ from: string, input: string }} request the sender and the exact calldata
- */
-export async function readSepoliaAccount(context, { from, input }) {
-  if (typeof from !== 'string' || !EVM_ADDRESS.test(from)) throw new TypeError('from must be a lowercase address');
-  if (typeof input !== 'string' || !HEX_DATA.test(input)) throw new TypeError('input must be 0x-prefixed lowercase hex data');
-  const chainId = quantity(await call(context, 'eth_chainId', []), 'chainId');
-  if (chainId !== SEPOLIA_CHAIN_ID) throw new ReadError('RNLO_WRONG_NETWORK');
-
-  const block = await call(context, 'eth_getBlockByNumber', ['latest', false]);
+/** A block object's four kept members, each checked; anything else is RNLO_INVALID_RESPONSE. */
+function blockOf(block) {
   if (kind(block) !== 'object') throw bad('block');
   const number = quantity(block.number, 'block.number');
   if (typeof block.hash !== 'string' || !EVM_HASH.test(block.hash)) throw bad('block.hash');
   const timestamp = quantity(block.timestamp, 'block.timestamp');
   const baseFeePerGas = quantity(block.baseFeePerGas, 'block.baseFeePerGas');
+  return { number, hash: block.hash, timestamp, baseFeePerGas };
+}
 
-  const nonceLatest = quantity(await call(context, 'eth_getTransactionCount', [from, number]), 'nonce');
+/**
+ * Sepolia preparation, pass 1 (ADR-RN-018 Amendment C1, P1.1): eth_chainId, then the latest block.
+ * Throws ReadError: RNLO_WRONG_NETWORK before the block is read; RNLO_RPC_ERROR; RNLO_INVALID_RESPONSE.
+ */
+export async function readSepoliaHead(context) {
+  const chainId = quantity(await call(context, 'eth_chainId', []), 'chainId');
+  if (chainId !== SEPOLIA_CHAIN_ID) throw new ReadError('RNLO_WRONG_NETWORK');
+  return { chainId, block: blockOf(await call(context, 'eth_getBlockByNumber', ['latest', false])) };
+}
+
+/**
+ * Sepolia preparation, the pin (P1.3): the block at `number` (a quantity), by number. The caller
+ * checks that the block returned is that number and that every provider returned the same hash.
+ */
+export async function readSepoliaPin(context, number) {
+  if (typeof number !== 'string' || !QUANTITY.test(number)) throw new TypeError('number must be a quantity');
+  return blockOf(await call(context, 'eth_getBlockByNumber', [number, false]));
+}
+
+/**
+ * Sepolia preparation, pass 2 (P1.4): the sender's nonce, balance and code and the gas estimate of
+ * the exact unsigned call, each at `{blockHash, requireCanonical: true}` (EIP-1898); the pending
+ * nonce with the `pending` tag, which has no hash. There is no other form: a provider that refuses
+ * the block-hash object refuses preparation (P2), and nothing here retries by number or by tag.
+ * eth_estimateGas is not in EIP-1898; it is sent in the same form, never another (P4).
+ * Returns hex quantities as received. Throws ReadError: RNLO_RPC_ERROR; RNLO_INVALID_RESPONSE.
+ * @param {{ from: string, input: string, blockHash: string }} request
+ */
+export async function readSepoliaPinned(context, { from, input, blockHash }) {
+  if (typeof from !== 'string' || !EVM_ADDRESS.test(from)) throw new TypeError('from must be a lowercase address');
+  if (typeof input !== 'string' || !HEX_DATA.test(input)) throw new TypeError('input must be 0x-prefixed lowercase hex data');
+  if (typeof blockHash !== 'string' || !EVM_HASH.test(blockHash)) throw new TypeError('blockHash must be 0x + 64 lowercase hex');
+  const at = { blockHash, requireCanonical: true };
+  const nonceLatest = quantity(await call(context, 'eth_getTransactionCount', [from, at]), 'nonce');
   const noncePending = quantity(await call(context, 'eth_getTransactionCount', [from, 'pending']), 'pending nonce');
   // EIP-2681: a nonce is below 2^64.
   if (BigInt(nonceLatest) >= 2n ** 64n || BigInt(noncePending) >= 2n ** 64n) throw bad('nonce');
-  const balance = quantity(await call(context, 'eth_getBalance', [from, number]), 'balance');
-  const code = await call(context, 'eth_getCode', [from, number]);
+  const balance = quantity(await call(context, 'eth_getBalance', [from, at]), 'balance');
+  const code = await call(context, 'eth_getCode', [from, at]);
   if (typeof code !== 'string' || !HEX_DATA.test(code)) throw bad('code');
-  const estimate = quantity(await call(context, 'eth_estimateGas', [{ from, to: from, value: '0x0', data: input }, number]), 'estimateGas');
-
-  return { chainId, block: { number, hash: block.hash, timestamp, baseFeePerGas }, nonceLatest, noncePending, balance, code, estimateGas: estimate };
+  const estimate = quantity(await call(context, 'eth_estimateGas', [{ from, to: from, value: '0x0', data: input }, at]), 'estimateGas');
+  return { nonceLatest, noncePending, balance, code, estimateGas: estimate };
 }

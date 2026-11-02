@@ -111,6 +111,8 @@ export const SIGNER_IMPORTERS = [
   'tools/keytool/cli.mjs',
   'tools/keytool.test.mjs',
   'tools/signing/build-c4-fixtures.mjs',
+  // RN-NET-03B2-C3: the offline rehearsal signs with the public B1 test keys (signer/test/fixture-keys.mjs).
+  'tools/rehearsal/rehearse.mjs',
 ];
 // The guard's own tests hold such imports as string test data; they are exempt from that check
 // only, by exact path.
@@ -145,7 +147,12 @@ export const KEYTOOL_FORBIDDEN_MODULES = [
 export const KEYTOOL_CRYPTO_EXPORTS = ['createHash'];
 // Files outside tools/keytool/ that may import it: its tests and the C4 fixture generator. Nothing
 // else (in particular not the keyless broadcaster) may reach the signer through the key tool.
-export const KEYTOOL_IMPORTERS = ['tools/keytool.test.mjs', 'tools/signing/build-c4-fixtures.mjs', 'tools/signing/keytool-python.check.mjs'];
+// RN-NET-03B2-C3 adds the offline rehearsal (its harness, its fixture builder and its test): it
+// drives the key tool with synthetic keys between preparation and submission, never a network.
+export const KEYTOOL_IMPORTERS = [
+  'tools/keytool.test.mjs', 'tools/signing/build-c4-fixtures.mjs', 'tools/signing/keytool-python.check.mjs',
+  'tools/rehearsal/rehearse.mjs', 'tools/rehearsal/build-c3-rehearsal.mjs', 'tools/rehearsal.test.mjs',
+];
 
 // txverify/ (ADR-RN-019 §3): a separate npm project for VERIFICATION ONLY, with the same pinned noble
 // packages as signer/. Founder-approved for verification-only use in RN-NET-03B2-B3; that approval
@@ -195,12 +202,34 @@ export const SUBMIT_ENTRY_POINTS = ['tools/submit/submit-anchor.mjs', 'tools/sub
 // The read-only entry point may not reach the write path's run (broadcaster.mjs), however indirectly.
 export const STATUS_ENTRY_POINT = 'tools/submit/status-check.mjs';
 export const BROADCASTER_FILE = 'tools/submit/broadcaster.mjs';
+// The live preparation tool (tools/prepare/, RN-NET-03B2-C3; ADR-RN-018 Amendment C1 and ADR-RN-019
+// Amendment C1, E1). Read-only and keyless, held to allowlists as tools/submit/ is:
+//   - only prepare-live.mjs is an entry point; DISABLED for live network access in C3, so no file
+//     here may import or name the transport (prepare-imports-transport), nor anything beside it;
+//   - relative imports: tools/prepare/ itself and the entry points of PREPARE_PACKAGES only; never
+//     chain-submit, tools/submit/ (the write path), signer/, tools/keytool/, tools/signing/ or txverify/;
+//   - built-ins: exactly these exports; no subprocess, worker, code loader or network module;
+//   - process: only these members (the entry point also argv, exitCode, stdout and stderr);
+//   - FORBIDDEN_CONSTRUCTS and the raw-text rules, as in packages/; no Reflect.
+export const PREPARE_TOOLS = 'tools/prepare/';
+export const PREPARE_ENTRY_POINTS = ['tools/prepare/prepare-live.mjs'];
+export const PREPARE_PACKAGES = ['canonical', 'chain-readonly', 'tx-intent', 'tx-prepare'];
+export const PREPARE_BUILTIN_EXPORTS = {
+  'node:buffer': ['Buffer'],
+  'node:crypto': ['createHash'],
+  'node:fs': ['closeSync', 'constants', 'fstatSync', 'fsyncSync', 'lstatSync', 'mkdirSync', 'openSync', 'readFileSync', 'writeSync'],
+  'node:path': ['isAbsolute', 'join'],
+  'node:url': ['fileURLToPath'],
+};
+export const PREPARE_PROCESS_PROPERTIES = ['getuid'];
+
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
 // transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
 // review, and is a change to this list.
 export const WRITE_TRANSPORT_JOINERS = [];
 // Files outside packages/ that may import packages/chain-submit.
-export const CHAIN_SUBMIT_IMPORTERS = /^(?:tools\/submit\/[^/]+\.mjs|tools\/broadcast\/[^/]+\.mjs|tools\/[^/]+\.test\.mjs|txverify\/test\/[^/]+\.test\.mjs)$/;
+// RN-NET-03B2-C3 adds tools/rehearsal/ (the offline rehearsal, which no network file may reach).
+export const CHAIN_SUBMIT_IMPORTERS = /^(?:tools\/submit\/[^/]+\.mjs|tools\/broadcast\/[^/]+\.mjs|tools\/rehearsal\/[^/]+\.mjs|tools\/[^/]+\.test\.mjs|txverify\/test\/[^/]+\.test\.mjs)$/;
 // Manifest fields that change what npm installs or links, beyond the dependency lists.
 const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
 
@@ -484,6 +513,7 @@ export function check(files, options = {}) {
       checkToolsSignerImports(path, content, add);
       checkWriteTransportJoin(path, content, add);
       if (path.startsWith(SUBMIT_TOOLS)) checkSubmitTools(path, content, add);
+      if (path.startsWith(PREPARE_TOOLS)) checkPrepareTools(path, content, add);
       if (path.startsWith('tools/')) continue;
     }
     const match = /^packages\/([^/]+)\/(.+)$/.exec(path);
@@ -604,6 +634,7 @@ export const NETWORK_CAPABLE_FILES = [
   'tools/guards/lib.mjs', // runs `git ls-files`
   'tools/signing/keytool-python.check.mjs', // runs the Python key tool reference (offline-checks.sh, in the namespace)
   'tools/broadcast/concurrent-log.check.mjs', // starts concurrent log writers (offline-checks.sh, in the namespace); imports nothing of the write side
+  'tools/broadcast/live-disabled.check.mjs', // starts the three disabled live entry points as commands (offline-checks.sh, in the namespace); imports nothing of them
   ...SUBMIT_SUBPROCESS_FILES,
 ];
 // Test data of the guard's own tests: sources that are meant to be refused.
@@ -773,6 +804,9 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     if (path === STATUS_ENTRY_POINT && seen.has(BROADCASTER_FILE)) add(path, 'status-entry-point-reaches-broadcaster');
     // The key tool may not reach the network at all, however indirectly (RN-NET-03B2-C4).
     if (path.startsWith(KEYTOOL) && reachesNetwork) add(path, 'keytool-reaches-network');
+    // Nor may the offline rehearsal, which joins preparation, the key tool and the write path
+    // (RN-NET-03B2-C3): it runs on simulated providers only.
+    if ((path.startsWith('tools/rehearsal/') || path === 'tools/rehearsal.test.mjs') && reachesNetwork) add(path, 'rehearsal-reaches-network');
     // Nor may anything else reach key generation or the key tool through an allowed file (review
     // C4-5): only signer/, the key tool and their listed importers.
     const inner = path.startsWith('signer/') || path.startsWith(KEYTOOL) || KEYGEN_IMPORTERS.includes(path) || KEYTOOL_IMPORTERS.includes(path);
@@ -1014,6 +1048,60 @@ function checkSubmitTools(path, content, add) {
     else if (target.startsWith('tools/live/')) add(path, 'submit-imports-transport');
     else if (target.startsWith('signer/') || target.startsWith('tools/signing/')) add(path, 'signer-importer-not-allowed');
     else if (!SUBMIT_IMPORTS.test(target)) add(path, `submit-import-not-allowed:${target}`);
+  }
+}
+
+// tools/prepare/: the read-only, keyless live preparation entry point (disabled for live use). See
+// PREPARE_TOOLS above.
+const PREPARE_IMPORTS = new RegExp(String.raw`^(?:tools/prepare/[a-z-]+\.mjs|packages/(?:${PREPARE_PACKAGES.join('|')})/src/index\.mjs)$`);
+function checkPrepareTools(path, content, add) {
+  if (!path.endsWith('.mjs')) {
+    add(path, 'non-module-file');
+    return;
+  }
+  if (!/^tools\/prepare\/[a-z-]+\.mjs$/.test(path)) add(path, 'prepare-file-name');
+  const entryPoint = PREPARE_ENTRY_POINTS.includes(path);
+  if (!entryPoint && (content.startsWith('#!') || /process\s*\.\s*argv|import\s*\.\s*meta\s*\.\s*main/.test(content))) add(path, 'prepare-entry-point');
+  if (/https-transport|httpsTransport/.test(content)) add(path, 'prepare-imports-transport');
+  for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
+  for (const { id, pattern } of RAW_RULES) if (id !== 'forbidden-word:process' && pattern.test(content)) add(path, id);
+  let program;
+  try {
+    program = parse(content, PARSE_OPTIONS);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    add(path, 'unsupported-syntax');
+    return;
+  }
+  const analysis = analyze(program);
+  for (const problem of new Set(analysis.problems)) if (problem !== 'process-access') add(path, problem);
+  for (const route of keyGenerationRoutes(content)) add(path, route);
+  if (/(?<![\w$])Reflect(?![\w$])/.test(content)) add(path, 'prepare-reflect');
+  const processMembers = entryPoint ? [...PREPARE_PROCESS_PROPERTIES, ...SUBMIT_ENTRY_POINT_PROCESS_PROPERTIES] : PREPARE_PROCESS_PROPERTIES;
+  const visit = (node, parent, key) => {
+    if (node.type === 'Identifier' && node.name === 'process' && !isPropertyName(node, parent, key)) {
+      const allowed = parent?.type === 'MemberExpression' && key === 'object' && !parent.computed && processMembers.includes(parent.property.name);
+      if (!allowed) add(path, 'prepare-process-access');
+    }
+    for (const [childKey, child] of children(node)) visit(child, node, childKey);
+  };
+  visit(program, null, null);
+  for (const { source, name } of analysis.builtinImports) {
+    if (!(PREPARE_BUILTIN_EXPORTS[source] ?? []).includes(name)) add(path, `prepare-builtin-export-not-allowed:${source}#${name}`);
+  }
+  for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
+    if (specifier.startsWith('node:')) {
+      if (!Object.hasOwn(PREPARE_BUILTIN_EXPORTS, specifier)) add(path, `prepare-module-not-allowed:${specifier}`);
+      continue;
+    }
+    if (!specifier.startsWith('.')) {
+      add(path, `third-party-import:${specifier}`);
+      continue;
+    }
+    const target = resolve(path, specifier);
+    if (target === null) add(path, `unsupported-specifier:${specifier}`);
+    else if (target.startsWith('tools/live/')) add(path, 'prepare-imports-transport');
+    else if (!PREPARE_IMPORTS.test(target)) add(path, `prepare-import-not-allowed:${target}`);
   }
 }
 
