@@ -1,6 +1,10 @@
 // Verification of signed transaction bytes against the approved intent (ADR-RN-017;
 // spec/rnnet.unsigned-tx-intent.v1.md §5). Never signs and needs no key. The independent Python
 // reference (tools/reference/rnnet_tx_reference.py) produces the same record.
+//
+// Moved unchanged in behaviour from signer/src/verify.mjs in RN-NET-03B2-B3 (ADR-RN-019 §3), so
+// that the signer's self-check and the broadcaster share it and the broadcaster never imports
+// signer/. verifyXrplSignature and verifySepoliaSignature expose the signature step alone.
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import {
@@ -33,25 +37,45 @@ export function signedBytes(network, signedTransaction) {
 /** The network's transaction hash of signed bytes. */
 export const transactionHash = (network, bytes) => (network === IntentNetwork.XRPL_TESTNET ? xrplTxHash(bytes) : `0x${keccak256(bytes).toString('hex')}`);
 
-function check(intent, bytes) {
-  if (intent.network === IntentNetwork.XRPL_TESTNET) {
-    const decoded = decodeXrplTx(bytes);
-    const diff = compareXrpl(intent.transaction, decoded);
-    if (diff) throw new TxError(diff.code, `field ${diff.field}`);
-    if (typeof decoded.TxnSignature !== 'string') throw new TxError(TxErrorCode.SIGNATURE_INVALID, 'TxnSignature missing');
-    const publicKey = Buffer.from(decoded.SigningPubKey, 'hex').subarray(1);
-    if (!ed25519Verify(publicKey, xrplSigningPreimage(decoded), Buffer.from(decoded.TxnSignature, 'hex'))) throw new TxError(TxErrorCode.SIGNATURE_INVALID, 'Ed25519 signature does not verify');
-    return;
-  }
-  const { transaction, signature, unsigned } = decodeEip1559Signed(bytes);
-  const diff = compareSepolia(intent.transaction, transaction);
-  if (diff) throw new TxError(diff.code, `field ${diff.field}`);
+/**
+ * Checks the Ed25519 signature of a decoded XRPL transaction (spec §5 step 5): over `STX\0` and
+ * the serialization without TxnSignature, with the key in SigningPubKey. Throws a TxError.
+ * The caller has already checked that Account is the address of SigningPubKey.
+ */
+export function verifyXrplSignature(decoded) {
+  if (typeof decoded.TxnSignature !== 'string') throw new TxError(TxErrorCode.SIGNATURE_INVALID, 'TxnSignature missing');
+  const publicKey = Buffer.from(decoded.SigningPubKey, 'hex').subarray(1);
+  if (!ed25519Verify(publicKey, xrplSigningPreimage(decoded), Buffer.from(decoded.TxnSignature, 'hex'))) throw new TxError(TxErrorCode.SIGNATURE_INVALID, 'Ed25519 signature does not verify');
+}
+
+/**
+ * Checks the signature of decoded EIP-1559 bytes in the spec §5 order (y-parity, ranges, low s,
+ * recovery) and returns { sender, transactionHash }: the recovered address and the Keccak-256
+ * hash of the signed envelope. Throws a TxError. Comparing the sender with `from` is the caller's.
+ */
+export function verifySepoliaSignature(bytes) {
+  const { signature, unsigned } = decodeEip1559Signed(bytes);
   const { yParity, r, s } = signature;
   if (yParity > 1n) throw new TxError(TxErrorCode.BAD_Y_PARITY, 'yParity must be 0 or 1');
   if (r === 0n || r >= SECP256K1_N || s === 0n || s >= SECP256K1_N) throw new TxError(TxErrorCode.SIGNATURE_INVALID, 'r or s out of range');
   if (s > SECP256K1_N / 2n) throw new TxError(TxErrorCode.HIGH_S, 's above n/2 (EIP-2)');
   const sender = secp256k1RecoverAddress(keccak256(unsigned), signature);
   if (sender === null) throw new TxError(TxErrorCode.SIGNATURE_INVALID, 'no public key recovers');
+  return { sender, transactionHash: `0x${keccak256(bytes).toString('hex')}` };
+}
+
+function check(intent, bytes) {
+  if (intent.network === IntentNetwork.XRPL_TESTNET) {
+    const decoded = decodeXrplTx(bytes);
+    const diff = compareXrpl(intent.transaction, decoded);
+    if (diff) throw new TxError(diff.code, `field ${diff.field}`);
+    verifyXrplSignature(decoded);
+    return;
+  }
+  const { transaction } = decodeEip1559Signed(bytes);
+  const diff = compareSepolia(intent.transaction, transaction);
+  if (diff) throw new TxError(diff.code, `field ${diff.field}`);
+  const { sender } = verifySepoliaSignature(bytes);
   if (sender !== intent.transaction.from) throw new TxError(TxErrorCode.SENDER_MISMATCH, 'recovered sender differs from the intent');
 }
 

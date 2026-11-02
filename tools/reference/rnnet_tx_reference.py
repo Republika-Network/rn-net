@@ -758,5 +758,39 @@ def main(root: Path) -> int:
     return 1 if failed else 0
 
 
+def cli_verify(intent_text: str, approved_digest: str, signed: str) -> bytes:
+    """One record, for the broadcaster's second verifier (ADR-RN-019 §3 step 5).
+
+    The intent must be canonical JSON text; anything else is an invalid intent, as in the
+    JavaScript verifier. Returns the record's canonical JSON bytes and a newline."""
+    def no_dup(pairs):
+        out = {}
+        for k, v in pairs:
+            if k in out:
+                raise ValueError("duplicate key")
+            out[k] = v
+        return out
+
+    def constant(_):
+        raise ValueError("constant")
+
+    try:
+        intent = json.loads(intent_text, object_pairs_hook=no_dup, parse_constant=constant)
+        canonical = canon_values_ok(intent) and canon(intent) == intent_text.encode("utf-8")
+    except (ValueError, RecursionError, ref.RefError, UnicodeEncodeError):
+        canonical = False
+    if not canonical:
+        record = {"format": "rnnet.signed-tx-verification.v1", "network": None, "intentDigest": None, "blobSha256": None, "transactionHash": None, "outcome": "FAIL", "code": "RNTX_INTENT_INVALID"}
+    else:
+        record = verify(intent, approved_digest, signed)
+    return canon(record) + b"\n"
+
+
 if __name__ == "__main__":
+    if len(sys.argv) == 5 and sys.argv[1] == "verify":
+        sys.stdout.buffer.write(cli_verify(sys.argv[2], sys.argv[3], sys.argv[4]))
+        sys.exit(0)
+    if len(sys.argv) != 1:
+        print("usage: rnnet_tx_reference.py [verify <intent-json> <approved-digest> <signed-transaction>]", file=sys.stderr)
+        sys.exit(2)
     sys.exit(main(HERE.parent.parent))

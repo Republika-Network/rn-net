@@ -95,8 +95,11 @@ run_checks() {
   echo "::group::Syntax check"
   git ls-files -z '*.mjs' | xargs -0 -n1 node --check
   echo "::endgroup::"
-  echo "::group::Tests (guards, offline preload, packages, signer, conformance, tamper)"
-  node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs" "signer/test/*.test.mjs"
+  echo "::group::Tests (guards, offline preload, packages, signer, txverify, broadcaster, conformance, tamper)"
+  node --import ./tools/offline.mjs --test "tools/*.test.mjs" "tools/guards/*.test.mjs" "packages/*/test/*.test.mjs" "signer/test/*.test.mjs" "txverify/test/*.test.mjs"
+  echo "::endgroup::"
+  echo "::group::Broadcaster's Python verifier as a real subprocess (no preload; still inside the namespace)"
+  node tools/broadcast/python-verifier.check.mjs "$(command -v python3)"
   echo "::endgroup::"
   echo "::group::Independent Python reference against all vectors"
   python3 -I -B tools/reference/rnnet_reference.py
@@ -105,6 +108,7 @@ run_checks() {
   python3 -I -B tools/reference/rnnet_genesis_reference.py
   python3 -I -B tools/reference/rnnet_tx_reference.py
   python3 -I -B tools/reference/rnnet_prep_reference.py
+  python3 -I -B tools/reference/rnnet_broadcast_reference.py
   echo "::endgroup::"
 }
 

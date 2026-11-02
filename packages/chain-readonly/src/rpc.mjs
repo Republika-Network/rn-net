@@ -175,7 +175,9 @@ function interpret(network, envelope) {
     const { result } = envelope;
     if (kind(result) !== 'object') throw new ReadError('RNLO_INVALID_RESPONSE', 'result');
     if (result.status === 'error') {
-      if (result.error === 'txnNotFound') throw new ReadError('RNLO_NOT_FOUND');
+      // A ledger-ranged lookup (ADR-RN-019 §8) reports whether the whole range was searched; only
+      // searched_all: true can support an expiry finding, so it is kept as the detail.
+      if (result.error === 'txnNotFound') throw new ReadError('RNLO_NOT_FOUND', result.searched_all === true ? 'searched_all' : '');
       throw new ReadError('RNLO_RPC_ERROR', typeof result.error === 'string' && RPC_ERROR_NAME.test(result.error) ? result.error : '');
     }
     if (result.status !== 'success') throw new ReadError('RNLO_INVALID_RESPONSE', 'status');
