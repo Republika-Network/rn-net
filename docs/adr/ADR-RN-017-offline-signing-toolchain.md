@@ -2,6 +2,7 @@
 
 - Status: Accepted for offline gate A only (founder approval of PR #14 as implemented, RN-NET-03B2-B1 acceptance)
 - Date: 2026-11-01
+- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. Until it is accepted, the Decision below applies unchanged, and no real key may exist.
 - Amends: [ADR-RN-005](ADR-RN-005-guard-parser-dependency.md). Before this ADR, `acorn` was the only third-party package, and the guard read only `packages/`.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Specification: [rnnet.unsigned-tx-intent.v1](../../spec/rnnet.unsigned-tx-intent.v1.md)
@@ -188,3 +189,128 @@ The guard now reads `signer/**` with its own allowlist:
   - every existing format, specification, vector and commitment;
   - the Genesis fixture and the ADR-RN-016 construction;
   - `packages/chain-readonly`, which stays read-only.
+
+## Amendment C1 (Proposed): testnet key generation, terminal approval and the persistent sign log
+
+- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted. Accepting it would allow the
+  tooling below to be **implemented and tested offline** (milestone C4). It would authorize no
+  key generation (gate B), no funding (C), no signing (D) and no broadcasting (E).
+- Founder decisions behind it (2026-11-02):
+  - WSL ext4 is the intended location of the encrypted testnet-only key files, outside every
+    repository and worktree;
+  - scrypt + AES-256-GCM, terminal-only passphrase entry and the network-purpose binding are
+    kept.
+- Not covered: the renewed `@noble/*` approval for gates B-SEP and D-SEP (§6 above). It is still
+  a separate founder decision.
+- Readiness analysis: [RN-NET-03B2-C operational readiness](../genesis/rn-net-03b2c-operational-readiness.md) §5.
+
+### K1. Key generation (for gate B)
+
+- **One fresh key per network, purpose `genesis-proof-01`.** There is no import, seed, mnemonic,
+  derivation path or Mainnet value; the network enumeration stays `xrpl:testnet` and
+  `evm:11155111`.
+- **Randomness, from the operating system only:**
+  - Ed25519 (XRPL): Node's `generateKeyPairSync('ed25519')`;
+  - secp256k1 (Sepolia): `randomBytes(32)`, redrawn until 1 ≤ k < n. Reducing modulo n is not
+    allowed. The public key and address come from the existing `secp256k1PublicKey` and
+    `evmAddress`, so B-SEP needs the renewed noble approval.
+- **Guard change.** `randomBytes` and `generateKeyPairSync` become allowed in exactly one file,
+  `signer/src/keygen.mjs`. The rest of `signer/` keeps the §3 refusal, and noble's `keygen` and
+  `randomSecretKey` stay refused everywhere.
+- **Network namespace.** Generation runs under `unshare -rn`. The command refuses to run if any
+  network interface other than loopback is present.
+- **Output.** It prints only the network, purpose, public key, address and the key file's
+  SHA-256. The secret is never printed, logged, put in an environment variable or passed as an
+  argument.
+
+### K2. Key files on WSL ext4
+
+- **Format unchanged.** `rnnet.testnet-key-file.v1` stays exactly as in §5 above: scrypt N=2^17,
+  r=8, p=1, 16-byte salt; AES-256-GCM, 12-byte IV, 16-byte tag; the authenticated data covers
+  every field except the ciphertext and tag. The only change is that at gate B the salt and IV
+  come from `randomBytes`, not from the caller.
+- **Location.** `~/.local/share/rn-net-keys/genesis-01/` (`$XDG_DATA_HOME` when the founder sets
+  it), on the WSL ext4 filesystem. One file per network: `xrpl-testnet.key.json` and
+  `sepolia.key.json`. The founder passes the directory path as an argument; the code reads no
+  environment variable.
+- **What the key-file code refuses**, before writing and before every read:
+  - a real path (after resolving symbolic links) under `/mnt/` or inside any git worktree or
+    repository (walking up for `.git`);
+  - a filesystem that `statfs` does not report as ext4 (magic `0xEF53`). This refuses the
+    Windows drives that WSL mounts through drvfs/9p, where `0600` is not enforced;
+  - a directory not owned by the user or not `0700`; a file not `0600`;
+  - an existing file (keys are created with `wx` and never overwritten).
+- **Durability.** The file is written to a temporary name, `fsync`ed, linked to its final
+  name, and then the directory is `fsync`ed.
+- **No copies.** No backup, no cloud sync, no CI secret. If a key file is lost, the network gets
+  a new gate B and C with a new key.
+- **Residual risk, accepted for testnet keys only:** the Windows host can read the WSL virtual
+  disk.
+- **Retirement** is unchanged (authorization doc §2.7).
+
+### K3. Terminal-only passphrase and terminal approval
+
+- **Passphrase.** Read from the controlling terminal (`/dev/tty`) with echo off, and from nowhere
+  else: not from an argument, environment variable, file, pipe or stdin redirect. If no terminal
+  is attached, the command refuses.
+  - At gate B, it is entered twice and must be at least 20 characters.
+  - It is never stored by RN-NET. How the founder keeps it is the founder's decision.
+- **Terminal approval at gate D,** before the passphrase prompt:
+  - the signer prints the full intent and the digest it recomputes;
+  - it also prints the network, sender, `Sequence` or nonce, fee, `LastLedgerSequence` or
+    `maxFeePerGas`, and the payload;
+  - the approved digest is an argument, copied from the founder's gate-D record. A different
+    recomputed digest is refused;
+  - the founder confirms by typing the last 16 hex characters of the digest. A full 64-character
+    retype would cost time in the XRPL window (ADR-RN-016 Amendment C1) without adding a
+    control the argument does not already give.
+- **What the prompt does not prove.** An agent can open a terminal too, so a prompt is not proof
+  that a person is there. As in the signing design §4, the control is that **no agent session
+  has the passphrase or runs during gates B and D**.
+- **Signing runs under `unshare -rn`**, with the same interface check as K1.
+
+### K4. Persistent, append-only sign log
+
+- **Location.** `~/.local/state/rn-net/genesis-01/sign-log/`, separate from the key directory and
+  from the broadcaster's submission log. The same checks as K2 apply: ext4, not `/mnt/`, not in
+  a worktree, `0700`.
+- **Entries.** Each entry is its own file, written once (`wx`, temporary file + `link()`, file
+  and directory `fsync`, as the PR #20 review's follow-up N4 asks of the submission log). Entries are
+  never changed or deleted. A new record format, `rnnet.sign-log-entry.v1`, is specified in C4.
+  - **`SIGNING`**: network, key address, `Sequence` or nonce, intent digest. Written **before**
+    the signature.
+  - **`SIGNED`**: the same, plus the blob SHA-256 and the transaction hash. Written **before**
+    the signed blob is written out.
+  - **`RESIGN_BASIS`** (XRPL only): the digest of an `rnnet.submission-status.v1` whose finding is
+    `EXPIRED` for the previous blob of that `Sequence`.
+- **Rules, keyed on (key address, `Sequence` or nonce)**, as in the signing design §8:
+  1. The same approved digest again is refused (`RNTX_ALREADY_SIGNED`). The blob already written
+     is the output. The one exception: a `SIGNING` entry with no `SIGNED` entry means the
+     process stopped before any blob left it. Ed25519 and RFC 6979 signatures are deterministic,
+     so that same digest may be completed once. That produces the same bytes.
+  2. A different intent for a `Sequence` or nonce that already has an entry is refused
+     (`RNTX_SEQUENCE_UNRESOLVED`), with one exception: on XRPL, a `RESIGN_BASIS` entry naming an
+     `EXPIRED` status record for that `Sequence`.
+  3. A higher `Sequence` or nonce is refused while a lower one for that key is unresolved.
+  4. Sepolia same-nonce replacement stays refused. It needs its own founder decision and tooling
+     (readiness §11).
+- **The log is local.** As with the submission log (ADR-RN-019), it cannot stop signing on a
+  second machine. Gates B and D run on one machine.
+
+### K5. Where the code goes (C4)
+
+- `signer/src/keygen.mjs`: generation only (K1).
+- A command-line entry point under `tools/keys/`, the only new file allowed to import `signer/`.
+  It does all the argument, terminal and file I/O (K2 to K4), and it may not import a network
+  module, `tools/live/`, `chain-readonly`, `chain-submit` or `node:child_process`.
+- `signer/src/*` otherwise stays free of I/O.
+- An independent review covers this before gate B.
+
+### Consequences
+
+- The crypto formats, the intent format, the verification record and every vector stay
+  unchanged.
+- The only new format is `rnnet.sign-log-entry.v1`, a private operational record that is never
+  published.
+- The guard gains three narrow exceptions (K1 randomness, the K5 entry point, K2–K4 I/O in that
+  entry point). Each is pinned by a test.
