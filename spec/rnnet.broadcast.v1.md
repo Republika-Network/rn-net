@@ -387,14 +387,15 @@ plus at most 3 absence reads. A refusal ends the check with `RNBC_REQUEST_POLICY
     path, or a bare specifier other than `acorn` (a `#` alias included);
   - `node:sqlite`, and any import or re-export of `node:test` outside a `*.test.mjs` file (every
     export of it reaches `run()`; test files run under the offline preload, which refuses
-    subprocesses);
+    subprocesses). A file that is not a test may not import a test file (`imports-test-file`);
   - a relative specifier the guard cannot resolve exactly (a `+`, a space, a non-ASCII letter): its
     importer counts as network;
   - a regular expression whose pattern holds `constructor`, and imported JSON that does not parse
     or has `constructor` as a key or string (escapes included).
 
   A target that matches a file only when case is ignored is a finding (`import-case-mismatch`), as
-  is, over the whole tree, a relative target that does not exist (`import-target-missing`). A
+  is, over the whole tree (`tools/guards/run.mjs` passes `wholeTree`), a relative target that does
+not exist (`import-target-missing`). A
   symbolic link anywhere in the repository is a finding.
 
   Nothing but `tools/guards/dependency-boundaries.test.mjs` (and the fixtures themselves) may import

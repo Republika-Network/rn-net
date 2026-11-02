@@ -395,7 +395,8 @@ function resolve(fromPath, specifier) {
   return viaUrl === `/repository/${resolved}` ? resolved : null;
 }
 
-export function check(files) {
+/** `options.wholeTree`: the files are the whole tracked tree (tools/guards/run.mjs), so every relative import target must exist. */
+export function check(files, options = {}) {
   const findings = [];
   const add = (path, rule) => findings.push({ path, rule });
 
@@ -558,7 +559,7 @@ export function check(files) {
       else if (targetRest !== 'src/index.mjs') add(path, `private-import:${targetPkg}/${targetRest}`);
     }
   }
-  checkWriteTransportClosure(files, add);
+  checkWriteTransportClosure(files, add, options.wholeTree === true || files.some((f) => f.path === 'package.json'));
   return findings;
 }
 
@@ -694,7 +695,7 @@ export function networkCapability(path, content) {
   visit(program, null, null);
   return [...reasons];
 }
-function checkWriteTransportClosure(files, add) {
+function checkWriteTransportClosure(files, add, wholeTree) {
   const exempt = new Set([...SIGNER_IMPORT_TEST_DATA, 'tools/guards/dependency-boundaries.mjs']);
   const edges = new Map();
   const network = new Set();
@@ -729,6 +730,9 @@ function checkWriteTransportClosure(files, add) {
         // is the one exception.
         if (!/\.mjs$/.test(target)) unanalysed.add(target);
         // Guard test data is meant to be refused; nothing outside the guard's own tests imports it.
+        // A test file is exempt from the node:test rule because it runs under the offline preload;
+        // imported by a file that is not a test, it would run without it (C2 final review A).
+        if (/\.test\.mjs$/.test(target) && !/\.test\.mjs$/.test(path) && !GUARD_TEST_DATA.test(path)) add(path, 'imports-test-file');
         // Only the guard's own test files may import it, never a relay elsewhere in tools/guards/.
         if (GUARD_TEST_DATA.test(target) && !GUARD_TEST_DATA.test(path) && !SIGNER_IMPORT_TEST_DATA.includes(path)) add(path, 'imports-guard-test-data');
       }
@@ -739,7 +743,6 @@ function checkWriteTransportClosure(files, add) {
   // file system (NTFS through /mnt/c, macOS), unanalysed; and when the whole tree is given (the
   // root package.json is among the files), every relative target must exist (C2 final review).
   const lower = new Map([...contents.keys()].map((k) => [k.toLowerCase(), k]));
-  const wholeTree = contents.has('package.json');
   for (const [from, targets] of edges) {
     if (GUARD_TEST_DATA.test(from)) continue;
     for (const target of targets) {

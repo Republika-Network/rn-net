@@ -1096,3 +1096,15 @@ test('C2 final re-review: case-mismatched and, over the whole tree, missing impo
   assert.ok(found(tree).includes('tools/broadcast/z.mjs:import-target-missing:tools/broadcast/gen.mjs'));
   assert.ok(!found(tree.slice(1)).some((f) => f.includes('import-target-missing')));
 });
+
+test('C2 final review: a file that is not a test may not import a test file', () => {
+  const found = (files, options) => check(files.map(([path, content]) => ({ path, content, symlink: false })), options).map((f) => `${f.path}:${f.rule}`);
+  for (const spec of ['./w-helper.test.mjs', './w-helper.test.mjs?x', '../w-helper.test.mjs']) {
+    for (const form of [`import { r } from '${spec}';`, `export * from '${spec}';`, `const m = await import('${spec}');`]) {
+      const f = found([['tools/broadcast/w.mjs', form]]);
+      assert.ok(f.includes('tools/broadcast/w.mjs:imports-test-file'), `${form}: ${f.join(' ')}`);
+    }
+  }
+  assert.ok(!found([['tools/broadcast/a.test.mjs', "import { r } from './b.test.mjs';"]]).some((f) => f.includes('imports-test-file')));
+  assert.ok(found([['tools/broadcast/z.mjs', "import { g } from './gen.mjs';"]], { wholeTree: true }).includes('tools/broadcast/z.mjs:import-target-missing:tools/broadcast/gen.mjs'));
+});
