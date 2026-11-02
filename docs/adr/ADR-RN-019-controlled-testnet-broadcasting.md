@@ -1,6 +1,6 @@
 # ADR-RN-019: Controlled testnet broadcasting
 
-- Status: Proposed (RN-NET-03B2-B3 design; nothing implemented)
+- Status: Accepted for the offline architecture and simulated implementation only (founder approval of the PR #18 design, RN-NET-03B2-B3 Gate A). No real broadcast, live RPC call or operational key is authorized
 - Date: 2026-11-01
 - Builds on: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md), [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-018](ADR-RN-018-transaction-preparation-reads.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md), [ADR-RN-015](ADR-RN-015-live-finality-trust-semantics.md)
 - Specification: [rnnet.unsigned-tx-intent.v1](../../spec/rnnet.unsigned-tx-intent.v1.md) §5 and §6. The submission formats in §7 below become a specification when B3 is implemented.
@@ -309,6 +309,23 @@ its own read-only authorization, with its request budget.
 (ADR-RN-015). `CHAIN_PROVEN` is never produced.
 
 ## Consequences
+
+- **What this acceptance covers.** It accepts the keyless broadcaster architecture of this
+  ADR, as designed in PR #18 (`3dfd588`), for **offline implementation and simulated testing
+  only** (RN-NET-03B2-B3, gate A). It explicitly preserves the following:
+  - **No real broadcasting.** It authorizes no write request to any network. Every submission
+    in B3 goes to an injected, simulated transport. Gate E stays unauthorized for both
+    networks, and each attempt still needs its own founder-written broadcast authorization.
+  - **No live RPC.** It authorizes no live read or write. B3 adds no executable entry point that
+    joins the write path to a network transport.
+  - **No operational keys.** It authorizes no operational wallet, key, key file, seed, account,
+    funding or signing. The broadcaster stays keyless (§1).
+  - **The noble approval is verification only.** The founder approved `@noble/hashes@2.4.0` and
+    `@noble/curves@2.4.0` for verification-only use in `txverify/`. That does not authorize key
+    creation or signing for Sepolia (gates B-SEP and D-SEP).
+  - **Agreement is not proof.** Provider agreement is not a consensus proof (ADR-RN-015).
+    `CHAIN_PROVEN` is never produced.
+  - **Nothing else is accepted.** It authorizes none of gates B to F.
 
 - **What B3 will add:**
   - `packages/chain-submit` (request builder and response classifier);
