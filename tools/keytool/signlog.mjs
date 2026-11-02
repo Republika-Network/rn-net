@@ -45,9 +45,10 @@ export const entryDigest = (entry) => sha256(Buffer.concat([Buffer.from(SIGN_LOG
 export const statusRecordDigest = (record) => sha256(Buffer.concat([Buffer.from(STATUS_RECORD_DOMAIN, 'utf8'), Buffer.from(canonicalBytes(record))]));
 
 // A real UTC time: it survives a round trip through Date (so no 30 February, no hour 24).
+// Years 0001 to 9999, as Python's datetime allows.
 const realTime = (text) => {
   const ms = Date.parse(text);
-  return !Number.isNaN(ms) && `${new Date(ms).toISOString().slice(0, 19)}Z` === text;
+  return !text.startsWith('0000') && !Number.isNaN(ms) && `${new Date(ms).toISOString().slice(0, 19)}Z` === text;
 };
 const invalid = (index, why) => new KeyToolError(KeyToolCode.SIGNLOG_INVALID, `entry ${index}: ${why}`);
 
@@ -70,13 +71,14 @@ function addressMatches(network, address, publicKey) {
 // The shape and value checks of one entry, independent of the others.
 function checkEntryShape(entry, index) {
   if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) throw invalid(index, 'not an object');
+  // Own string keys only: an array or an inherited name ("constructor") is not a type.
+  if (typeof entry.type !== 'string' || !Object.hasOwn(ENTRY_FIELDS, entry.type)) throw invalid(index, 'unknown type');
   const fields = ENTRY_FIELDS[entry.type];
-  if (!fields) throw invalid(index, 'unknown type');
   if (Object.keys(entry).sort().join(',') !== fields.join(',')) throw invalid(index, `fields must be exactly ${fields.join(', ')}`);
   if (entry.format !== SIGN_LOG_FORMAT) throw invalid(index, 'wrong format');
   if (entry.index !== index) throw invalid(index, 'index is not its position');
-  if (!Object.values(IntentNetwork).includes(entry.network)) throw invalid(index, 'unknown network');
-  if (!PURPOSES.includes(entry.purpose)) throw invalid(index, 'unknown purpose');
+  if (typeof entry.network !== 'string' || !Object.values(IntentNetwork).includes(entry.network)) throw invalid(index, 'unknown network');
+  if (typeof entry.purpose !== 'string' || !PURPOSES.includes(entry.purpose)) throw invalid(index, 'unknown purpose');
   if (typeof entry.recordedAt !== 'string' || !TIME.test(entry.recordedAt) || !realTime(entry.recordedAt)) throw invalid(index, 'bad recordedAt');
   const xrpl = entry.network === IntentNetwork.XRPL_TESTNET;
   if (typeof entry.address !== 'string' || !(xrpl ? XRPL_ACCOUNT : EVM_ADDRESS).test(entry.address)) throw invalid(index, 'bad address');
@@ -154,7 +156,7 @@ export function replaySignLog(entries) {
       state.pending = null;
       return;
     }
-    // RESIGN_BASIS
+    if (entry.type !== EntryType.RESIGN_BASIS) throw invalid(index, 'unknown type');
     if (state.pending !== null) throw invalid(index, 'RESIGN_BASIS while a SIGNING entry is pending');
     if (state.basis !== null) throw invalid(index, 'RESIGN_BASIS while another basis is unused');
     if (state.latest === null || state.sequence !== sequence) throw invalid(index, 'RESIGN_BASIS for a sequence that was not signed');

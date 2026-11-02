@@ -25,7 +25,15 @@ const js = (dir) => {
     return { ok: false, code: error.code ?? 'unexpected' };
   }
 };
-const py = (dir) => JSON.parse(execFileSync(python, ['-I', '-B', reference, '--check-log', dir], { encoding: 'utf8' }));
+// A Python crash is a verdict too ("crashed"), so it can never pass as agreement.
+const py = (dir) => {
+  try {
+    return JSON.parse(execFileSync(python, ['-I', '-B', reference, '--check-log', dir], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }));
+  } catch {
+    return { ok: null, code: 'crashed' };
+  }
+};
+const agree = (a, b) => a.ok === b.ok && a.code === b.code;
 
 let n = 0;
 const directory = (entries, change = () => {}) => {
@@ -72,13 +80,14 @@ try {
   for (const [name, dir, expected] of results) {
     const a = js(dir);
     const b = py(dir);
-    const ok = a.ok === b.ok && a.code === b.code && (expected === null || a.ok === expected);
+    const ok = agree(a, b) && (expected === null || a.ok === expected);
     if (!ok) {
       failed += 1;
       console.error(`keytool sign log: ${name}: JavaScript ${JSON.stringify(a)}, Python ${JSON.stringify(b)}`);
     }
   }
-  // Negative control: the comparison would notice a disagreement.
+  // Negative controls: the comparison notices a disagreement and a crash, and damage is refused.
+  if (agree({ ok: true, code: null }, { ok: false, code: 'RNKEY_SIGNLOG_INVALID' }) || agree({ ok: false, code: 'X' }, { ok: null, code: 'crashed' })) failed += 1;
   if (js(results.find(([name]) => name === 'damaged gap')[1]).ok) failed += 1;
   console.log(`keytool sign log: ${results.length - failed}/${results.length} directories agree (JavaScript and Python)`);
   process.exitCode = failed ? 1 : 0;

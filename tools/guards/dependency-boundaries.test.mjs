@@ -785,8 +785,8 @@ test('C4 key generation: randomness in signer/src/keygen.mjs only, through two e
   assert.deepEqual(rules('signer/test/a.test.mjs', "import { test } from 'node:test';\nimport { generateKey } from '../src/keygen.mjs';"), []);
   // Outside signer/, only the key tool's entry point, its tests and the C4 fixture generator.
   assert.deepEqual(rules('tools/keytool/cli.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), []);
-  assert.deepEqual(rules('tools/signing/build-b1-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), ['keygen-importer-not-allowed']);
-  assert.deepEqual(rules('tools/broadcast/build-b3-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), ['keygen-importer-not-allowed']);
+  assert.deepEqual(rules('tools/signing/build-b1-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), ['keygen-importer-not-allowed', 'keygen-reached-transitively']);
+  assert.deepEqual(rules('tools/broadcast/build-b3-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"), ['keygen-importer-not-allowed', 'keygen-reached-transitively']);
   assert.ok(rules('tools/genesis/x.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';").includes('keygen-importer-not-allowed'));
   assert.ok(rules('tools/submit/x.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';").includes('keygen-importer-not-allowed'));
 });
@@ -853,6 +853,20 @@ test('C4 key tool: imports only its own files, canonical, tx-intent and txverify
   assert.ok(found.includes('tools/keytool/a.mjs:keytool-reaches-network'));
   assert.ok(found.includes('tools/keytool/b.mjs:keytool-reaches-network'));
   assert.ok(found.includes('tools/keytool/b.mjs:keytool-module-not-allowed:node:https'));
+});
+
+test('C4 review 5: no other secret route in the key tool, and no transitive reach of keygen or the key tool', () => {
+  const path = 'tools/keytool/cli.mjs';
+  for (const content of ["readFileSync('/proc/self/environ');", 'readFileSync(`/proc/${p}/environ`);', 'process.stdin.read();', "process.stdin.on('data', f);", 'readFileSync(0);', "writeFileSync('/dev/stderr', x);", "readFileSync('/dev/stdin');", "readFileSync('/dev/fd/0');", 'const u = os.userInfo();']) {
+    assert.ok(rules(path, content).includes('keytool-io-route'), content);
+  }
+  assert.ok(!rules('tools/keytool/isolation.mjs', "readFileSync(`/proc/self/${name}`, 'utf8');").includes('keytool-io-route'));
+  const found = (files) => check(files.map(([p, c]) => ({ path: p, content: c, symlink: false }))).filter((f) => f.rule === 'keygen-reached-transitively').map((f) => f.path);
+  const keygen = ['signer/src/keygen.mjs', 'export const generateKey = () => {};'];
+  const fixtures = ['tools/signing/build-c4-fixtures.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';\nexport const build = () => generateKey;"];
+  assert.deepEqual(found([keygen, fixtures, ['tools/broadcast/x.mjs', "import { build } from '../signing/build-c4-fixtures.mjs';"]]), ['tools/broadcast/x.mjs']);
+  assert.deepEqual(found([keygen, ['tools/keytool/cli.mjs', "import { generateKey } from '../../signer/src/keygen.mjs';"], ['tools/keytool.test.mjs', "import { run } from './keytool/cli.mjs';"]]), []);
+  assert.deepEqual(found([['tools/keytool/signlog.mjs', 'export const x = 1;'], ['tools/signing/keytool-python.check.mjs', "import { x } from '../keytool/signlog.mjs';"], ['tools/live/y.mjs', "import { x } from '../signing/keytool-python.check.mjs';"]]), ['tools/live/y.mjs']);
 });
 
 test('C4 does not widen B1/B3 isolation: the broadcaster, packages and txverify still cannot reach the signer', () => {

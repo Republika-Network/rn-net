@@ -132,13 +132,13 @@ def check_shape(e, i):
     def bad():
         raise Refusal("RNKEY_SIGNLOG_INVALID", i)
 
-    if not isinstance(e, dict) or e.get("type") not in FIELDS or not isinstance(e.get("type"), str):
+    if not isinstance(e, dict) or not isinstance(e.get("type"), str) or e["type"] not in FIELDS:
         bad()
     if sorted(e) != FIELDS[e["type"]]:
         bad()
     if e["format"] != FORMAT or not is_int(e["index"]) or e["index"] != i:
         bad()
-    if e["network"] not in NETWORKS or e["purpose"] not in PURPOSES:
+    if not isinstance(e["network"], str) or not isinstance(e["purpose"], str) or e["network"] not in NETWORKS or e["purpose"] not in PURPOSES:
         bad()
     if not is_str(e["recordedAt"], TIME) or not valid_time(e["recordedAt"]):
         bad()
@@ -211,7 +211,7 @@ def replay(entries):
             s["signed"][d] = i
             s["latest"] = (d, e["transactionHash"])
             s["pending"] = None
-        else:
+        elif e["type"] == "RESIGN_BASIS":
             if s["pending"] is not None or s["basis"] is not None or s["latest"] is None or s["sequence"] != seq:
                 raise bad
             if s["latest"] != (e["expiredIntentDigest"], e["expiredTransactionHash"]):

@@ -83,8 +83,8 @@ names after a successful link. Every leftover is refused with a message that nam
 | `.<name>.key.json.partial` that is a second name of the key file (same inode) | `keygen` stopped after the file was complete, before the clean-up | Remove the partial name. If `KEY_CREATED` is missing too, see the next row |
 | A key file with no `KEY_CREATED` entry (`sign` refuses `RNKEY_KEY_NOT_REGISTERED`; `keygen` refuses `RNKEY_KEY_EXISTS`) | `keygen` stopped between the key file and the log entry. The address was never printed, so it was never funded | Remove that key file and run `keygen` again (a new key; a new gate B record) |
 | `.NNNNNN.json.tmp` in the sign log (`RNKEY_SIGNLOG_INCOMPLETE`) | A run stopped while writing entry N, before it was linked: entry N does not exist | Check that `NNNNNN.json` does not exist (or is the same inode), then remove the temporary name. Nothing was signed after an unwritten `SIGNING` |
-| A pending `SIGNING` with no `SIGNED` | `sign` stopped before the signed output was staged | Run the same `sign` again: it completes that digest once, to the same bytes (`COMPLETE`) |
-| `SIGNED`, a staged `.<output>.partial`, no final output | `sign` stopped before the final link | Run the same `sign` again: it refuses `RNTX_ALREADY_SIGNED`, checks the staged copy against the `SIGNED` entry and links it, without the passphrase |
+| A pending `SIGNING` with no `SIGNED` (perhaps with a staged `.<output>.partial`) | `sign` stopped after `SIGNING`, before `SIGNED` | Run the same `sign` again: it completes that digest once, to the same bytes (`COMPLETE`); a staged copy must equal them byte for byte |
+| `SIGNED`, a staged `.<output>.partial`, no final output | `sign` stopped before the final link | Run the same `sign` again: it refuses `RNTX_ALREADY_SIGNED`, re-verifies the staged copy (canonical bytes, signature against the approved intent, blob and transaction hashes equal to the `SIGNED` entry) and links it, without the passphrase |
 | `.<output>.tmp` or `.<output>.partial.tmp` in the output directory (`RNKEY_OUTPUT_CONFLICT`) | A run stopped while staging | Remove it and run the same `sign` again |
 
 ## Limits
@@ -102,4 +102,4 @@ names after a successful link. Every leftover is refused with a message that nam
 - **The ext4 check** is `statfs` magic `0xEF53`, which ext2 and ext3 share. It refuses drvfs, 9p,
   tmpfs, overlay and network file systems. The Windows host can still read the WSL virtual disk
   (K2 residual risk, accepted for testnet keys only).
-- **Local log only** (spec §6).
+- **Local log only**, and removing its last entries is not detectable (spec §6).

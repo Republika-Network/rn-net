@@ -126,7 +126,12 @@ export function decryptKeyFile(input, passphrase) {
     bound = bindKey({ network: file.network, purpose: file.purpose, secretKey });
   } catch {
     throw invalid('the decrypted secret is not a valid key for the file network');
+  } finally {
+    secretKey.fill(0);
   }
-  if (bound.publicKey !== file.publicKey || bound.address !== file.address) throw invalid('the decrypted secret does not match the public key and address');
+  if (bound.publicKey !== file.publicKey || bound.address !== file.address) {
+    bound.secretKey.fill(0);
+    throw invalid('the decrypted secret does not match the public key and address');
+  }
   return { network: bound.network, purpose: bound.purpose, secretKey: bound.secretKey };
 }

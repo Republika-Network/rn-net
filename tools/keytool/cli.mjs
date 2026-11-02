@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalize, parse } from '../../packages/canonical/src/index.mjs';
 import { approvedIntent, IntentNetwork, intentSender, intentSequence, PURPOSES, TxError } from '../../packages/tx-intent/src/index.mjs';
+import { verifySignedTransaction } from '../../txverify/src/index.mjs';
 import { decryptKeyFile, encryptKeyFile, MIN_CREATION_PASSPHRASE } from '../../signer/src/keyfile.mjs';
 import { generateKey, keyFileRandomness, OS_SOURCE } from '../../signer/src/keygen.mjs';
 import { createSigner } from '../../signer/src/sign.mjs';
@@ -115,7 +116,12 @@ async function keygen(options, env) {
     ensurePrivateDirectory(logDir, 'sign log directory', env.system);
     checkKeyFileAbsent(keyDir, network, env.system);
     const entries = readSignLog(logDir, env.system);
-    for (const state of replaySignLog(entries).byAddress.values()) {
+    const replayed = replaySignLog(entries);
+    // One time for the key file and its log entry, checked against the log BEFORE a key exists,
+    // so a clock that went back cannot leave an unrecorded key file (review C4-4).
+    const createdAt = isoSeconds(env.now());
+    if (createdAt < replayed.lastTime) refuse(KeyToolCode.SIGNLOG_INVALID, `the clock (${createdAt}) is earlier than the last sign-log entry (${replayed.lastTime}); nothing was created`);
+    for (const state of replayed.byAddress.values()) {
       if (state.key.network === network && state.key.purpose === purpose) refuse(KeyToolCode.KEY_EXISTS, `the sign log already records a key for ${network} ${purpose} (${state.key.address})`);
     }
     terminal.write(
@@ -138,7 +144,7 @@ async function keygen(options, env) {
     const key = generateKey({ network, purpose, source: env.source });
     let file;
     try {
-      file = encryptKeyFile(key, first, { ...keyFileRandomness(env.source), createdAt: isoSeconds(env.now()) });
+      file = encryptKeyFile(key, first, { ...keyFileRandomness(env.source), createdAt });
     } finally {
       key.secretKey.fill(0);
     }
@@ -148,7 +154,7 @@ async function keygen(options, env) {
     if (stored.sha256 !== keyFileSha256) refuse(KeyToolCode.FILE_INVALID, 'the key file read back differs from the one written');
     const check = decryptKeyFile(stored.file, first);
     check.secretKey.fill(0);
-    const entry = nextEntry(entries, EntryType.KEY_CREATED, { network, purpose, address: file.address, publicKey: file.publicKey, keyFileSha256 }, isoSeconds(env.now()));
+    const entry = nextEntry(entries, EntryType.KEY_CREATED, { network, purpose, address: file.address, publicKey: file.publicKey, keyFileSha256 }, createdAt);
     appendSignLog(logDir, entries, entry, env.system);
     const summary = [
       'KEY CREATED (public metadata only)',
@@ -362,7 +368,16 @@ function recoverOutput(entries, request, intent, outDir, env, terminal) {
     if (lstatOrNull(path) === null) continue;
     const bytes = readPrivateFile(path, MAX_OUTPUT_BYTES, env.system.getuid);
     const output = parseJson(bytes, path);
-    if (output.blobSha256 !== signedEntry.blobSha256 || output.transactionHash !== signedEntry.transactionHash || output.intentDigest !== request.intentDigest) refuse(KeyToolCode.OUTPUT_CONFLICT, `${path} does not match sign-log entry ${signedEntry.index}`);
+    // The staged copy is re-verified, not trusted (review C4-3): its bytes are its canonical JSON,
+    // its signed transaction verifies against the approved intent, and the recomputed blob and
+    // transaction hashes are the SIGNED entry's.
+    const verification = verifySignedTransaction({ intent, approvedDigest: request.intentDigest, signedTransaction: output?.signedTransaction });
+    const consistent =
+      output !== null && typeof output === 'object' && `${canonicalize(output)}\n` === bytes.toString('utf8') &&
+      verification.outcome === 'PASS' && verification.blobSha256 === signedEntry.blobSha256 && verification.transactionHash === signedEntry.transactionHash &&
+      output.blobSha256 === signedEntry.blobSha256 && output.transactionHash === signedEntry.transactionHash && output.intentDigest === request.intentDigest &&
+      canonicalize(output.verification) === canonicalize(verification);
+    if (!consistent) refuse(KeyToolCode.OUTPUT_CONFLICT, `${path} does not match sign-log entry ${signedEntry.index}`);
     const published = linkOutput(outDir, name, bytes, env.system);
     terminal.write(`Already signed (sign-log entry ${signedEntry.index}). The signed output is ${published}\n`);
     return;

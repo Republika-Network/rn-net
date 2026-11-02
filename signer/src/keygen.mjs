@@ -52,7 +52,10 @@ export const OS_SOURCE = Object.freeze({
  */
 export function drawSecp256k1Secret(source = OS_SOURCE) {
   for (let draw = 1; draw <= MAX_SECP256K1_DRAWS; draw += 1) {
-    const candidate = bytesOf(source.bytes(32), 32, 'a secp256k1 draw');
+    const drawn = source.bytes(32);
+    const candidate = bytesOf(drawn, 32, 'a secp256k1 draw');
+    // The operating-system buffer belongs to this file: overwrite it once copied.
+    if (source === OS_SOURCE) drawn.fill(0);
     const k = BigInt(`0x${Buffer.from(candidate).toString('hex')}`);
     if (k >= 1n && k < SECP256K1_N) return { secretKey: candidate, draws: draw };
     candidate.fill(0);
@@ -79,7 +82,14 @@ function selfTest(bound) {
 export function generateKey({ network, purpose, source = OS_SOURCE } = {}) {
   if (!Object.values(IntentNetwork).includes(network)) throw new TxError(TxErrorCode.KEY_INVALID, 'unknown network');
   if (!PURPOSES.includes(purpose)) throw new TxError(TxErrorCode.KEY_INVALID, 'unknown purpose');
-  const secretKey = network === IntentNetwork.XRPL_TESTNET ? bytesOf(source.ed25519Seed(), 32, 'an Ed25519 seed') : drawSecp256k1Secret(source).secretKey;
+  let secretKey;
+  if (network === IntentNetwork.XRPL_TESTNET) {
+    const seed = source.ed25519Seed();
+    secretKey = bytesOf(seed, 32, 'an Ed25519 seed');
+    if (source === OS_SOURCE) seed.fill(0);
+  } else {
+    secretKey = drawSecp256k1Secret(source).secretKey;
+  }
   try {
     const bound = bindKey({ network, purpose, secretKey });
     selfTest(bound);

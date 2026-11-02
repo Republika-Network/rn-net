@@ -581,6 +581,10 @@ function checkWriteTransportClosure(files, add) {
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
     // The key tool may not reach the network at all, however indirectly (RN-NET-03B2-C4).
     if (path.startsWith(KEYTOOL) && reachesNetwork) add(path, 'keytool-reaches-network');
+    // Nor may anything else reach key generation or the key tool through an allowed file (review
+    // C4-5): only signer/, the key tool and their listed importers.
+    const inner = path.startsWith('signer/') || path.startsWith(KEYTOOL) || KEYGEN_IMPORTERS.includes(path) || KEYTOOL_IMPORTERS.includes(path);
+    if (!inner && [...seen].some((p) => p === SIGNER_KEYGEN_FILE || p.startsWith(KEYTOOL))) add(path, 'keygen-reached-transitively');
   }
 }
 
@@ -790,6 +794,9 @@ function checkKeytool(path, content, add) {
   for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
   if (path !== KEYTOOL_ENTRY_POINT && (content.startsWith('#!') || /process\s*\.\s*argv|import\s*\.\s*meta\s*\.\s*main/.test(content))) add(path, 'keytool-entry-point');
   if (path !== KEYTOOL_TERMINAL_FILE && /\/dev\/tty|setRawMode|node:tty|\btty\b['"]/.test(content)) add(path, 'keytool-terminal-outside-terminal-module');
+  // No other input or output route for a secret (review C4-5): the environment file, standard
+  // input, file descriptors, /dev/stderr and the user database.
+  if (/\/proc\/[^'"`\s]*environ|\/dev\/(?:stdin|stdout|stderr|fd\b)|\bstdin\s*\.\s*(?:read|on|once|pipe|setEncoding)\b|readFileSync\s*\(\s*0\b|\buserInfo\b/.test(content)) add(path, 'keytool-io-route');
   // No environment variable: not process.env, not a destructured or computed process member.
   if (/process\s*(?:\?\.\s*|\.\s*)env\b|\benv\s*[,}][^;]*=\s*process\b/.test(content)) add(path, 'keytool-environment');
   let program;

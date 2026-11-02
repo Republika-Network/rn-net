@@ -154,6 +154,11 @@ function signlogCases() {
     e[1].address = evmAddress(raw);
   });
   mutate('unknown-type', (e) => { e[2].type = 'SIGNATURE'; });
+  // Review C4-1: a non-string or inherited type is not a type (it once fell through to RESIGN_BASIS).
+  for (const [id, type] of [['type-array', ['SIGNING']], ['type-constructor', 'constructor'], ['type-to-string', 'toString'], ['type-null', null], ['type-object', { SIGNING: 1 }]]) mutate(id, (e) => { e[2].type = type; });
+  mutate('network-array', (e) => { e[1].network = [SEP]; });
+  mutate('purpose-array', (e) => { e[2].purpose = [PURPOSE]; });
+  mutate('year-0000', (e) => { e[0].recordedAt = '0000-01-01T00:00:00Z'; });
   mutate('extra-field', (e) => { e[2].note = 'x'; });
   mutate('missing-field', (e) => { delete e[3].blobSha256; });
   mutate('wrong-format', (e) => { e[1].format = 'rnnet.sign-log-entry.v2'; });
@@ -196,6 +201,8 @@ function signlogCases() {
     { format: 'rnnet.sign-log-entry.v1', index: 1, previous: null, recordedAt: '2026-11-02T12:59:00Z', purpose: PURPOSE, network: XRPL, address: KEYS.xrplOther.address, type: 'RESIGN_BASIS', sequence: '1', intentDigest: D(3), expiredIntentDigest: D(1), expiredTransactionHash: TXH.xrpl(1), statusRecordDigest: basis1.statusRecordDigest },
   ]));
   raw('basis-while-pending', [{ ...sp, type: 'SIGNING', sequence: '0', intentDigest: D(5) }, { ...xr, type: 'RESIGN_BASIS', sequence: '7', intentDigest: D(3), expiredIntentDigest: D(1), expiredTransactionHash: TXH.xrpl(1), statusRecordDigest: basis1.statusRecordDigest }, { ...xr, type: 'SIGNING', sequence: '7', intentDigest: D(3) }, { ...xr, type: 'RESIGN_BASIS', sequence: '7', intentDigest: D(4), expiredIntentDigest: D(1), expiredTransactionHash: TXH.xrpl(1), statusRecordDigest: basis2.statusRecordDigest }]);
+  // Review C4-1, the end-to-end form: an array-typed basis for a Sepolia nonce.
+  raw('sepolia-array-type-basis', [{ ...sp, type: 'SIGNING', sequence: '0', intentDigest: D(5) }, { ...sp, type: 'SIGNED', sequence: '0', intentDigest: D(5), blobSha256: D(50), transactionHash: TXH.sepolia(5) }, { ...sp, type: ['RESIGN_BASIS'], sequence: '0', intentDigest: D(6), expiredIntentDigest: D(5), expiredTransactionHash: TXH.sepolia(5), statusRecordDigest: basis1.statusRecordDigest }]);
   raw('two-unused-bases', [{ ...xr, type: 'RESIGN_BASIS', sequence: '7', intentDigest: D(3), expiredIntentDigest: D(1), expiredTransactionHash: TXH.xrpl(1), statusRecordDigest: basis1.statusRecordDigest }, { ...xr, type: 'RESIGN_BASIS', sequence: '7', intentDigest: D(4), expiredIntentDigest: D(1), expiredTransactionHash: TXH.xrpl(1), statusRecordDigest: basis2.statusRecordDigest }]);
   raw('status-record-reused', [
     { ...xr, type: 'RESIGN_BASIS', sequence: '7', intentDigest: D(3), expiredIntentDigest: D(1), expiredTransactionHash: TXH.xrpl(1), statusRecordDigest: basis1.statusRecordDigest },

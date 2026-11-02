@@ -641,6 +641,27 @@ test('crash after SIGNED, before the output link: the staged copy is checked and
   writeFileSync(join(d.out, `.${name}.partial`), `${canonicalize(forged)}\n`, { mode: 0o600 });
   refusedWith((await sign(XRPL, d)).e, 'RNKEY_OUTPUT_CONFLICT');
   assert.deepEqual(files(d.out), [`.${name}.partial`]);
+  // Review C4-3: other signed bytes with the SIGNED entry's hashes copied in are refused too.
+  const swapped = JSON.parse(readFileSync(join(d.base, 'keep'), 'utf8'));
+  swapped.signedTransaction = `DEADBEEF${swapped.signedTransaction.slice(8)}`;
+  writeFileSync(join(d.out, `.${name}.partial`), `${canonicalize(swapped)}\n`, { mode: 0o600 });
+  refusedWith((await sign(XRPL, d)).e, 'RNKEY_OUTPUT_CONFLICT');
+  // And so is a pretty-printed copy of the right output.
+  writeFileSync(join(d.out, `.${name}.partial`), `${JSON.stringify(JSON.parse(readFileSync(join(d.base, 'keep'), 'utf8')), null, 1)}\n`, { mode: 0o600 });
+  refusedWith((await sign(XRPL, d)).e, 'RNKEY_OUTPUT_CONFLICT');
+  assert.deepEqual(files(d.out), [`.${name}.partial`]);
+});
+
+test('keygen refuses a clock earlier than the sign log before any key exists (review C4-4)', async () => {
+  const d = workspace();
+  assert.equal((await keygen(XRPL, d)).exit, 0);
+  const e = environment({ inputs: [PASS, PASS], key: KEY[SEP] });
+  e.now = () => new Date('2026-11-02T11:59:00Z');
+  assert.equal(await run(keygenArgs(SEP, d), e), 1);
+  refusedWith(e, 'RNKEY_SIGNLOG_INVALID');
+  assert.equal(e.prompts.length, 0);
+  assert.deepEqual(files(d.keys), ['xrpl-testnet.key.json']);
+  assert.equal((await keygen(SEP, d)).exit, 0, 'a correct clock then works');
 });
 
 test('a leftover temporary log entry, a gap, a stray or non-canonical file: every command refuses', async () => {

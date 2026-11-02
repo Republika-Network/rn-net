@@ -1199,6 +1199,494 @@
    }
   },
   {
+   "id": "type-array",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": [
+      "SIGNING"
+     ],
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:36152059c57ac0225078536569bf33e1ff7dba0894018fd833047421f40bec18",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 2
+   }
+  },
+  {
+   "id": "type-constructor",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": "constructor",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:63d125dbc111f7b03e7a18d4da56f2f961a0086a7af3a96faa1bb01becdfec73",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 2
+   }
+  },
+  {
+   "id": "type-to-string",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": "toString",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:021f70e2a9d2dcc9d382f34cf1f078e8994181b0885bc85c852f71f75141f940",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 2
+   }
+  },
+  {
+   "id": "type-null",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": null,
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:0c53fe0fe890283665caa4871c03be0e09d2f702576bd05ccfad6c4d1a7cd29a",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 2
+   }
+  },
+  {
+   "id": "type-object",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": {
+      "SIGNING": 1
+     },
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:2d68458db0aad06777c411add7737197d1fd9c25968ed4e58d298507d483c635",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 2
+   }
+  },
+  {
+   "id": "network-array",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": [
+      "evm:11155111"
+     ],
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:82d300496495ecbfbc2c6ecd228b97aafb95606780c78fb118dc5dbde9b1ef37",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": "SIGNING",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:c0809b99eb128cc91357a300f9d7ebb7a5f98f462f802f4fb86cfb393c9a8546",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 1
+   }
+  },
+  {
+   "id": "purpose-array",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": "SIGNING",
+     "network": "xrpl:testnet",
+     "purpose": [
+      "genesis-proof-01"
+     ],
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:8cb3a7a6e61bc865e2c02fb61e96d6688106a46288b7dd622fd7eb31922ccbd8",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 2
+   }
+  },
+  {
+   "id": "year-0000",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "0000-01-01T00:00:00Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:6aa65d776376fa7dafc3fcf5533402343793337766e22eda9f71d6347bd5ca54",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:ca69d621a9bdf6d5fe750219d2b377eb1f196f77173691bec80b2332009cca26",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": "SIGNING",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:eeced662e4caca16135ba17906d3f820d6d883504b7534631cb512612219e0c3",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 0
+   }
+  },
+  {
    "id": "extra-field",
    "entries": [
     {
@@ -3152,6 +3640,109 @@
     "ok": false,
     "code": "RNKEY_SIGNLOG_INVALID",
     "index": 7
+   }
+  },
+  {
+   "id": "sepolia-array-type-basis",
+   "entries": [
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 0,
+     "previous": null,
+     "recordedAt": "2026-11-02T12:00:28Z",
+     "type": "KEY_CREATED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "publicKey": "ED9906BDFAFF3E6C26D4A9312DE18B16DBBB130A036D101784CBE5EBF5826F0A9B",
+     "keyFileSha256": "sha256:0de8f0a22dd60ea693636d252185ae531e2adb39e8ac49365f572cce2bf0e120"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 1,
+     "previous": "sha256:987ffdf41a23d364ab7f83ae7803d7a9adfa841993da46beba3efbf9e2939941",
+     "recordedAt": "2026-11-02T12:00:29Z",
+     "type": "KEY_CREATED",
+     "network": "evm:11155111",
+     "purpose": "genesis-proof-01",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "publicKey": "04ff9fec4eb8e816d9a5a5dd6baeae44858384ecbec91d18c6e31432d9db2d1f47caac61ee84316691dda53f571c6bb8d615756bf47314c2e1ea914f60b3226249",
+     "keyFileSha256": "sha256:0cd541ea3085b27c45d91479a899d059f87f9964c14541d38663ccdf1d25f5be"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 2,
+     "previous": "sha256:23a3f3ddda33ea3a7fc8918e03cb8e31f25f2c71191e61a795ca74e828cc6547",
+     "recordedAt": "2026-11-02T12:00:30Z",
+     "type": "SIGNING",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 3,
+     "previous": "sha256:46f7d8f30c5ab305526bdc858807c35d20d2153482c80af77fae4f3f181e7df6",
+     "recordedAt": "2026-11-02T12:00:31Z",
+     "type": "SIGNED",
+     "network": "xrpl:testnet",
+     "purpose": "genesis-proof-01",
+     "address": "rKUPoxPMeDBkxtcq4FGJd8uYcKUzkreWYM",
+     "sequence": "7",
+     "intentDigest": "sha256:dae1760c8bd8686868822508507b38d4ff2367b5814da019a715d325e817f5a9",
+     "blobSha256": "sha256:a02fa9b1a606bd63fba710afbdc5a8b8b59b7307e80b463914e51ea49df60104",
+     "transactionHash": "7FED4C8C9B36A48E2EFD5233222CA4876E02D26D7EF3EDA8B03D68FD427B1BB0"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 4,
+     "previous": "sha256:76635c919cc844d1020f538bf88b59879d0775304f4fcd9f1d5e8fe48a62119a",
+     "recordedAt": "2026-11-02T12:59:00Z",
+     "purpose": "genesis-proof-01",
+     "network": "evm:11155111",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "type": "SIGNING",
+     "sequence": "0",
+     "intentDigest": "sha256:ac341ccd8be6cd1bc9679584f6e1c30d0ffd23f79b487e45c0f5d08fc00a8670"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 5,
+     "previous": "sha256:8d73e2a798225fad619de337c1e4a21656e8d95efa05e9f15d1b157856d637e9",
+     "recordedAt": "2026-11-02T12:59:00Z",
+     "purpose": "genesis-proof-01",
+     "network": "evm:11155111",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "type": "SIGNED",
+     "sequence": "0",
+     "intentDigest": "sha256:ac341ccd8be6cd1bc9679584f6e1c30d0ffd23f79b487e45c0f5d08fc00a8670",
+     "blobSha256": "sha256:e21ed127dfe00c72847f4258b96eb2afbc41b4bb64b24002d9bbe57abb0634ef",
+     "transactionHash": "0x26321cd00b1c9fe1cd3771fe2ab46824719b0b2860dbd4ae96d29b6382c4dc23"
+    },
+    {
+     "format": "rnnet.sign-log-entry.v1",
+     "index": 6,
+     "previous": "sha256:e94bb57e3f10903e56fd48f44f074f00faa1befad0ae0c1d758873363f6045a3",
+     "recordedAt": "2026-11-02T12:59:00Z",
+     "purpose": "genesis-proof-01",
+     "network": "evm:11155111",
+     "address": "0x1b9f2c2d805919a8934876b4b2f2e8c888abce4a",
+     "type": [
+      "RESIGN_BASIS"
+     ],
+     "sequence": "0",
+     "intentDigest": "sha256:1cc908ff035ae507fe8c5795d2fb30c0cbfc5a84c7934637cfce3412c7679eef",
+     "expiredIntentDigest": "sha256:ac341ccd8be6cd1bc9679584f6e1c30d0ffd23f79b487e45c0f5d08fc00a8670",
+     "expiredTransactionHash": "0x26321cd00b1c9fe1cd3771fe2ab46824719b0b2860dbd4ae96d29b6382c4dc23",
+     "statusRecordDigest": "sha256:fc611792e55f829d81c652fbc10cf569d286f68dfbcfbefde3956df9b48dae29"
+    }
+   ],
+   "expect": {
+    "ok": false,
+    "code": "RNKEY_SIGNLOG_INVALID",
+    "index": 6
    }
   },
   {

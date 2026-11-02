@@ -44,11 +44,11 @@ Every entry has exactly these common members, plus the members of its type:
 | `format` | `"rnnet.sign-log-entry.v1"` |
 | `index` | Its position, from 0 |
 | `previous` | `null` for entry 0; otherwise the digest (below) of entry `index - 1` |
-| `type` | `KEY_CREATED`, `SIGNING`, `SIGNED` or `RESIGN_BASIS` |
+| `type` | The string `KEY_CREATED`, `SIGNING`, `SIGNED` or `RESIGN_BASIS` (any other value, including an array or object, is refused) |
 | `network` | `xrpl:testnet` or `evm:11155111` |
 | `purpose` | `genesis-proof-01` |
 | `address` | XRPL: the classic address. Sepolia: `0x` + 40 lower-case hex |
-| `recordedAt` | `YYYY-MM-DDTHH:MM:SSZ`, a real UTC second, never earlier than the entry before |
+| `recordedAt` | `YYYY-MM-DDTHH:MM:SSZ`, a real UTC second of years 0001 to 9999, never earlier than the entry before |
 
 Digest of an entry: `sha256:` + hex of SHA-256(`rnnet:sign-log-entry:v1\0` ‖ its canonical JSON).
 
@@ -56,7 +56,7 @@ Digest of an entry: `sha256:` + hex of SHA-256(`rnnet:sign-log-entry:v1\0` ‖ i
 |---|---|---|
 | `KEY_CREATED` | `publicKey` (XRPL `ED` + 64 upper-case hex; Sepolia `04` + 128 lower-case hex, a point on secp256k1), `keyFileSha256` (SHA-256 of the key file's bytes) | By `keygen`, after the key file is durable and has been read back and decrypted |
 | `SIGNING` | `sequence` (the XRPL `Sequence` or Sepolia nonce, decimal, no leading zero; XRPL below 2^32, Sepolia below 2^64), `intentDigest` | **Before** the signature is made |
-| `SIGNED` | `sequence`, `intentDigest`, `blobSha256`, `transactionHash` (XRPL 64 upper-case hex; Sepolia `0x` + 64 lower-case hex) | After the signed output is staged durably, **before** it is linked to its final name |
+| `SIGNED` | `sequence`, `intentDigest`, `blobSha256`, `transactionHash` (XRPL 64 upper-case hex; Sepolia `0x` + 64 lower-case hex) | After the signed output is staged durably under a hidden name, **before** it is linked to its final name. K4 says SIGNED comes before the blob is "written out": here the blob is on disk (staged) before SIGNED, but it is only published under its final name after; a crash in between leaves a pending `SIGNING`, which completes to the same bytes |
 | `RESIGN_BASIS` | `sequence`, `intentDigest` (the new intent), `expiredIntentDigest`, `expiredTransactionHash`, `statusRecordDigest` | XRPL only, before the `SIGNING` of a re-sign |
 
 `KEY_CREATED` is an addition to the three types K4 names: it records the key's public identity
@@ -118,6 +118,12 @@ Sepolia same-nonce replacement is refused (ADR-RN-017 Amendment C1, K4 rule 4).
 
 - The log is local. It cannot stop signing on another machine or from a copy of the key file;
   gates B and D run on one machine (K4).
+- **Removing the last entries is not detectable.** The chain links each entry to the one before,
+  so a change, insertion, reordering or gap is refused, but a log cut after any entry is a valid,
+  shorter log. Someone who can write to the directory as the founder's user could remove trailing
+  `SIGNING`/`SIGNED` entries and so allow signing again. The control is the same as for the key
+  file: the directory is the founder's alone, and no agent session runs during gate D; the gate-D
+  record (outside this directory) keeps the digests signed.
 - The checks run before every read and write, but another process of the same user could change
   the directory between two checks. The control for that is the operating procedure: no agent
   session runs, and none has the passphrase, during gates B and D.
