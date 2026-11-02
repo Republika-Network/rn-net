@@ -18,7 +18,7 @@ import { keccak256, secp256k1RecoverAddress, secp256k1SignDigest } from '../src/
 import { decryptKeyFile, encryptKeyFile, KEY_FILE_FORMAT } from '../src/keyfile.mjs';
 import { bindKey } from '../src/keys.mjs';
 import { createSigner } from '../src/sign.mjs';
-import { verifySignedTransaction } from '../src/verify.mjs';
+import { verifySignedTransaction } from '../../txverify/src/index.mjs';
 import { fixtureKey } from './fixture-keys.mjs';
 
 const C = 'sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7';

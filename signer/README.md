@@ -8,10 +8,9 @@ npm ci --ignore-scripts --prefix signer
 
 | File | Role |
 |---|---|
-| `src/crypto.mjs` | Keccak-256 and recoverable secp256k1 (noble); Ed25519 (Node built-in) |
+| `src/crypto.mjs` | Recoverable secp256k1 signing (noble) and Ed25519 signing (Node built-in); re-exports the verification primitives from `txverify/` |
 | `src/keys.mjs` | Binds caller-supplied key bytes to one network and purpose |
-| `src/sign.mjs` | Signs an approved intent once, with an in-memory sign log, then verifies its own output |
-| `src/verify.mjs` | Verifies signed bytes against the approved intent; produces `rnnet.signed-tx-verification.v1` |
+| `src/sign.mjs` | Signs an approved intent once, with an in-memory sign log, then verifies its own output with `txverify/` |
 | `src/keyfile.mjs` | `rnnet.testnet-key-file.v1`, encrypt and decrypt **in memory only** |
 | `test/fixture-keys.mjs` | Keys derived from public labels (tests and fixtures only) |
 
@@ -25,3 +24,5 @@ npm ci --ignore-scripts --prefix signer
 The dependency-boundary guard enforces these.
 
 The libraries are approved only for **single-purpose testnet keys that hold no value**. They are not for custody: JavaScript gives no constant-time or memory-erasure guarantee. Any production or Mainnet use needs a new ADR.
+
+**Verification moved to `txverify/` (RN-NET-03B2-B3).** `verify.mjs` and the verification half of `crypto.mjs` now live in [`txverify/`](../txverify/), unchanged in behaviour, so the keyless broadcaster never imports `signer/`. The signer needs both projects installed (`npm ci --ignore-scripts --prefix txverify` as well).

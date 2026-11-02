@@ -588,3 +588,177 @@ test('destructured key-generation helpers and TypeScript files are reported (re-
   assert.ok(rules('signer/src/a.mjs', 'const { randomSecretKey } = s.utils;\nrandomSecretKey();').includes('key-generation:randomSecretKey'));
   assert.deepEqual(rules('tools/x.mts', "import { createSigner } from '../signer/src/sign.mjs';"), ['signer-importer-not-allowed']);
 });
+
+// --- RN-NET-03B2-B3: chain-submit, txverify/ and the broadcaster harness (ADR-RN-019) -----------
+
+test('chain-submit: hashing only, no signer/, txverify/, node:fs, chain-readonly or key API', () => {
+  assert.deepEqual(rules('packages/chain-submit/src/a.mjs', "import { x } from '../../tx-intent/src/index.mjs';"), []);
+  assert.deepEqual(rules('packages/chain-submit/src/a.mjs', "import { x } from '../../broadcast-handoff/src/index.mjs';"), []);
+  assert.ok(rules('packages/chain-submit/src/a.mjs', "import { readFileSync } from 'node:fs';").includes('builtin-not-allowed:node:fs'));
+  assert.ok(rules('packages/chain-submit/src/a.mjs', "import { x } from '../../../txverify/src/index.mjs';").includes('import-outside-packages'));
+  assert.ok(rules('packages/chain-submit/src/a.mjs', "import { x } from '../../../signer/src/sign.mjs';").includes('import-outside-packages'));
+  assert.ok(rules('packages/chain-submit/src/a.mjs', "import { x } from '../../chain-readonly/src/index.mjs';").includes('package-not-allowed:chain-readonly'));
+  for (const name of ['sign', 'createPrivateKey', 'createPublicKey', 'verify', 'randomBytes']) {
+    assert.ok(rules('packages/chain-submit/src/a.mjs', `import { ${name} } from 'node:crypto';`).includes(`builtin-export-not-allowed:node:crypto#${name}`), name);
+  }
+});
+
+test('nothing under packages/ may import chain-submit, chain-readonly least of all', () => {
+  for (const pkg of ['chain-readonly', 'tx-prepare', 'broadcast-handoff', 'tx-intent', 'anchor', 'verifier', 'canonical']) {
+    assert.ok(rules(`packages/${pkg}/src/a.mjs`, "import { x } from '../../chain-submit/src/index.mjs';").includes('package-not-allowed:chain-submit'), pkg);
+  }
+});
+
+test('no file joins chain-submit to the network transport, and only tools/ may import chain-submit', () => {
+  const join = "import { submitRequestBytes } from '../packages/chain-submit/src/index.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';";
+  assert.ok(rules('tools/submit-anchor.mjs', join).includes('write-transport-join'));
+  assert.ok(rules('tools/x.test.mjs', join).includes('write-transport-join'));
+  assert.ok(rules('tools/submit/submit-anchor.mjs', join.replaceAll("'../", "'../../").replace("'./live", "'../live")).includes('write-transport-join'));
+  assert.ok(rules('tools/x.mjs', "import { x } from '../packages/chain-submit/src/index.mjs';\nconst t = await import(`./live/https-${'transport'}.mjs`);").includes('write-transport-join'));
+  assert.ok(rules('scripts/send.mjs', "import { x } from '../packages/chain-submit/src/index.mjs';").includes('chain-submit-importer-not-allowed'));
+  assert.ok(rules('tools/live/send.mjs', "import { x } from '../../packages/chain-submit/src/index.mjs';").includes('chain-submit-importer-not-allowed'));
+  assert.deepEqual(rules('tools/broadcast/x.mjs', "import { x } from '../../packages/chain-submit/src/index.mjs';"), []);
+});
+
+test('tools/submit/: no command line, no transport or network module, no signer/, hashing only', () => {
+  const r = (content, path = 'tools/submit/a.mjs') => rules(path, content);
+  assert.deepEqual(r("import { createHash } from 'node:crypto';\nimport { readFileSync } from 'node:fs';\nimport { x } from '../../txverify/src/index.mjs';"), []);
+  assert.ok(r('const [, , file] = process.argv;').includes('submit-entry-point'));
+  assert.ok(r('if (import.meta.main) run();').includes('submit-entry-point'));
+  assert.ok(r('#!/usr/bin/env node\nexport const a = 1;').includes('submit-entry-point'));
+  assert.ok(r("import { httpsTransport } from '../live/https-transport.mjs';").includes('submit-imports-transport'));
+  assert.ok(r("import { x } from '../live/other.mjs';").includes('submit-imports-transport'));
+  for (const mod of ['node:https', 'node:http', 'node:net', 'node:tls', 'node:dns', 'node:dgram', 'node:http2', 'node:worker_threads', 'node:readline']) {
+    assert.ok(r(`import x from '${mod}';`).includes(`submit-module-not-allowed:${mod}`), mod);
+  }
+  assert.ok(r("import { createSigner } from '../../signer/src/sign.mjs';").includes('signer-importer-not-allowed'));
+  for (const name of ['sign', 'createPrivateKey', 'generateKeyPairSync', 'randomBytes']) assert.ok(r(`import { ${name} } from 'node:crypto';`).includes(`submit-crypto-export-not-allowed:${name}`), name);
+  assert.ok(r("import { execFileSync } from 'node:child_process';").includes('submit-subprocess-not-allowed:module'));
+  assert.deepEqual(r("import { execFileSync } from 'node:child_process';", 'tools/submit/python-verifier.mjs'), []);
+  assert.ok(r("import { spawn } from 'node:child_process';", 'tools/submit/python-verifier.mjs').includes('submit-subprocess-not-allowed:spawn'));
+  assert.ok(r('const r = await fetch(url);').includes('forbidden-identifier:fetch'));
+  assert.ok(r('const k = crypto.getRandomValues(b);').includes('global-crypto'));
+  assert.ok(r("import x from 'some-library';").includes('third-party-import:some-library'));
+});
+
+test('txverify/: verification only (noble keccak_256 and secp256k1 recovery), never signer/', () => {
+  const r = (content, path = 'txverify/src/a.mjs') => rules(path, content);
+  assert.deepEqual(r("import { keccak_256 } from '@noble/hashes/sha3.js';\nimport { secp256k1 } from '@noble/curves/secp256k1.js';\nconst s = secp256k1.Signature.fromBytes(b, 'recovered');\nconst p = s.recoverPublicKey(d);\nconst ok = secp256k1.verify(s, d, p);"), []);
+  assert.deepEqual(r("import { createPublicKey, verify } from 'node:crypto';\nimport { x } from '../../packages/tx-intent/src/index.mjs';"), []);
+  for (const [code, rule] of [
+    ['secp256k1.sign(d, k);', 'txverify-secp256k1-member:sign'],
+    ['secp256k1.getPublicKey(k);', 'txverify-signing-api:getPublicKey'],
+    ['secp256k1.utils.randomSecretKey();', 'txverify-signing-api:utils'],
+    ['secp256k1.keygen();', 'txverify-signing-api:keygen'],
+    ["secp256k1['sign'](d, k);", 'txverify-computed-member'],
+    ['const { sign } = secp256k1;', 'txverify-secp256k1-alias'],
+    ['const c = secp256k1;\nc.sign(d, k);', 'txverify-secp256k1-alias'],
+    ['getSharedSecret(a, b);', 'txverify-signing-api:getSharedSecret'],
+  ]) assert.ok(r(`import { secp256k1 } from '@noble/curves/secp256k1.js';\n${code}`).includes(rule), code);
+  assert.ok(r("import { secp256k1 as c } from '@noble/curves/secp256k1.js';").includes('txverify-library-export-not-allowed:secp256k1'));
+  assert.ok(r("import * as all from '@noble/curves/secp256k1.js';").includes('txverify-library-export-not-allowed:*'));
+  assert.ok(r("import { sha256 } from '@noble/hashes/sha2.js';").includes('third-party-import:@noble/hashes/sha2.js'));
+  assert.ok(r("import { sign } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#sign'));
+  assert.ok(r("import { createPrivateKey } from 'node:crypto';").includes('builtin-export-not-allowed:node:crypto#createPrivateKey'));
+  assert.ok(r("import { readFileSync } from 'node:fs';").includes('builtin-not-allowed:node:fs'));
+  assert.ok(r("import { x } from '../../signer/src/crypto.mjs';").includes('txverify-import-not-allowed:signer/src/crypto.mjs'));
+  assert.ok(r("import { x } from '../../packages/chain-submit/src/index.mjs';").includes('txverify-import-not-allowed:packages/chain-submit/src/index.mjs'));
+  assert.ok(r("import { x } from '../test/helper.mjs';").includes('production-imports-non-production:test/helper.mjs'));
+  assert.ok(r('export const a = 1;', 'txverify/scripts/a.mjs').includes('non-module-file'));
+  assert.ok(check([{ path: 'txverify', content: null, symlink: true }]).some((f) => f.rule === 'symlink-in-package'));
+});
+
+test('txverify/ manifest and lockfile pin exactly the two noble packages under its own name', () => {
+  const manifest = { name: 'rn-net-txverify', private: true, dependencies: { '@noble/curves': '2.4.0', '@noble/hashes': '2.4.0' } };
+  assert.deepEqual(rules('txverify/package.json', JSON.stringify(manifest)), []);
+  assert.ok(rules('txverify/package.json', JSON.stringify({ ...manifest, name: 'rn-net-signer' })).includes('txverify-manifest-name'));
+  assert.ok(rules('txverify/package.json', JSON.stringify({ ...manifest, scripts: { postinstall: 'x' } })).includes('signer-manifest-field-not-allowed:scripts'));
+  assert.ok(rules('txverify/package.json', JSON.stringify({ ...manifest, dependencies: { ...manifest.dependencies, 'left-pad': '1.0.0' } })).includes('undeclared-dependencies'));
+  const lock = JSON.parse(readFileSync(new URL('../../txverify/package-lock.json', import.meta.url), 'utf8'));
+  assert.deepEqual(rules('txverify/package-lock.json', JSON.stringify(lock)), []);
+  assert.ok(rules('txverify/package-lock.json', JSON.stringify({ ...lock, name: 'rn-net-signer' })).includes('undeclared-lockfile-packages'));
+  const signerLock = JSON.parse(readFileSync(new URL('../../signer/package-lock.json', import.meta.url), 'utf8'));
+  assert.ok(rules('txverify/package-lock.json', JSON.stringify(signerLock)).includes('undeclared-lockfile-packages'));
+});
+
+test('signer/ may use txverify/ through its entry point only', () => {
+  assert.deepEqual(rules('signer/src/a.mjs', "import { keccak256 } from '../../txverify/src/index.mjs';"), []);
+  assert.ok(rules('signer/src/a.mjs', "import { keccak256 } from '../../txverify/src/crypto.mjs';").includes('signer-import-not-allowed:txverify/src/crypto.mjs'));
+});
+
+test('an entry point reaching the write path through tools/submit/ is a join too (B3 review B1)', () => {
+  const entry = (submit, live) => `#!/usr/bin/env node
+import { runBroadcast } from '${submit}/broadcaster.mjs';
+import { pythonReferenceVerifier } from '${submit}/python-verifier.mjs';
+import { httpsTransport } from '${live}/https-transport.mjs';
+const [, , ...args] = process.argv;
+await runBroadcast({ inputs: JSON.parse(args[0]), environment: { transport: httpsTransport, referenceVerifier: pythonReferenceVerifier() } });
+`;
+  for (const [path, submit, live] of [
+    ['tools/submit-anchor.mjs', './submit', './live'],
+    ['tools/live/submit-anchor.mjs', '../submit', '.'],
+    ['scripts/submit-anchor.mjs', '../tools/submit', '../tools/live'],
+    ['tools/broadcast/send.mjs', '../submit', '../live'],
+    // Specifiers that do not resolve to the real files are still read as reaching them.
+    ['tools/live/send.mjs', './submit', './live'],
+  ]) {
+    assert.ok(rules(path, entry(submit, live)).includes('write-transport-join'), path);
+  }
+  assert.ok(rules('scripts/run.mjs', "import { runStatusCheck } from '../tools/submit/status.mjs';").includes('chain-submit-importer-not-allowed'));
+  assert.deepEqual(rules('tools/broadcast/x.mjs', "import { runBroadcast } from '../submit/broadcaster.mjs';"), []);
+});
+
+test('the write path and the transport never meet through re-exports (B3 review B1, re-check)', () => {
+  const many = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).filter((f) => f.rule === 'write-transport-join-transitive').map((f) => f.path);
+  const transport = ['tools/live/https-transport.mjs', 'export const httpsTransport = () => {};'];
+  const harness = ['tools/submit/broadcaster.mjs', 'export const runBroadcast = () => {};'];
+  // Route 1: the harness re-exported from an allowed directory.
+  assert.deepEqual(many([transport, harness,
+    ['tools/broadcast/run.mjs', "export { runBroadcast } from '../submit/broadcaster.mjs';"],
+    ['tools/send.mjs', "import { runBroadcast } from './broadcast/run.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';"],
+  ]), ['tools/send.mjs']);
+  // Route 2: the transport re-exported from a plain helper.
+  assert.deepEqual(many([transport, harness,
+    ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"],
+    ['tools/broadcast/send.mjs', "import { runBroadcast } from '../submit/broadcaster.mjs';\nimport { t } from '../net.mjs';"],
+  ]), ['tools/broadcast/send.mjs']);
+  // Through chain-submit and a literal dynamic import, two hops away.
+  assert.deepEqual(many([transport, ['packages/chain-submit/src/index.mjs', 'export const a = 1;'],
+    ['tools/a.mjs', "export * from '../packages/chain-submit/src/index.mjs';"],
+    ['tools/b.mjs', "export * from './a.mjs';"],
+    ['scripts/c.mjs', "import { a } from '../tools/b.mjs';\nconst t = await import('../tools/live/https-transport.mjs');"],
+  ]), ['scripts/c.mjs']);
+  // Either side alone is fine.
+  assert.deepEqual(many([transport, harness,
+    ['tools/broadcast/run.mjs', "export { runBroadcast } from '../submit/broadcaster.mjs';"],
+    ['tools/verify.mjs', "import { httpsTransport } from './live/https-transport.mjs';"],
+  ]), []);
+});
+
+test('the write/network closure: queries, joins inside the write side, symlinks, copied transports (B3 review B1, third check)', () => {
+  const found = (files) => check(files.map(([path, content, symlink]) => ({ path, content, symlink: symlink === true }))).filter((f) => ['write-transport-join-transitive', 'symlink-in-package'].includes(f.rule)).map((f) => `${f.path}:${f.rule}`);
+  const transport = ['tools/live/https-transport.mjs', "import { request } from 'node:https';\nexport const httpsTransport = () => request;"];
+  const harness = ['tools/submit/broadcaster.mjs', 'export const runBroadcast = () => {};'];
+  const entry = (from, net) => ['tools/send.mjs', `import { runBroadcast } from '${from}';\nimport { t } from '${net}';`];
+  const join = 'tools/send.mjs:write-transport-join-transitive';
+  // 1. A query or fragment on either import.
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs?v=1';"], entry('./submit/broadcaster.mjs', './net.mjs')]), [join]);
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"], entry('./submit/broadcaster.mjs#x', './net.mjs')]), [join]);
+  // 2. A join inside tools/submit/ itself.
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"],
+    ['tools/submit/live.mjs', "import { runBroadcast } from './broadcaster.mjs';\nimport { t } from '../net.mjs';"]]), ['tools/submit/live.mjs:write-transport-join-transitive']);
+  // 3. A symlink anywhere under tools/.
+  assert.deepEqual(found([['tools/sub', null, true]]), ['tools/sub:symlink-in-package']);
+  // 4. A copy of the transport: any file importing a network built-in counts as one.
+  assert.deepEqual(found([harness, ['tools/net/https-client.mjs', "import { request } from 'node:https';\nexport const t = request;"], entry('./submit/broadcaster.mjs', './net/https-client.mjs')]), [join]);
+  // Percent-encoded specifiers are read as Node reads them.
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"], entry('./%73ubmit/broadcaster.mjs', './net.mjs')]), [join]);
+});
+
+test('the transport path counts as network even when the file itself is not in the list', () => {
+  const found = check([
+    { path: 'tools/broadcast/run.mjs', content: "export { runBroadcast } from '../submit/broadcaster.mjs';", symlink: false },
+    { path: 'tools/send.mjs', content: "import { runBroadcast } from './broadcast/run.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';", symlink: false },
+  ]).filter((f) => f.rule === 'write-transport-join-transitive').map((f) => f.path);
+  assert.deepEqual(found, ['tools/send.mjs']);
+});

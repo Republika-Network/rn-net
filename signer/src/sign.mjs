@@ -19,7 +19,7 @@ import {
 } from '../../packages/tx-intent/src/index.mjs';
 import { ed25519Sign, keccak256, secp256k1SignDigest } from './crypto.mjs';
 import { bindKey } from './keys.mjs';
-import { transactionHash, verifySignedTransaction } from './verify.mjs';
+import { transactionHash, verifySignedTransaction } from '../../txverify/src/index.mjs';
 
 /**
  * A signer with an in-memory sign log keyed on (key address, Sequence or nonce). B1 knows no

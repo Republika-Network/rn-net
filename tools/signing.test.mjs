@@ -19,7 +19,7 @@ import {
 } from '../packages/tx-intent/src/index.mjs';
 import { checkHandoff } from '../packages/broadcast-handoff/src/index.mjs';
 import { keccak256, secp256k1RecoverAddress, secp256k1SignDigest } from '../signer/src/crypto.mjs';
-import { verifySignedTransaction } from '../signer/src/verify.mjs';
+import { verifySignedTransaction } from '../txverify/src/index.mjs';
 import { check } from './guards/dependency-boundaries.mjs';
 import { build, DIR, FILES } from './signing/build-b1-fixtures.mjs';
 

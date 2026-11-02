@@ -28,6 +28,8 @@ export const ALLOWED_BUILTINS = {
   'tx-intent': ['node:buffer', 'node:crypto', 'node:util'],
   'broadcast-handoff': ['node:buffer', 'node:crypto'],
   'tx-prepare': ['node:buffer', 'node:crypto'],
+  // The write-request builder and classifier (ADR-RN-019 §4): hashing only, no node:fs.
+  'chain-submit': ['node:buffer', 'node:crypto'],
 };
 const TEST_BUILTINS = ['node:test', 'node:assert/strict', 'node:buffer', 'node:crypto'];
 
@@ -101,10 +103,41 @@ export const SIGNER_THIRD_PARTY = ['@noble/hashes/sha3.js', '@noble/curves/secp2
 export const SIGNER_PACKAGES = ['canonical', 'tx-intent'];
 // The only tools/ files that may import signer/ (the B1 fixture generator and tests). A raw-text
 // check over tools/, which is otherwise exempt: defense in depth, with review as the control.
-export const SIGNER_IMPORTERS = ['tools/signing/build-b1-fixtures.mjs', 'tools/signing.test.mjs'];
+export const SIGNER_IMPORTERS = ['tools/signing/build-b1-fixtures.mjs', 'tools/signing.test.mjs', 'tools/broadcast/build-b3-fixtures.mjs'];
 // The guard's own tests hold such imports as string test data; they are exempt from that check
 // only, by exact path.
 const SIGNER_IMPORT_TEST_DATA = ['tools/guards/dependency-boundaries.test.mjs'];
+
+// txverify/ (ADR-RN-019 §3): a separate npm project for VERIFICATION ONLY, with the same pinned noble
+// packages as signer/. Founder-approved for verification-only use in RN-NET-03B2-B3; that approval
+// covers no key creation and no signing. It may import only these built-in exports, the two noble
+// entry points, and the canonical and tx-intent packages; never signer/.
+export const TXVERIFY_DEPENDENCIES = SIGNER_DEPENDENCIES;
+export const TXVERIFY_BUILTINS = ['node:buffer', 'node:crypto'];
+export const TXVERIFY_BUILTIN_EXPORTS = { 'node:buffer': ['Buffer'], 'node:crypto': ['createHash', 'createPublicKey', 'verify'] };
+export const TXVERIFY_THIRD_PARTY = { '@noble/hashes/sha3.js': ['keccak_256'], '@noble/curves/secp256k1.js': ['secp256k1'] };
+export const TXVERIFY_PACKAGES = ['canonical', 'tx-intent'];
+// The only properties txverify/ may read from `secp256k1`: the signature class (fromBytes(...,
+// 'recovered') and recoverPublicKey) and verify. Names that sign, derive or generate keys are
+// reported wherever they appear in txverify/.
+export const TXVERIFY_SECP256K1_MEMBERS = ['Signature', 'verify'];
+export const TXVERIFY_DENIED_NAMES = new Set([
+  'sign', 'signAsync', 'getPublicKey', 'getSharedSecret', 'randomSecretKey', 'randomPrivateKey', 'keygen', 'utils', 'createPrivateKey',
+  'generateKeyPair', 'generateKeyPairSync', 'scryptSync', 'createCipheriv', 'createDecipheriv', 'privateKey', 'secretKey',
+]);
+
+// The broadcaster harness (tools/submit/, ADR-RN-019 §4 and §1). Keyless and, in B3, offline: it may
+// not import signer/, a network module or the network transport, has no command line, and may use
+// node:crypto only to hash. Only python-verifier.mjs may start a subprocess (the Python reference).
+export const SUBMIT_TOOLS = 'tools/submit/';
+export const SUBMIT_FORBIDDEN_MODULES = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dns', 'node:dgram', 'node:worker_threads', 'node:cluster', 'node:readline', 'node:repl', 'node:inspector', 'node:vm'];
+export const SUBMIT_SUBPROCESS_FILES = ['tools/submit/python-verifier.mjs'];
+export const SUBMIT_CRYPTO_EXPORTS = ['createHash'];
+// Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
+// transport. None in RN-NET-03B2-B3: a live entry point needs gate E and its own review.
+export const WRITE_TRANSPORT_JOINERS = [];
+// Files outside packages/ that may import packages/chain-submit.
+export const CHAIN_SUBMIT_IMPORTERS = /^(?:tools\/submit\/[^/]+\.mjs|tools\/broadcast\/[^/]+\.mjs|tools\/[^/]+\.test\.mjs|txverify\/test\/[^/]+\.test\.mjs)$/;
 // Manifest fields that change what npm installs or links, beyond the dependency lists.
 const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
 
@@ -126,6 +159,9 @@ export const ALLOWED_PACKAGES = {
   'broadcast-handoff': ['tx-intent'],
   // Read-only preparation (ADR-RN-018): reads through chain-readonly, binds through tx-intent.
   'tx-prepare': ['chain-readonly', 'tx-intent'],
+  // The only write requests RN-NET can express (ADR-RN-019 §4). No package lists chain-submit, so
+  // nothing under packages/ can import it; chain-readonly stays read-only.
+  'chain-submit': ['canonical', 'tx-intent', 'broadcast-handoff'],
 };
 
 // Whitespace, block comments or line comments, as allowed between tokens.
@@ -305,13 +341,14 @@ export function check(files) {
       const manifest = JSON.parse(content);
       for (const key of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
         const declared = Object.entries(manifest[key] ?? {});
-        const allowed = path === 'package.json' && key === 'devDependencies' ? DEV_DEPENDENCIES : path === 'signer/package.json' && key === 'dependencies' ? SIGNER_DEPENDENCIES : {};
+        const allowed = path === 'package.json' && key === 'devDependencies' ? DEV_DEPENDENCIES : (path === 'signer/package.json' || path === 'txverify/package.json') && key === 'dependencies' ? SIGNER_DEPENDENCIES : {};
         if (declared.some(([dependency, version]) => allowed[dependency]?.version !== version)) add(path, `undeclared-${key}`);
       }
-      if (path === 'signer/package.json') {
+      if (path === 'signer/package.json' || path === 'txverify/package.json') {
         const declared = Object.keys(manifest.dependencies ?? {}).sort().join(',');
         if (declared !== Object.keys(SIGNER_DEPENDENCIES).sort().join(',')) add(path, 'signer-dependencies-incomplete');
         for (const field of SIGNER_MANIFEST_FIELDS_NOT_ALLOWED) if (Object.hasOwn(manifest, field)) add(path, `signer-manifest-field-not-allowed:${field}`);
+        if (path === 'txverify/package.json' && manifest.name !== 'rn-net-txverify') add(path, 'txverify-manifest-name');
       }
       for (const field of MANIFEST_FIELDS_NOT_ALLOWED) if (Object.hasOwn(manifest, field)) add(path, `manifest-field-not-allowed:${field}`);
     }
@@ -331,7 +368,8 @@ export function check(files) {
         );
       };
       const valid = path === 'package-lock.json' && entries.length === expected.size + 1 && Object.hasOwn(Object.fromEntries(entries), '') && entries.every(matches);
-      if (path === 'signer/package-lock.json') {
+      if (path === 'signer/package-lock.json' || path === 'txverify/package-lock.json') {
+        const projectName = path === 'signer/package-lock.json' ? 'rn-net-signer' : 'rn-net-txverify';
         // Exactly the signer project and its pinned runtime dependencies (never `dev`).
         const pins = new Map(Object.entries(SIGNER_DEPENDENCIES).map(([dependency, pin]) => [`node_modules/${dependency}`, pin]));
         const pinned = ([where, entry]) => {
@@ -347,10 +385,10 @@ export function check(files) {
         };
         const lockfile = JSON.parse(content);
         const rootEntry = Object.fromEntries(entries)[''];
-        const wantedRoot = { name: 'rn-net-signer', dependencies: Object.fromEntries(Object.entries(SIGNER_DEPENDENCIES).map(([d, pin]) => [d, pin.version])) };
+        const wantedRoot = { name: projectName, dependencies: Object.fromEntries(Object.entries(SIGNER_DEPENDENCIES).map(([d, pin]) => [d, pin.version])) };
         const rootValid =
           Object.keys(lockfile).sort().join(',') === 'lockfileVersion,name,packages,requires' &&
-          lockfile.name === 'rn-net-signer' && lockfile.lockfileVersion === 3 && lockfile.requires === true &&
+          lockfile.name === projectName && lockfile.lockfileVersion === 3 && lockfile.requires === true &&
           rootEntry !== undefined && JSON.stringify(Object.keys(rootEntry).sort()) === '["dependencies","name"]' &&
           rootEntry.name === wantedRoot.name &&
           JSON.stringify(Object.entries(rootEntry.dependencies).sort()) === JSON.stringify(Object.entries(wantedRoot.dependencies).sort());
@@ -360,7 +398,8 @@ export function check(files) {
     }
     // Node resolves a symlinked module's imports from its real path, not from where it is linked;
     // a linked package directory moves everything under it.
-    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/'))) {
+    // tools/ too: a link (tools/sub -> tools/submit) would hide the write side from the import graph.
+    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/') || path === 'txverify' || path.startsWith('txverify/') || path === 'tools' || path.startsWith('tools/'))) {
       add(path, 'symlink-in-package');
       continue;
     }
@@ -368,8 +407,14 @@ export function check(files) {
       checkSigner(path, content, add);
       continue;
     }
+    if (path.startsWith('txverify/')) {
+      checkTxverify(path, content, add);
+      continue;
+    }
     if (!path.startsWith('packages/') && /\.(mjs|js|cjs|mts|cts|ts)$/.test(path) && content !== null) {
       checkToolsSignerImports(path, content, add);
+      checkWriteTransportJoin(path, content, add);
+      if (path.startsWith(SUBMIT_TOOLS)) checkSubmitTools(path, content, add);
       if (path.startsWith('tools/')) continue;
     }
     const match = /^packages\/([^/]+)\/(.+)$/.exec(path);
@@ -445,7 +490,56 @@ export function check(files) {
       else if (targetRest !== 'src/index.mjs') add(path, `private-import:${targetPkg}/${targetRest}`);
     }
   }
+  checkWriteTransportClosure(files, add);
   return findings;
+}
+
+// The write path and the network may never meet, however indirectly (B3 review B1): over the
+// graph of relative imports (static, re-exports and literal dynamic imports, with any query or
+// fragment removed) of every file given:
+// - a network file is tools/live/https-transport.mjs or any file importing a network built-in;
+// - a write-side file (packages/chain-submit/, tools/submit/) may not reach a network file;
+// - any other file may not reach both a write-side file and a network file,
+// unless WRITE_TRANSPORT_JOINERS names it. A name assembled at run time is beyond a static lint.
+export const TRANSPORT_FILE = 'tools/live/https-transport.mjs';
+export const NETWORK_BUILTINS = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dns', 'node:dgram'];
+function checkWriteTransportClosure(files, add) {
+  const exempt = new Set([...SIGNER_IMPORT_TEST_DATA, 'tools/guards/dependency-boundaries.mjs']);
+  const edges = new Map();
+  const network = new Set();
+  for (const { path, content } of files) {
+    if (content === null || !/\.(mjs|js|cjs|mts|cts|ts)$/.test(path) || exempt.has(path)) continue;
+    let specifiers = rawImportsOf(content);
+    try {
+      specifiers = [...specifiers, ...importsOf(content)];
+    } catch {
+      // unparseable sources are reported elsewhere; the raw specifiers still count
+    }
+    specifiers = [...new Set(specifiers)];
+    if (path === TRANSPORT_FILE || specifiers.some((sp) => NETWORK_BUILTINS.includes(sp) || NETWORK_BUILTINS.includes(`node:${sp}`))) network.add(path);
+    const targets = [];
+    for (const sp of specifiers.filter((x) => x.startsWith('.'))) {
+      // Percent-encoding and backslashes are decoded the way Node's URL resolution reads them; a
+      // specifier that still names no repository path (test data above the root) adds no edge.
+      const bare = sp.replace(/[?#].*$/s, '');
+      const target = resolve(path, bare) ?? resolve(path, safeDecode(bare).replace(/[?#].*$/s, ''));
+      if (target !== null) targets.push(target);
+    }
+    edges.set(path, targets);
+  }
+  const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
+  for (const path of edges.keys()) {
+    if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
+    const seen = new Set([path]);
+    const stack = [path];
+    while (stack.length) {
+      const at = stack.pop();
+      for (const next of edges.get(at) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
+    }
+    const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
+    const reachesWrite = [...seen].some(isWrite);
+    if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
+  }
 }
 
 // signer/ (ADR-RN-017): parsed like packages/, with its own allowlist of built-ins, exports,
@@ -498,6 +592,8 @@ function checkSigner(path, content, add) {
       if (area === 'src' && !target.startsWith('signer/src/')) add(path, `production-imports-non-production:${target.slice('signer/'.length)}`);
       continue;
     }
+    // The signer's self-check uses the shared verifier (ADR-RN-019 §3), through its entry point.
+    if (target === 'txverify/src/index.mjs') continue;
     const pkg = /^packages\/([^/]+)\/src\/index\.mjs$/.exec(target);
     if (!pkg || !SIGNER_PACKAGES.includes(pkg[1])) add(path, `signer-import-not-allowed:${target}`);
   }
@@ -551,4 +647,152 @@ export function keyGenerationRoutes(content) {
   };
   visit(program, null, null);
   return found;
+}
+
+// A file outside packages/ that imports packages/chain-submit or tools/submit/: it must be one of the allowed
+// importers, and it may not also reach the network transport unless WRITE_TRANSPORT_JOINERS names
+// it (none in RN-NET-03B2-B3). The transport check is raw text: any mention of https-transport in
+// such a file is reported, whatever the import form.
+function checkWriteTransportJoin(path, content, add) {
+  // The guard's own source and tests name these paths as patterns and test data.
+  if (SIGNER_IMPORT_TEST_DATA.includes(path) || path === 'tools/guards/dependency-boundaries.mjs') return;
+  const targets = [...new Set(rawImportsOf(content))].filter((s) => s.startsWith('.')).map((s) => resolve(path, s));
+  // Reaching the write path means importing chain-submit or the harness in tools/submit/ (which
+  // imports chain-submit). Raw text: any file naming either is treated as importing it.
+  const importsSubmit =
+    targets.some((t) => t?.startsWith('packages/chain-submit/') || t?.startsWith(SUBMIT_TOOLS)) ||
+    /chain-submit\/src|submit\/(?:broadcaster|status|store|python-verifier)(?:\.mjs)?\b/.test(content);
+  if (!importsSubmit) return;
+  if (!CHAIN_SUBMIT_IMPORTERS.test(path)) add(path, 'chain-submit-importer-not-allowed');
+  if (WRITE_TRANSPORT_JOINERS.includes(path)) return;
+  // A computed dynamic import could assemble the transport's path at run time, so such a file may
+  // not have one at all; nor may it import anything under tools/live/.
+  let computedImport = true;
+  try {
+    computedImport = analyze(parse(content, PARSE_OPTIONS)).problems.includes('dynamic-import-non-literal');
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+  }
+  if (/https-transport|httpsTransport/.test(content) || computedImport || targets.some((t) => t?.startsWith('tools/live/'))) add(path, 'write-transport-join');
+}
+
+// tools/submit/: the keyless, offline broadcaster harness.
+function checkSubmitTools(path, content, add) {
+  if (!path.endsWith('.mjs')) {
+    if (!path.endsWith('/README.md')) add(path, 'non-module-file');
+    return;
+  }
+  if (content.startsWith('#!') || /process\s*\.\s*argv|import\s*\.\s*meta\s*\.\s*main/.test(content)) add(path, 'submit-entry-point');
+  if (/https-transport|httpsTransport/.test(content)) add(path, 'submit-imports-transport');
+  let program;
+  try {
+    program = parse(content, PARSE_OPTIONS);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    add(path, 'unsupported-syntax');
+    return;
+  }
+  const analysis = analyze(program);
+  for (const problem of new Set(analysis.problems)) if (problem !== 'process-access') add(path, problem);
+  for (const route of keyGenerationRoutes(content)) add(path, route);
+  for (const { source, name } of analysis.builtinImports) {
+    if (source === 'node:crypto' && !SUBMIT_CRYPTO_EXPORTS.includes(name)) add(path, `submit-crypto-export-not-allowed:${name}`);
+    if (source === 'node:child_process' && !(SUBMIT_SUBPROCESS_FILES.includes(path) && name === 'execFileSync')) add(path, `submit-subprocess-not-allowed:${name}`);
+  }
+  for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
+    if (specifier.startsWith('node:')) {
+      if (SUBMIT_FORBIDDEN_MODULES.includes(specifier)) add(path, `submit-module-not-allowed:${specifier}`);
+      if (specifier === 'node:child_process' && !SUBMIT_SUBPROCESS_FILES.includes(path)) add(path, 'submit-subprocess-not-allowed:module');
+      continue;
+    }
+    if (!specifier.startsWith('.')) {
+      add(path, `third-party-import:${specifier}`);
+      continue;
+    }
+    const target = resolve(path, specifier);
+    if (target === null) add(path, `unsupported-specifier:${specifier}`);
+    else if (target.startsWith('tools/live/')) add(path, 'submit-imports-transport');
+    else if (target.startsWith('signer/') || target.startsWith('tools/signing/')) add(path, 'signer-importer-not-allowed');
+  }
+}
+
+// txverify/ (ADR-RN-019 §3): parsed like signer/, with a verification-only allowlist.
+function checkTxverify(path, content, add) {
+  const rest = path.slice('txverify/'.length);
+  if (['package.json', 'package-lock.json', 'README.md'].includes(rest)) return;
+  if (!path.endsWith('.mjs') || !/^(src|test)\//.test(rest)) {
+    add(path, 'non-module-file');
+    return;
+  }
+  if (content === null) {
+    add(path, 'unreadable-module');
+    return;
+  }
+  for (const { id, pattern } of FORBIDDEN_CONSTRUCTS) if (pattern.test(content)) add(path, `forbidden-construct:${id}`);
+  for (const { id, pattern } of RAW_RULES) if (pattern.test(content)) add(path, id);
+  let program;
+  try {
+    program = parse(content, PARSE_OPTIONS);
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
+    add(path, 'unsupported-syntax');
+    return;
+  }
+  const analysis = analyze(program);
+  for (const problem of new Set(analysis.problems)) add(path, problem);
+  for (const route of keyGenerationRoutes(content)) add(path, route);
+  const area = rest.startsWith('test/') ? 'test' : 'src';
+  for (const { source, name } of analysis.builtinImports) {
+    const allowed = [...(TXVERIFY_BUILTIN_EXPORTS[source] ?? []), ...(area === 'test' ? [...(ALLOWED_BUILTIN_EXPORTS[source] ?? [])] : [])];
+    if (!allowed.includes(name)) add(path, `builtin-export-not-allowed:${source}#${name}`);
+  }
+  const builtins = area === 'test' ? [...TXVERIFY_BUILTINS, ...TEST_BUILTINS, 'node:fs', 'node:url'] : TXVERIFY_BUILTINS;
+  // The noble entry points, and exactly the named imports each may give.
+  for (const node of program.body) {
+    if (node.type !== 'ImportDeclaration' || !Object.hasOwn(TXVERIFY_THIRD_PARTY, node.source.value)) continue;
+    for (const binding of node.specifiers) {
+      const name = binding.type === 'ImportSpecifier' ? (binding.imported.name ?? binding.imported.value) : '*';
+      if (!TXVERIFY_THIRD_PARTY[node.source.value].includes(name) || binding.local.name !== name) add(path, `txverify-library-export-not-allowed:${name}`);
+    }
+  }
+  for (const specifier of new Set([...analysis.specifiers, ...rawImportsOf(content)])) {
+    if (specifier.startsWith('node:')) {
+      if (!builtins.includes(specifier)) add(path, `builtin-not-allowed:${specifier}`);
+      continue;
+    }
+    if (!specifier.startsWith('.')) {
+      if (!Object.hasOwn(TXVERIFY_THIRD_PARTY, specifier)) add(path, `third-party-import:${specifier}`);
+      continue;
+    }
+    const target = resolve(path, specifier);
+    if (target === null) {
+      add(path, `unsupported-specifier:${specifier}`);
+      continue;
+    }
+    if (target.startsWith('txverify/')) {
+      if (area === 'src' && !target.startsWith('txverify/src/')) add(path, `production-imports-non-production:${target.slice('txverify/'.length)}`);
+      continue;
+    }
+    if (area === 'test' && target.startsWith('fixtures/') ) continue;
+    const pkg = /^packages\/([^/]+)\/src\/index\.mjs$/.exec(target);
+    if (!pkg || !TXVERIFY_PACKAGES.includes(pkg[1])) add(path, `txverify-import-not-allowed:${target}`);
+  }
+  // Verification only: no name that signs, derives or generates a key, and only the allowed
+  // members of secp256k1.
+  const visit = (node, parent, key) => {
+    if (node.type === 'MemberExpression') {
+      if (node.computed && node.object.type === 'Identifier' && node.object.name === 'secp256k1') add(path, 'txverify-computed-member');
+      if (!node.computed && TXVERIFY_DENIED_NAMES.has(node.property.name)) add(path, `txverify-signing-api:${node.property.name}`);
+      if (!node.computed && node.object.type === 'Identifier' && node.object.name === 'secp256k1' && !TXVERIFY_SECP256K1_MEMBERS.includes(node.property.name)) {
+        add(path, `txverify-secp256k1-member:${node.property.name}`);
+      }
+    }
+    if (node.type === 'Identifier' && TXVERIFY_DENIED_NAMES.has(node.name) && !isPropertyName(node, parent, key)) add(path, `txverify-signing-api:${node.name}`);
+    if (node.type === 'Property' && !node.computed && node.key.type === 'Identifier' && TXVERIFY_DENIED_NAMES.has(node.key.name)) add(path, `txverify-signing-api:${node.key.name}`);
+    if (node.type === 'Literal' && typeof node.value === 'string' && TXVERIFY_DENIED_NAMES.has(node.value)) add(path, `txverify-signing-api:${node.value}`);
+    // `const { x } = secp256k1` and aliases of secp256k1 would hide its members.
+    if (node.type === 'VariableDeclarator' && node.init?.type === 'Identifier' && node.init.name === 'secp256k1') add(path, 'txverify-secp256k1-alias');
+    for (const [childKey, child] of children(node)) visit(child, node, childKey);
+  };
+  visit(program, null, null);
 }

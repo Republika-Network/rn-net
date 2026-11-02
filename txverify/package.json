@@ -1,0 +1,9 @@
+{
+  "name": "rn-net-txverify",
+  "private": true,
+  "description": "Verification-only transaction checks (RN-NET-03B2-B3, ADR-RN-019). Keccak-256 and secp256k1 public-key recovery only; it cannot sign, derive or hold a key. Imported by signer/ and tools/submit/, never by packages/.",
+  "dependencies": {
+    "@noble/curves": "2.4.0",
+    "@noble/hashes": "2.4.0"
+  }
+}

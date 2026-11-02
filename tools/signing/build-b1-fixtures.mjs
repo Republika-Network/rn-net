@@ -34,7 +34,7 @@ import {
 import { ed25519Sign, keccak256, secp256k1SignDigest } from '../../signer/src/crypto.mjs';
 import { bindKey } from '../../signer/src/keys.mjs';
 import { createSigner } from '../../signer/src/sign.mjs';
-import { verifySignedTransaction } from '../../signer/src/verify.mjs';
+import { verifySignedTransaction } from '../../txverify/src/index.mjs';
 import { fixtureKey } from '../../signer/test/fixture-keys.mjs';
 
 export const DIR = fileURLToPath(new URL('../../fixtures/signing-b1/', import.meta.url));
