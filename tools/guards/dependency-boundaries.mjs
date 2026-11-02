@@ -398,7 +398,8 @@ export function check(files) {
     }
     // Node resolves a symlinked module's imports from its real path, not from where it is linked;
     // a linked package directory moves everything under it.
-    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/') || path === 'txverify' || path.startsWith('txverify/') || path.startsWith(SUBMIT_TOOLS))) {
+    // tools/ too: a link (tools/sub -> tools/submit) would hide the write side from the import graph.
+    if (symlink && (path === 'packages' || path.startsWith('packages/') || path === 'signer' || path.startsWith('signer/') || path === 'txverify' || path.startsWith('txverify/') || path === 'tools' || path.startsWith('tools/'))) {
       add(path, 'symlink-in-package');
       continue;
     }
@@ -493,15 +494,19 @@ export function check(files) {
   return findings;
 }
 
-// The write path and the network transport may never meet, however indirectly (B3 review B1): over
-// the graph of relative imports (static, re-exports and literal dynamic imports) of every file
-// given, no file outside the write side itself may have both a write-side file
-// (packages/chain-submit/, tools/submit/) and the transport in its import closure, unless
-// WRITE_TRANSPORT_JOINERS names it. A name assembled at run time is beyond a static lint.
+// The write path and the network may never meet, however indirectly (B3 review B1): over the
+// graph of relative imports (static, re-exports and literal dynamic imports, with any query or
+// fragment removed) of every file given:
+// - a network file is tools/live/https-transport.mjs or any file importing a network built-in;
+// - a write-side file (packages/chain-submit/, tools/submit/) may not reach a network file;
+// - any other file may not reach both a write-side file and a network file,
+// unless WRITE_TRANSPORT_JOINERS names it. A name assembled at run time is beyond a static lint.
 export const TRANSPORT_FILE = 'tools/live/https-transport.mjs';
+export const NETWORK_BUILTINS = ['node:http', 'node:https', 'node:http2', 'node:net', 'node:tls', 'node:dns', 'node:dgram'];
 function checkWriteTransportClosure(files, add) {
   const exempt = new Set([...SIGNER_IMPORT_TEST_DATA, 'tools/guards/dependency-boundaries.mjs']);
   const edges = new Map();
+  const network = new Set();
   for (const { path, content } of files) {
     if (content === null || !/\.(mjs|js|cjs|mts|cts|ts)$/.test(path) || exempt.has(path)) continue;
     let specifiers = rawImportsOf(content);
@@ -510,26 +515,30 @@ function checkWriteTransportClosure(files, add) {
     } catch {
       // unparseable sources are reported elsewhere; the raw specifiers still count
     }
-    edges.set(path, [...new Set(specifiers)].filter((sp) => sp.startsWith('.')).map((sp) => resolve(path, sp)).filter((t) => t !== null));
+    specifiers = [...new Set(specifiers)];
+    if (path === TRANSPORT_FILE || specifiers.some((sp) => NETWORK_BUILTINS.includes(sp) || NETWORK_BUILTINS.includes(`node:${sp}`))) network.add(path);
+    const targets = [];
+    for (const sp of specifiers.filter((x) => x.startsWith('.'))) {
+      // Percent-encoding and backslashes are decoded the way Node's URL resolution reads them; a
+      // specifier that still names no repository path (test data above the root) adds no edge.
+      const bare = sp.replace(/[?#].*$/s, '');
+      const target = resolve(path, bare) ?? resolve(path, safeDecode(bare).replace(/[?#].*$/s, ''));
+      if (target !== null) targets.push(target);
+    }
+    edges.set(path, targets);
   }
   const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
-  const reach = new Map();
-  const closure = (start) => {
-    if (reach.has(start)) return reach.get(start);
-    const seen = new Set();
-    const stack = [start];
+  for (const path of edges.keys()) {
+    if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
+    const seen = new Set([path]);
+    const stack = [path];
     while (stack.length) {
       const at = stack.pop();
       for (const next of edges.get(at) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
     }
-    const result = { write: [...seen].some(isWrite), transport: seen.has(TRANSPORT_FILE) };
-    reach.set(start, result);
-    return result;
-  };
-  for (const path of edges.keys()) {
-    if (isWrite(path) || path === TRANSPORT_FILE || WRITE_TRANSPORT_JOINERS.includes(path)) continue;
-    const { write, transport } = closure(path);
-    if (write && transport) add(path, 'write-transport-join-transitive');
+    const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
+    const reachesWrite = [...seen].some(isWrite);
+    if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
   }
 }
 

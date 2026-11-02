@@ -734,3 +734,31 @@ test('the write path and the transport never meet through re-exports (B3 review 
     ['tools/verify.mjs', "import { httpsTransport } from './live/https-transport.mjs';"],
   ]), []);
 });
+
+test('the write/network closure: queries, joins inside the write side, symlinks, copied transports (B3 review B1, third check)', () => {
+  const found = (files) => check(files.map(([path, content, symlink]) => ({ path, content, symlink: symlink === true }))).filter((f) => ['write-transport-join-transitive', 'symlink-in-package'].includes(f.rule)).map((f) => `${f.path}:${f.rule}`);
+  const transport = ['tools/live/https-transport.mjs', "import { request } from 'node:https';\nexport const httpsTransport = () => request;"];
+  const harness = ['tools/submit/broadcaster.mjs', 'export const runBroadcast = () => {};'];
+  const entry = (from, net) => ['tools/send.mjs', `import { runBroadcast } from '${from}';\nimport { t } from '${net}';`];
+  const join = 'tools/send.mjs:write-transport-join-transitive';
+  // 1. A query or fragment on either import.
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs?v=1';"], entry('./submit/broadcaster.mjs', './net.mjs')]), [join]);
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"], entry('./submit/broadcaster.mjs#x', './net.mjs')]), [join]);
+  // 2. A join inside tools/submit/ itself.
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"],
+    ['tools/submit/live.mjs', "import { runBroadcast } from './broadcaster.mjs';\nimport { t } from '../net.mjs';"]]), ['tools/submit/live.mjs:write-transport-join-transitive']);
+  // 3. A symlink anywhere under tools/.
+  assert.deepEqual(found([['tools/sub', null, true]]), ['tools/sub:symlink-in-package']);
+  // 4. A copy of the transport: any file importing a network built-in counts as one.
+  assert.deepEqual(found([harness, ['tools/net/https-client.mjs', "import { request } from 'node:https';\nexport const t = request;"], entry('./submit/broadcaster.mjs', './net/https-client.mjs')]), [join]);
+  // Percent-encoded specifiers are read as Node reads them.
+  assert.deepEqual(found([transport, harness, ['tools/net.mjs', "export { httpsTransport as t } from './live/https-transport.mjs';"], entry('./%73ubmit/broadcaster.mjs', './net.mjs')]), [join]);
+});
+
+test('the transport path counts as network even when the file itself is not in the list', () => {
+  const found = check([
+    { path: 'tools/broadcast/run.mjs', content: "export { runBroadcast } from '../submit/broadcaster.mjs';", symlink: false },
+    { path: 'tools/send.mjs', content: "import { runBroadcast } from './broadcast/run.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';", symlink: false },
+  ]).filter((f) => f.rule === 'write-transport-join-transitive').map((f) => f.path);
+  assert.deepEqual(found, ['tools/send.mjs']);
+});
