@@ -1,6 +1,6 @@
 # ADR-RN-018: Read-only transaction preparation
 
-- Status: Proposed (RN-NET-03B2-B2)
+- Status: Accepted for the offline read-only preparation architecture only (founder approval of PR #16 as implemented, RN-NET-03B2-B2 governance closure)
 - Date: 2026-11-01
 - Amends: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md). It adds read-only methods to the allowlist and changes nothing else in that ADR.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md)
@@ -179,6 +179,24 @@ in a fixed order (spec §4):
     `offline-checks.sh`.
 
 ## Consequences
+
+- **What this acceptance covers.** It accepts the offline, read-only preparation architecture
+  as implemented in PR #16 (`9801b36`). It explicitly preserves the following:
+  - **No live RPC.** It authorizes no live RPC call. A live preparation run still needs a
+    reviewed live entry point, an exact per-run request budget, and the founder's authorization
+    at gate D.
+  - **No keys or wallets.** It authorizes no operational wallet, key, key file or account.
+  - **Block-hash pinning is mandatory.** Before any intent prepared from live Sepolia data is
+    signed, the account reads must be pinned to one agreed block hash on every provider (§1).
+    That requires a reviewed amendment to this ADR.
+  - **Independent verification is preserved.** Account state and provider agreement are
+    checked by the preparation rules (§4) and reproduced independently by
+    `tools/reference/rnnet_prep_reference.py`. A prepared intent is approved by digest only after
+    that review.
+  - **The 1RPC finality lag stays unresolved.** It is carried below.
+  - **Agreement is not proof.** Provider agreement is not a consensus proof (ADR-RN-015).
+  - **Nothing else is accepted.** It authorizes none of gates B to F, and it does not accept
+    ADR-RN-019.
 
 - **What B2 adds:**
   - five allowlisted read-only methods and their readers;
