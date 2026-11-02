@@ -138,9 +138,12 @@ async function submitCase(c, state) {
   const before = c.after ? (c.logEdit ?? ((l) => l))(state.logs.get(c.after)) : [];
   const inputs = { intent: c.t.text, approvedDigest: c.t.digest, signedTransaction: c.t.signed, authorization: `${canonicalize(c.auth)}\n`, ...c.inputs };
   const referenceRecord = c.referenceRecord ?? referenceRecordOf(inputs);
+  // The clock may advance by a fixed step per request, so validity can lapse during the reads.
+  const step = c.clockStep ?? 0;
+  const inner = simulatedTransport(c.servers ?? {}, exchanges);
   const environment = {
-    endpoints: ENDPOINTS, now: () => c.now ?? NOW, referenceVerifier: () => JSON.parse(JSON.stringify(referenceRecord)),
-    transport: simulatedTransport(c.servers ?? {}, exchanges), ...c.environment,
+    endpoints: ENDPOINTS, now: () => (c.now ?? NOW) + step * exchanges.length, referenceVerifier: () => JSON.parse(JSON.stringify(referenceRecord)),
+    transport: inner, ...c.environment,
   };
   const { result, log } = await withLog(before, (dirs) => runBroadcast({ inputs, environment: { ...environment, logDir: dirs.logDir, evidenceDir: dirs.evidenceDir, ...c.dirs?.(dirs) } }));
   if (result.outcome !== c.expect[0] || result.code !== c.expect[1]) throw new Error(`${c.id}: expected ${c.expect.join(' ')}, got ${result.outcome} ${result.code}`);
@@ -151,6 +154,7 @@ async function submitCase(c, state) {
     referenceRecord,
     referenceTampered: c.referenceRecord !== undefined,
     environmentExtra: c.environment ?? null,
+    clockStepPerRequest: step,
     now: c.now ?? NOW,
     logBefore: before,
     exchanges,
@@ -331,6 +335,9 @@ function cases(m) {
   scase('sepolia-read-malformed-quantity', [NS, 'RNLO_INVALID_RESPONSE'], { servers: ss({ balance: '0x01' }) });
   scase('sepolia-read-rpc-error', [NS, 'RNLO_RPC_ERROR'], { servers: ss({ raw: { eth_getBalance: () => sepoliaErrorReply(-32603, 'internal') } }) });
   scase('sepolia-authorization-expired', [NS, 'RNBC_AUTHORIZATION_EXPIRED'], { now: NOW + 3601 });
+  // notAfter is NOW + 3600: starting 60 s before it, 10 s per request, it passes during the 12 reads.
+  scase('sepolia-authorization-expires-during-reads', [NS, 'RNBC_AUTHORIZATION_EXPIRED'], { now: NOW + 3540, clockStep: 10 });
+  scase('sepolia-authorization-valid-through-reads', [AP, 'RNBC_ACCEPTED'], { now: NOW + 3540, clockStep: 4 });
   scase('sepolia-authorization-bad-time', [NS, 'RNBC_AUTHORIZATION_INVALID'], { auth: { validity: { notAfter: '2026-02-30T00:00:00Z' } } });
   scase('sepolia-provider-other-network', [NS, 'RNBC_PROVIDER_NOT_ALLOWED'], { auth: { providerId: 'fixture-xrpl-a' } });
   scase('sepolia-python-disagrees', [NS, 'RNBC_VERIFIER_DISAGREEMENT'], { referenceRecord: { ...S.record, transactionHash: tx.sepoliaReplacement.hash } });

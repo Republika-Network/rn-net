@@ -37,10 +37,16 @@ test('the committed broadcaster fixtures are exactly what the generator builds',
 test('every submit case replays to its recorded outcome, code, counts, record and log entries', async () => {
   assert.ok(fixtures.submit.length >= 150);
   for (const c of fixtures.submit) {
-    const transport = replayTextTransport(c.exchanges);
+    const replay = replayTextTransport(c.exchanges);
+    let sent = 0;
+    const transport = async (request) => {
+      sent += 1;
+      return replay(request);
+    };
+    transport.remaining = replay.remaining;
     const { result, log } = await withLog(c.logBefore, (dirs) => runBroadcast({
       inputs: c.inputs,
-      environment: { endpoints: fixtures.endpoints, now: () => c.now, referenceVerifier: () => structuredClone(c.referenceRecord), transport, logDir: dirs.logDir, evidenceDir: dirs.evidenceDir, ...c.environmentExtra },
+      environment: { endpoints: fixtures.endpoints, now: () => c.now + c.clockStepPerRequest * sent, referenceVerifier: () => structuredClone(c.referenceRecord), transport, logDir: dirs.logDir, evidenceDir: dirs.evidenceDir, ...c.environmentExtra },
     }));
     const e = c.expected;
     assert.equal(result.outcome, e.outcome, c.id);
@@ -84,7 +90,7 @@ test('the design §8 scenarios are all present', () => {
     'xrpl-write-timeout', 'xrpl-write-connection-lost', 'xrpl-write-blocked-address', 'xrpl-http-500', 'xrpl-http-429', 'xrpl-hash-differs', 'xrpl-ter-queued',
     'xrpl-tem', 'xrpl-tel-insuf-fee', 'xrpl-tel-can-not-queue', 'xrpl-tef-already', 'xrpl-tef-past-seq', 'xrpl-tec', 'xrpl-accepted-false',
     'xrpl-broadcast-false', 'sepolia-error-already-known', 'xrpl-after-crash', 'xrpl-dry-run-reused', 'xrpl-resend-after-rejected', 'xrpl-after-included',
-    'status-xrpl-not-searched-all', 'status-xrpl-sequence-used', 'status-xrpl-expired-after-crash', 'status-sepolia-pending',
+    'sepolia-authorization-expires-during-reads', 'sepolia-authorization-valid-through-reads', 'status-xrpl-not-searched-all', 'status-xrpl-sequence-used', 'status-xrpl-expired-after-crash', 'status-sepolia-pending',
   ]) assert.ok(ids.has(id), id);
 });
 

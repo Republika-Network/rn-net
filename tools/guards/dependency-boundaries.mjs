@@ -599,14 +599,19 @@ export function keyGenerationRoutes(content) {
   return found;
 }
 
-// A file outside packages/ that imports packages/chain-submit: it must be one of the allowed
+// A file outside packages/ that imports packages/chain-submit or tools/submit/: it must be one of the allowed
 // importers, and it may not also reach the network transport unless WRITE_TRANSPORT_JOINERS names
 // it (none in RN-NET-03B2-B3). The transport check is raw text: any mention of https-transport in
 // such a file is reported, whatever the import form.
 function checkWriteTransportJoin(path, content, add) {
-  if (SIGNER_IMPORT_TEST_DATA.includes(path)) return;
+  // The guard's own source and tests name these paths as patterns and test data.
+  if (SIGNER_IMPORT_TEST_DATA.includes(path) || path === 'tools/guards/dependency-boundaries.mjs') return;
   const targets = [...new Set(rawImportsOf(content))].filter((s) => s.startsWith('.')).map((s) => resolve(path, s));
-  const importsSubmit = targets.some((t) => t?.startsWith('packages/chain-submit/')) || /chain-submit\/src/.test(content) && /import\s*\(/.test(content);
+  // Reaching the write path means importing chain-submit or the harness in tools/submit/ (which
+  // imports chain-submit). Raw text: any file naming either is treated as importing it.
+  const importsSubmit =
+    targets.some((t) => t?.startsWith('packages/chain-submit/') || t?.startsWith(SUBMIT_TOOLS)) ||
+    /chain-submit\/src|submit\/(?:broadcaster|status|store|python-verifier)(?:\.mjs)?\b/.test(content);
   if (!importsSubmit) return;
   if (!CHAIN_SUBMIT_IMPORTERS.test(path)) add(path, 'chain-submit-importer-not-allowed');
   if (WRITE_TRANSPORT_JOINERS.includes(path)) return;

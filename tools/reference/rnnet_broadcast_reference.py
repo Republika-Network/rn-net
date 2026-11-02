@@ -514,9 +514,14 @@ def write(net, provider_id, network, signed, expected_hash):
 # --- one submit run --------------------------------------------------------------------------------
 
 def run_submit(case, endpoints):
-    inputs, now = case["inputs"], case["now"]
+    inputs = case["inputs"]
+    step = case["clockStepPerRequest"]
     st = {"auth": None, "digest": None, "verified": None, "log": list(case["logBefore"]), "attempt": None}
     net = None
+
+    def now():
+        # The clock advances by a fixed step per request sent (the fixture's model).
+        return case["now"] + step * (net.requests if net else 0)
 
     def finish(outcome, code, cls=None, req=None, resp=None):
         a, v = st["auth"], st["verified"]
@@ -539,7 +544,7 @@ def run_submit(case, endpoints):
             "xrpl": cls.get("xrpl"),
             "sepolia": cls.get("sepolia"),
             "dryRun": bool(a and a["dryRun"]),
-            "recordedAt": iso(now),
+            "recordedAt": iso(now()),
         }
         digest = tagged("rnnet:submission-record:v1\x00", record)
         if st["attempt"]:
@@ -588,7 +593,7 @@ def run_submit(case, endpoints):
                 raise Refuse("RNBC_AUTHORIZATION_MISMATCH")
         if xrpl and a["validity"]["lastLedgerSequence"] != t["LastLedgerSequence"]:
             raise Refuse("RNBC_AUTHORIZATION_MISMATCH")
-        if not xrpl and now > utc_seconds(a["validity"]["notAfter"]):
+        if not xrpl and now() > utc_seconds(a["validity"]["notAfter"]):
             raise Refuse("RNBC_AUTHORIZATION_EXPIRED")
         decide_attempt(st["log"], a)
         net = Network(a["network"], case["exchanges"])
@@ -598,6 +603,8 @@ def run_submit(case, endpoints):
             raise Refuse(f.code)
         if a["dryRun"]:
             raise Refuse("RNBC_DRY_RUN")
+        if not xrpl and now() > utc_seconds(a["validity"]["notAfter"]):
+            raise Refuse("RNBC_AUTHORIZATION_EXPIRED")
         decide_attempt(st["log"], a)
         att = entry(len(st["log"]), "ATTEMPTING", authorizationDigest=digest, network=a["network"], sender=a["sender"], sequence=a["sequence"], attempt=a["attempt"],
                     providerId=a["providerId"], intentDigest=verified["intentDigest"], blobSha256=verified["blobSha256"], transactionHash=verified["transactionHash"],

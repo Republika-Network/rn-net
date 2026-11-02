@@ -148,6 +148,8 @@ async function execute(state, inputs, environment, finish) {
   const observedLedger = await presubmitReads(configured, transport, authorization, verified);
 
   if (authorization.dryRun) return finish(Outcome.NOT_SENT, C.DRY_RUN);
+  // The reads take time: a Sepolia authorization that became void meanwhile sends nothing.
+  if (authorization.network === SubmitNetwork.SEPOLIA && sepoliaAuthorizationExpired(authorization, environment.now())) throw new BroadcastError(C.AUTHORIZATION_EXPIRED, 'notAfter passed during the reads');
 
   // 9. ATTEMPTING, immediately before the write, decided on the log as it now stands.
   const log = readLog(environment.logDir);

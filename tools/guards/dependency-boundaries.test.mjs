@@ -685,3 +685,25 @@ test('signer/ may use txverify/ through its entry point only', () => {
   assert.deepEqual(rules('signer/src/a.mjs', "import { keccak256 } from '../../txverify/src/index.mjs';"), []);
   assert.ok(rules('signer/src/a.mjs', "import { keccak256 } from '../../txverify/src/crypto.mjs';").includes('signer-import-not-allowed:txverify/src/crypto.mjs'));
 });
+
+test('an entry point reaching the write path through tools/submit/ is a join too (B3 review B1)', () => {
+  const entry = (submit, live) => `#!/usr/bin/env node
+import { runBroadcast } from '${submit}/broadcaster.mjs';
+import { pythonReferenceVerifier } from '${submit}/python-verifier.mjs';
+import { httpsTransport } from '${live}/https-transport.mjs';
+const [, , ...args] = process.argv;
+await runBroadcast({ inputs: JSON.parse(args[0]), environment: { transport: httpsTransport, referenceVerifier: pythonReferenceVerifier() } });
+`;
+  for (const [path, submit, live] of [
+    ['tools/submit-anchor.mjs', './submit', './live'],
+    ['tools/live/submit-anchor.mjs', '../submit', '.'],
+    ['scripts/submit-anchor.mjs', '../tools/submit', '../tools/live'],
+    ['tools/broadcast/send.mjs', '../submit', '../live'],
+    // Specifiers that do not resolve to the real files are still read as reaching them.
+    ['tools/live/send.mjs', './submit', './live'],
+  ]) {
+    assert.ok(rules(path, entry(submit, live)).includes('write-transport-join'), path);
+  }
+  assert.ok(rules('scripts/run.mjs', "import { runStatusCheck } from '../tools/submit/status.mjs';").includes('chain-submit-importer-not-allowed'));
+  assert.deepEqual(rules('tools/broadcast/x.mjs', "import { runBroadcast } from '../submit/broadcaster.mjs';"), []);
+});
