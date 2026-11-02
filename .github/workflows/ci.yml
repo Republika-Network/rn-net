@@ -26,6 +26,10 @@ jobs:
       - name: Install development dependencies (lockfile only, no install scripts)
         # Before network isolation. Only the guard's parser (see ADR-RN-005); packages/ has no dependencies.
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install the signer's pinned dependencies (lockfile only, no install scripts)
+        # Before network isolation. Exactly @noble/hashes@2.4.0 and @noble/curves@2.4.0, for the
+        # offline test-only signing toolchain (ADR-RN-017); packages/ still has no dependencies.
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix signer
       - name: Isolation check rejects a connected environment (negative control)
         # The same check that guards the offline run must fail here, where the network is
         # reachable, and for the expected reason.

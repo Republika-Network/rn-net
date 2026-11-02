@@ -7,7 +7,7 @@ that evidence on public test networks.
 
 ## Status
 
-**Early implementation (RN-NET-01 to RN-NET-03B1; RN-NET-03B2-A preflight).** This repository contains:
+**Early implementation (RN-NET-01 to RN-NET-03B1; RN-NET-03B2-A preflight; RN-NET-03B2-B1 offline signing toolchain).** This repository contains:
 
 - the canonical JSON profile and the evidence commitment format;
 - an independent, offline evidence verifier for one original, synthetic evidence
@@ -24,9 +24,18 @@ that evidence on public test networks.
   a synthetic evidence fixture with immutable golden values, and checks of the intended
   *unsigned* XRPL Testnet and Sepolia transactions
   ([`docs/genesis/`](docs/genesis/genesis-proof-01-preflight.md), [`fixtures/genesis-proof-01/`](fixtures/genesis-proof-01/)).
-  Nothing has been signed or submitted, and no key or account exists.
+  Nothing has been signed or submitted, and no key or account exists;
+- an offline, **test-only** signing and verification toolchain (RN-NET-03B2-B1, ADR-RN-017):
+  - the approved unsigned transaction intent and its digest (`packages/tx-intent/`);
+  - XRPL and EIP-1559 encoding;
+  - a signer that has no key generation, key loader, file access or network
+    (`signer/`, with exactly `@noble/hashes@2.4.0` and `@noble/curves@2.4.0`);
+  - independent JavaScript and Python verification of signed bytes;
+  - a broadcaster hand-off check with no transport (`packages/broadcast-handoff/`).
 
-It submits no transactions and holds no keys. Only `tools/verify-live-anchor.mjs`, when run in
+  It is exercised only with keys derived from public labels.
+
+It submits no transactions and holds no operational keys. Only `tools/verify-live-anchor.mjs`, when run in
 live mode, contacts a network, and only with read-only methods. What providers report stays a
 claim: nothing here is an authenticated proof of chain inclusion (`CHAIN_PROVEN` is never
 produced). All test inputs, including every transaction record, are synthetic.
@@ -84,6 +93,7 @@ Architecture decisions are recorded in [`docs/adr/`](docs/adr/README.md).
 | [`rnnet.anchor-payload.v1`](spec/rnnet.anchor-payload.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
 | [`rnnet.anchor-record.v1`](spec/rnnet.anchor-record.v1.md) | [`packages/anchor/`](packages/anchor/README.md) |
 | [`rnnet.live-observation-report.v1`](spec/rnnet.live-observation-report.v1.md) | [`packages/chain-readonly/`](packages/chain-readonly/) |
+| [`rnnet.unsigned-tx-intent.v1`](spec/rnnet.unsigned-tx-intent.v1.md) | [`packages/tx-intent/`](packages/tx-intent/README.md), [`signer/`](signer/README.md) |
 
 Conformance vectors live in [`vectors/`](vectors/) (format described in
 [`vectors/README.md`](vectors/README.md)) and are checked by two implementations:
