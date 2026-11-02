@@ -182,6 +182,7 @@ export async function prepareLive({ argv, deps }) {
     const policy = createPreparationPolicy({ network, providers, sender: a.sender, data: network === IntentNetwork.SEPOLIA ? `0x${payloadHex(a.commitment)}` : undefined });
     const transport = policy.wrap(recording);
     let outcome;
+    let unexpected = null;
     try {
       const prepared = network === IntentNetwork.XRPL_TESTNET
         ? await prepareXrplIntent({ commitment: a.commitment, account: a.sender, signingPubKey: a.signingPubKey, providers, transport, now })
@@ -192,7 +193,12 @@ export async function prepareLive({ argv, deps }) {
     } catch (error) {
       if (policy.violation !== null) outcome = { outcome: 'REFUSED', code: PrepareEntryCode.REQUEST_POLICY, providerId: null, blocked: null, detail: policy.violation };
       else if (error?.name === 'PrepError') outcome = { outcome: error.blocked ? 'BLOCKED' : 'REFUSED', code: error.code, providerId: error.providerId, blocked: error.blocked, detail: error.message };
-      else throw error;
+      else {
+        // Not a refusal (a defect, or a capture that does not fit): the requests already sent are
+        // still recorded before the error propagates (C3 review 4).
+        unexpected = error;
+        outcome = { outcome: 'REFUSED', code: PrepareEntryCode.EVIDENCE, providerId: null, blocked: null, detail: 'an unexpected error ended the run' };
+      }
     }
 
     for (const { name, body } of responses) writeNewFile(runDirectory, name, body);
@@ -213,6 +219,7 @@ export async function prepareLive({ argv, deps }) {
     };
     writeNewFile(runDirectory, 'evidence.json', storedText(evidence));
     if (outcome.outcome === 'PREPARED') writeNewFile(runDirectory, 'intent.json', storedText(outcome.intent));
+    if (unexpected !== null) throw unexpected;
     return result({ ...outcome, runDirectory });
   } catch (error) {
     if (error instanceof PrepareEntryError) return result({ outcome: 'REFUSED', code: error.code, providerId: null, blocked: null, detail: error.message });

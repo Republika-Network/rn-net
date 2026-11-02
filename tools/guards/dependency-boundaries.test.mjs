@@ -953,6 +953,19 @@ test('tools/prepare/ (C3): read-only and keyless; never the transport, the write
   assert.ok(r("import { httpsTransport } from '../live/https-transport.mjs';", entry).includes('prepare-imports-transport'));
 });
 
+test('C3 review: no file joins preparation to a network file (PREPARE_TRANSPORT_JOINERS is empty)', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const transport = ['tools/live/https-transport.mjs', "import https from 'node:https';\nexport const httpsTransport = https;"];
+  const prep = ['tools/prepare/prepare-live.mjs', 'export const prepareLive = 1;'];
+  for (const [path, content] of [
+    ['tools/live/prep-join.mjs', "import { prepareLive } from '../prepare/prepare-live.mjs';\nimport { httpsTransport } from './https-transport.mjs';\nexport const a = [prepareLive, httpsTransport];"],
+    ['tools/prep-join2.mjs', "import { x } from '../packages/tx-prepare/src/index.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';\nexport const a = [x, httpsTransport];"],
+  ]) {
+    const out = found([transport, prep, ['packages/tx-prepare/src/index.mjs', 'export const x = 1;'], [path, content]]);
+    assert.ok(out.includes(`${path}:prepare-transport-join-transitive`), out.join(' '));
+  }
+});
+
 test('the offline rehearsal (C3) may never reach the network, however indirectly', () => {
   const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
   const rehearsal = "import { x } from './helper.mjs';\nexport const r = x;";

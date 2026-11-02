@@ -3,7 +3,8 @@
 // exactly the planned requests, each in exactly its planned form. It is checked BEFORE the
 // transport sees a request, so a refused request is never sent:
 //   - only the two named providers, each at its configured URL;
-//   - per provider, exactly PREPARATION_REQUESTS[network], in order, one attempt each (no retry);
+//   - per provider, exactly PREPARATION_REQUESTS[network], in order, one attempt each (no retry),
+//     each body byte-identical to the canonical request rnnet.tx-preparation.v1 §3 builds;
 //   - XRPL: server_info {api_version: 2}; account_info of the authorized account at "validated";
 //   - Sepolia: the head pass on every provider before any pin, every pin before any pinned read;
 //     the latest block by tag, the pin by number (the same number on both), and the nonce, balance,
@@ -12,7 +13,7 @@
 //     pinned read: there is no fallback to admit.
 // No write method is in any plan, so none can pass.
 import { Buffer } from 'node:buffer';
-import { PREPARATION_REQUESTS } from '../../packages/chain-readonly/src/index.mjs';
+import { PREPARATION_REQUESTS, requestBytes } from '../../packages/chain-readonly/src/index.mjs';
 import { IntentNetwork } from '../../packages/tx-intent/src/index.mjs';
 
 /** Requests per run (two providers): XRPL 4, Sepolia 16 (ADR-RN-019 Amendment C1, E2). */
@@ -122,6 +123,15 @@ export function createPreparationPolicy({ network, providers, sender, data }) {
         if (body.method !== plan[index]) refuse(`${provider.id}: request ${index + 1} is ${plan[index]}, not ${body.method}`);
         const form = formOf(index, body.params, provider.id);
         if (form !== true) refuse(form);
+        // Byte for byte the request this plan builds (canonical JSON, one envelope): no duplicate or
+        // extra member, no other id, nothing a provider could parse differently (C3 review 2).
+        let canonical = null;
+        try {
+          canonical = Buffer.from(requestBytes(network, body.method, network === IntentNetwork.XRPL_TESTNET ? body.params[0] : body.params));
+        } catch {
+          // not expressible as a planned request
+        }
+        if (canonical === null || !canonical.equals(Buffer.from(request.body))) refuse(`${provider.id}: request ${index + 1} is not the planned bytes`);
         step.set(provider.id, index + 1);
         return transport(request);
       };

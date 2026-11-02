@@ -222,6 +222,11 @@ export const PREPARE_BUILTIN_EXPORTS = {
   'node:url': ['fileURLToPath'],
 };
 export const PREPARE_PROCESS_PROPERTIES = ['getuid'];
+// Files that may join preparation (packages/tx-prepare, tools/prepare/) to a network file. None in
+// RN-NET-03B2-C3: prepareLive accepts test overrides (agreed directory, compatibility, reviewed
+// providers), so no file may wire it, or tx-prepare, to the transport (C3 review 1). Enabling live
+// preparation is a reviewed change to this list.
+export const PREPARE_TRANSPORT_JOINERS = [];
 
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
 // transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
@@ -800,6 +805,9 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
     const reachesWrite = [...seen].some(isWrite);
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
+    const reachesPrepare = [...seen].some((p) => p.startsWith('packages/tx-prepare/') || p.startsWith(PREPARE_TOOLS));
+    // Inside packages/tx-prepare the package rules already refuse any network module.
+    if (reachesPrepare && reachesNetwork && path !== TRANSPORT_FILE && !path.startsWith('packages/tx-prepare/') && !PREPARE_TRANSPORT_JOINERS.includes(path)) add(path, 'prepare-transport-join-transitive');
     // The read-only status entry point never reaches the write path's run (C2).
     if (path === STATUS_ENTRY_POINT && seen.has(BROADCASTER_FILE)) add(path, 'status-entry-point-reaches-broadcaster');
     // The key tool may not reach the network at all, however indirectly (RN-NET-03B2-C4).

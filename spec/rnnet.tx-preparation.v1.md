@@ -189,7 +189,8 @@ These checks carry no provider id, except the balance check.
 
 ### 4.4 Blocked: a refused pinned read
 
-A JSON-RPC `error` answer to a pinned read (§3, Sepolia pass 3) is `RNTP_PROVIDER_ERROR` for that
+A JSON-RPC `error` answer to a pinned read (§3, Sepolia pass 3, a request that carries `A`; not the
+pending nonce) is `RNTP_PROVIDER_ERROR` for that
 provider, like any RPC error, with no new code (P2). It is also marked **blocked**, because the
 reviewed strategy has no fallback to try:
 - `GAS_ESTIMATION_UNAVAILABLE` when the refused read is `eth_estimateGas`;
@@ -198,6 +199,10 @@ reviewed strategy has no fallback to try:
 
 A transport failure or a malformed answer on a pinned read is not blocked: its code is as in §4.1.
 Nothing is retried in either case. The entry point reports a blocked refusal as `BLOCKED`.
+
+**The label is by request, not by error content.** No provider's error shapes are recorded yet
+(C6), so any JSON-RPC error on such a read is labelled, a transient one included. This fails
+closed: `BLOCKED` stops the run and sends the operator to C6, never to another strategy.
 
 ## 5. Binding and the record
 

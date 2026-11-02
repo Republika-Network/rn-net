@@ -165,6 +165,7 @@ class Provider:
 
     def call(self, method, params):
         self.last_method = method
+        self.last_params_pinned = isinstance(params, list) and any(isinstance(x, dict) and "blockHash" in x for x in params)
         body = request_bytes(self.network, method, params)
         if not self.queue:
             raise Mismatch(f"{self.id}: no recorded exchange for {method}")
@@ -446,7 +447,8 @@ def prepare_sepolia(case, providers):
             return fn(p, *args)
         except ReadFail as fail:
             r = refusal_of(fail, p.id)
-            if pinned and fail.code == "RNLO_RPC_ERROR":
+            # Only a read that carried the block-hash object: not the pending nonce.
+            if pinned and fail.code == "RNLO_RPC_ERROR" and p.last_params_pinned:
                 r.blocked = "GAS_ESTIMATION_UNAVAILABLE" if p.last_method == "eth_estimateGas" else "BLOCK_HASH_READ_REFUSED"
             raise r
 

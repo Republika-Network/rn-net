@@ -122,9 +122,13 @@ function refusal(error, providerId) {
  */
 function providerReader(provider, transport, network) {
   const exchanges = [];
+  const carriedHash = [];
   const recording = async (request) => {
-    const entry = { method: JSON.parse(new TextDecoder().decode(request.body)).method, requestSha256: sha256(request.body) };
+    const body = JSON.parse(new TextDecoder().decode(request.body));
+    const entry = { method: body.method, requestSha256: sha256(request.body) };
     exchanges.push(entry);
+    // Not part of the record: whether this request carried a block-hash object.
+    carriedHash.push(Array.isArray(body.params) && body.params.some((p) => p !== null && typeof p === 'object' && !Array.isArray(p) && Object.hasOwn(p, 'blockHash')));
     const response = await transport(request);
     if (response !== null && typeof response === 'object' && response.body instanceof Uint8Array) entry.responseSha256 = sha256(response.body);
     return response;
@@ -136,7 +140,8 @@ function providerReader(provider, transport, network) {
       return await step(context);
     } catch (error) {
       const prep = refusal(error, provider.id);
-      if (pinned && error.code === 'RNLO_RPC_ERROR') {
+      // Only a read that carried the block-hash object: not the pending nonce (C3 review 3).
+      if (pinned && error.code === 'RNLO_RPC_ERROR' && carriedHash.at(-1) === true) {
         const method = exchanges.at(-1)?.method;
         prep.blocked = method === 'eth_estimateGas' ? BlockedReason.GAS_ESTIMATION_UNAVAILABLE : BlockedReason.BLOCK_HASH_READ_REFUSED;
         prep.method = method;

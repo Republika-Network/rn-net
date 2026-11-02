@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { canonicalize } from '../packages/canonical/src/index.mjs';
-import { PREPARATION_REQUESTS } from '../packages/chain-readonly/src/index.mjs';
+import { PREPARATION_REQUESTS, requestBytes } from '../packages/chain-readonly/src/index.mjs';
 import { intentDigest, makeIntent, XRPL } from '../packages/tx-intent/src/index.mjs';
 import { prepareSepoliaIntent, prepareXrplIntent } from '../packages/tx-prepare/src/index.mjs';
 import {
@@ -326,7 +326,13 @@ test('the request policy admits exactly the plan, in its forms, and nothing else
     sent.push(request);
     return { status: 200, body: new Uint8Array() };
   };
-  const body = (method, params) => new Uint8Array(Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })));
+  const body = (method, params) => {
+    try {
+      return requestBytes(S, method, params);
+    } catch {
+      return new Uint8Array(Buffer.from(JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })));
+    }
+  };
   const ask = (policy, provider, method, params) => policy.wrap(transport)({ providerId: provider.id, url: provider.url, body: body(method, params) });
   const pin = { blockHash: `0x${'ab'.repeat(32)}`, requireCanonical: true };
   const data = '0x00';
@@ -402,7 +408,13 @@ test('the request policy admits exactly the plan, in its forms, and nothing else
   await assert.rejects(q.wrap(transport)({ providerId: SA.id, url: 'https://elsewhere.fixture.invalid/', body: body('eth_chainId', []) }), /url of/);
   // XRPL: server_info then account_info at "validated" for the authorized account only; no submit.
   const xrpl = () => createPreparationPolicy({ network: X, providers: [XA, XB], sender: XRPL_ACCOUNT });
-  const xbody = (method, params) => new Uint8Array(Buffer.from(JSON.stringify({ method, params: [params] })));
+  const xbody = (method, params) => {
+    try {
+      return requestBytes(X, method, params);
+    } catch {
+      return new Uint8Array(Buffer.from(JSON.stringify({ method, params: [params] })));
+    }
+  };
   const xask = (policy, method, params) => policy.wrap(transport)({ providerId: XA.id, url: XA.url, body: xbody(method, params) });
   const x1 = xrpl();
   await xask(x1, 'server_info', { api_version: 2 });
@@ -429,4 +441,47 @@ test('the freshness time is read after the founder approves, and the authorizati
   assert.equal(expiring.transport.exchanges.length, 0);
   assert.deepEqual(readdirSync(expiring.evidenceDir), []);
   rmSync(expiring.evidenceDir, { recursive: true });
+});
+
+test('C3 review: the policy admits only the canonical planned bytes', async () => {
+  const transport = async () => ({ status: 200, body: new Uint8Array() });
+  const raw = (text) => new Uint8Array(Buffer.from(text));
+  for (const text of [
+    '{"id":1,"jsonrpc":"2.0","method":"eth_sendRawTransaction","params":["0xdead"],"method":"eth_chainId","params":[]}', // duplicate keys
+    '{"id":1,"jsonrpc":"2.0","method":"eth_chainId","params":[],"x":1}', // an extra member
+    '{"id":2,"jsonrpc":"2.0","method":"eth_chainId","params":[]}', // another id
+    '{"id":1,"method":"eth_chainId","params":[]}', // no jsonrpc
+    '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}', // not canonical key order
+  ]) {
+    const policy = createPreparationPolicy({ network: S, providers: [SA, SB], sender: SEPOLIA_FROM, data: '0x00' });
+    await assert.rejects(policy.wrap(transport)({ providerId: SA.id, url: SA.url, body: raw(text) }), /preparation policy/, text);
+  }
+  const ok = createPreparationPolicy({ network: S, providers: [SA, SB], sender: SEPOLIA_FROM, data: '0x00' });
+  await ok.wrap(transport)({ providerId: SA.id, url: SA.url, body: requestBytes(S, 'eth_chainId', []) });
+});
+
+test('C3 review: an error on the pending nonce (no block hash) is not blocked; the hashed reads are', async () => {
+  const error = () => Buffer.from('{"jsonrpc":"2.0","id":1,"error":{"code":-32005,"message":"rate limited"}}');
+  const pending = (params) => (params[1] === 'pending' ? { status: 200, body: new Uint8Array(error()) } : undefined);
+  const r = run(S, { servers: { [SA.id]: sepoliaServer({ raw: { eth_getTransactionCount: pending } }), [SB.id]: sepoliaServer({ number: 9_437_185 }) } });
+  const out = await r.promise;
+  assert.equal(out.outcome, 'REFUSED', out.message);
+  assert.equal(out.code, 'RNTP_PROVIDER_ERROR');
+  assert.equal(out.blocked, null);
+  rmSync(r.evidenceDir, { recursive: true });
+});
+
+test('C3 review: an unexpected error still leaves the evidence of what was sent', async () => {
+  let n = 0;
+  const inner = fakeTransport({ [XA.id]: xrplServer(), [XB.id]: xrplServer({ seq: 5_000_001 }) });
+  const r = run(X, { deps: { transport: async (request) => {
+    n += 1;
+    if (n === 3) throw Object.assign(new Error('synthetic capture mismatch'), { name: 'ReplayMismatch' });
+    return inner(request);
+  } } });
+  await assert.rejects(r.promise, /synthetic capture mismatch/);
+  const evidence = JSON.parse(readFileSync(join(r.evidenceDir, 'prep-1', 'evidence.json'), 'utf8'));
+  assert.equal(evidence.requestCount, 3);
+  assert.equal(evidence.code, PrepareEntryCode.EVIDENCE);
+  rmSync(r.evidenceDir, { recursive: true });
 });

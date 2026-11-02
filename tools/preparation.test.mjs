@@ -71,7 +71,8 @@ test('no live path: only the fixture builder, the disabled entry point, the rehe
   const files = ['tools', 'packages', 'signer'].flatMap((dir) => readdirSync(`${ROOT}/${dir}`, { recursive: true }).map((f) => `${dir}/${f}`))
     .filter((f) => /\.(mjs|js|cjs)$/.test(f) && !f.includes('node_modules/'));
   // The guard's own tests hold such imports as string test data; they are left out by exact path.
-  const testData = ['tools/guards/dependency-boundaries.test.mjs'];
+  // The guard itself names tx-prepare's path in its C3 rule that keeps preparation off the network.
+  const testData = ['tools/guards/dependency-boundaries.test.mjs', 'tools/guards/dependency-boundaries.mjs'];
   const importers = files.filter((f) => !f.startsWith('packages/tx-prepare/') && !testData.includes(f) && /tx-prepare\//.test(readFileSync(`${ROOT}/${f}`, 'utf8')));
   // RN-NET-03B2-C3 adds the live entry point (disabled for live use, no transport), its test, and the
   // offline rehearsal's simulated network (the B2 simulated providers on a simulated clock).
