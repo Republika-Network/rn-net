@@ -2,7 +2,7 @@
 
 - Status: Accepted for the offline read-only preparation architecture only (founder approval of PR #16 as implemented, RN-NET-03B2-B2 governance closure)
 - Date: 2026-11-01
-- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. It is the amendment §1 requires before live Sepolia signing; until it is accepted, the Decision below applies unchanged.
+- Amendment C1: **Accepted for the reviewed offline two-pass Sepolia preparation architecture only** (recorded when the founder merges this documentation change; the implementation is RN-NET-03B2-C3, PR #26, squash-merged as main `1723439`, whose tree `a91fc55` equals the reviewed head `578a4db`). It authorizes no live RPC: the C6 compatibility check (P5) and every preparation run need their own read authorization. Live Sepolia preparation stays `BLOCKED` until C6 records block-hash support on both providers, and its live provisions (P5, P9 enabled) are not accepted.
 - Amends: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md). It adds read-only methods to the allowlist and changes nothing else in that ADR.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md)
 - Specification: [rnnet.tx-preparation.v1](../../spec/rnnet.tx-preparation.v1.md)
@@ -230,12 +230,16 @@ in a fixed order (spec §4):
   4-block skew are proposals for the founder's acceptance. A slow provider makes preparation
   refuse, never accept.
 
-## Amendment C1 (Proposed): EIP-1898 block-hash pinning and Sepolia provider freshness
+## Amendment C1 (Accepted, offline architecture only): EIP-1898 block-hash pinning and Sepolia provider freshness
 
-- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted. Accepting it would allow the live
-  preparation entry point to be **implemented and tested offline** (milestone C3). It would
-  authorize no live RPC call: the provider check in P5 and every preparation run need their own
-  read-only authorization, with an exact budget.
+- Status: **Accepted for the reviewed offline two-pass Sepolia preparation architecture only**
+  (RN-NET-03B2-C6-PREP governance closure; the implementation is RN-NET-03B2-C3, PR #26,
+  squash-merged as main `1723439`, whose tree `a91fc55` equals the reviewed head `578a4db`;
+  independent review PASS WITH NON-BLOCKING FOLLOW-UPS, all fixed and re-checked closed). As
+  originally proposed, acceptance covers the preparation entry point **implemented and tested offline**
+  (milestone C3). It authorizes no live RPC call: the provider check in P5 and every preparation
+  run need their own read-only authorization, with an exact budget. See *What this acceptance
+  covers* at the end of this amendment.
 - Readiness analysis: [RN-NET-03B2-C operational readiness](../genesis/rn-net-03b2c-operational-readiness.md) §4.
 
 ### P1. One agreed block, chosen before any account read
@@ -393,8 +397,8 @@ only XRPL change is the ADR-RN-016 Amendment C1 offset (+ 80 in place of + 20 in
 
 ### C3 implementation record (RN-NET-03B2-C3)
 
-This amendment stays **Proposed**. RN-NET-03B2-C3 implements it offline, with live network access
-disabled. It accepts nothing and authorizes nothing.
+At C3 this amendment stayed **Proposed**. RN-NET-03B2-C3 implemented it offline, with live network
+access disabled; that record accepted nothing and authorized nothing.
 - **P1 to P3.** `packages/tx-prepare` reads Sepolia in three passes (head, pin, pinned) over one
   request budget of 8 per provider.
   - Every pinned read carries `{blockHash, requireCanonical: true}`, and the pending nonce `"pending"`.
@@ -416,3 +420,29 @@ disabled. It accepts nothing and authorizes nothing.
 - **Found by the offline rehearsal.** The time preparation checks freshness against is read after
   the founder's approval, not before it. Otherwise blocks made while the founder reads the prompt
   would be refused as "in the future".
+
+### What this acceptance covers, and what it does not
+
+| Decision | Status | What it allows |
+|---|---|---|
+| **Acceptance of the offline architecture** (this amendment) | **Accepted**, for the code reviewed in PR #26 as merged | P1 to P4 and P6 to P8 as implemented in `packages/tx-prepare` and `packages/chain-readonly`: the head pass, the pin at the lowest head − 2, the agreed hash, the pinned reads at `{blockHash, requireCanonical: true}`, the pending-nonce equality, refusal never fallback (`BLOCK_HASH_READ_REFUSED`, `GAS_ESTIMATION_UNAVAILABLE`), 8 requests per Sepolia provider, the unchanged record format; the request policy `tools/prepare/policy.mjs`; the disabled entry point and `rnnet.preparation-authorization.v1` as offline code; the B2 v2 fixtures and the Python reference |
+| **P5, the C6 provider compatibility run** | **Not authorized** | One read-only run with its own founder read authorization and exact budget (H3) |
+| **Recording C6 results in `SEPOLIA_COMPATIBILITY`** | **Not authorized** | A separately reviewed change, after C6, from its evidence |
+| **P9 enabled: live preparation** | **Not authorized** | Setting `LIVE_NETWORK_ACCESS`, adding a `PREPARE_TRANSPORT_JOINERS` member and agreeing `AGREED_EVIDENCE_DIR`, each a reviewed change; then each run by its own read authorization (H6) |
+
+- **`eth_estimateGas` support is not accepted as a fact.** P4 stands: it is not assumed on
+  either provider, there is no fallback, and any alternative estimation strategy needs its own
+  amendment and focused review.
+- **Finality trust semantics are unchanged.** Preparation never reads `finalized` (P7); gate F
+  keeps the parent-hash walk and stays blocked until a durable verification strategy is
+  reviewed and accepted (readiness §4).
+- **Still separately authorized, and not authorized by this acceptance.** Each needs its own
+  written founder decision, as the readiness analysis §8 and §9 list:
+  - **live RPC**: any request to a provider, including the C6 compatibility run (H3) and every
+    preparation run (H6), each with its own read authorization and exact budget;
+  - **operational key generation** (gate B, H4);
+  - **funding** (gate C, H5);
+  - **operational signing** (gate D, H7);
+  - **broadcasting** (gate E, H8 and H9);
+  - **public evidence publication** (gate F, H10).
+- **Not covered:** ADR-RN-019 Amendment C1 (live entry points) stays **Proposed**.
