@@ -26,11 +26,20 @@ HTTPS transport, the verifier, the signer or the broadcaster.
 Test and check changes that follow from it:
 
 - `tools/compat-live.test.mjs`: the test that pinned `false`/`null` pins the activated values;
-- `tools/broadcast/live-disabled.check.mjs`: it no longer starts `compat-live.mjs` (starting the
-  activated command, even with invalid arguments, is not allowed in CI or tests). It reads the two
-  switches from the source instead, and fails unless they are exactly disabled or exactly this
-  activation. The other four entry points are still started and must refuse;
+- `tools/broadcast/live-disabled.check.mjs`, now dual-mode (review R1; the decision is
+  `tools/broadcast/live-disabled.mjs`, tested by `tools/live-disabled.test.mjs`; the probe is
+  `tools/broadcast/live-disabled-probe.mjs`). It reads the two switches from the source first:
+  - **ACTIVATED** (`true`, the H3 directory): the C6 command is **never started**; the other four
+    entry points are started and must refuse; it reports `4/4 other entry points refuse; C6 is
+    ACTIVATED: NOT all live entry points are disabled`. It never reports five;
+  - **DISABLED** (`false`, `null`): all five are started, C6 included, and C6 must exit 3 with
+    `RNCL_LIVE_DISABLED`, print nothing on stdout, load no network module (a probe records them)
+    and leave an empty private evidence directory empty. Only then does it report `5/5 entry
+    points refuse (C6 disabled)`;
+  - **anything else** (a mixed pair, another directory, a switch missing or written twice):
+    `UNREVIEWED CONFIGURATION`, it fails and starts nothing;
 - `tools/compat-h3.test.mjs` (new): the negative controls of the activated wiring (§7);
+- `tools/live-disabled.test.mjs` (new): the dual-mode decision, with fake sources and a fake runner;
 - one comment in `tools/compat-live-enable.test.mjs`.
 
 ## 2. The private evidence directory (PENDING FOUNDER APPROVAL)
@@ -139,32 +148,52 @@ reviews the sanitized evidence. Nothing is published.
 
 ## 5. Post-run deactivation (mandatory; NOT performed in this milestone)
 
+**Live access stays enabled on main from the moment the activation PR is merged until the
+deactivation commit is merged.** Opening a deactivation PR disables nothing; only its merge does,
+and only the checks in step 4 on the merged main confirm it.
+
 Right after the single run, whatever its outcome, and before anything else:
 
-1. Leave the evidence directory alone: do not move, rename, edit or delete anything in
-   `/home/vicvalch/rn-net-private/c6-evidence` (the authorization, journal, transcript, responses,
-   evidence, report and `python-reference.txt` stay as written). The deactivation touches
-   repository files only.
-2. On a new branch from the current main, restore the two switches by reverting the activation
-   merge commit (a new commit; no history rewritten, no force-push):
+1. **Leave the H3 evidence alone.** Do not move, rename, edit or delete anything in
+   `/home/vicvalch/rn-net-private/c6-evidence`: the authorization, journal, transcript, responses,
+   evidence, report and `python-reference.txt` stay as written. The deactivation touches repository
+   files only, and no step below reads or writes the evidence directory.
+2. **Restore both switches** on a new branch from the current main, in one new commit (no history
+   rewritten, no force-push). Do not `git revert` the whole activation commit: that would also
+   remove the dual-mode live-disabled check (review R1) and its tests. Change exactly:
+   - `tools/compat-live/compat-live.mjs`: `export const LIVE_NETWORK_ACCESS = false;`
+   - `tools/compat-live/entry.mjs`: `export const AGREED_EVIDENCE_DIR = null;`
+   - `tools/compat-live.test.mjs`, the pin test: `LIVE_NETWORK_ACCESS = false` and
+     `assert.equal(AGREED_EVIDENCE_DIR, null)` (as on main before the activation, commit `472e516`);
    ```sh
    git fetch origin && git switch -c fix/rn-net-03b2c6-h3-deactivate origin/main
-   git revert --no-edit <the H3 activation merge commit>
+   # edit the three lines above, then:
+   git diff --stat origin/main            # exactly those three files
+   git commit -am "RN-NET-03B2-C6-H3: post-run deactivation (LIVE_NETWORK_ACCESS=false, AGREED_EVIDENCE_DIR=null)"
    ```
-   If main changed those files since, restore exactly `LIVE_NETWORK_ACCESS = false` and
-   `AGREED_EVIDENCE_DIR = null`, the disabled pin in `tools/compat-live.test.mjs`, and the
-   `compat-live/compat-live.mjs` entry in `tools/broadcast/live-disabled.check.mjs` by hand. The
-   manifest and everything else stay as they are.
-3. Verify, and record the output in the PR:
+   `tools/compat-h3.test.mjs` and the dual-mode check are correct in both states and need no
+   change; the manifest and everything else stay as they are.
+3. **Verify on the branch, in a network-isolated environment**, and record the output in the PR:
    ```sh
-   git diff origin/main -- tools/compat-live/compat-live.mjs tools/compat-live/entry.mjs   # only the two lines back
-   grep -n '^export const LIVE_NETWORK_ACCESS\|^export const AGREED_EVIDENCE_DIR' tools/compat-live/*.mjs
-   node tools/compat-live/compat-live.mjs; echo "exit $?"                                  # RNCL_LIVE_DISABLED, exit 3
-   unshare -rn node tools/broadcast/live-disabled.check.mjs                                # 5/5 entry points refuse
-   unshare -rn tools/ci/offline-checks.sh                                                  # all pass
+   git diff origin/main -- tools/compat-live/compat-live.mjs tools/compat-live/entry.mjs   # only the two values back
+   grep -n '^export const LIVE_NETWORK_ACCESS\|^export const AGREED_EVIDENCE_DIR' tools/compat-live/*.mjs   # false, null
+   unshare -rn node tools/broadcast/live-disabled.check.mjs
+   unshare -rn tools/ci/offline-checks.sh
    ```
-4. Open it as its own PR, have it reviewed, and merge it. The deactivation is complete when the
-   merged main shows `false` and `null` and CI runs the live-disabled check at 5/5.
+   The live-disabled check must print `ok compat-live/compat-live.mjs: DISABLED (...), started and
+   refused` and **`live-disabled check: 5/5 entry points refuse (C6 disabled)`**: the C6 command was
+   started (behaviourally, inside the namespace), exited 3 with `RNCL_LIVE_DISABLED`, loaded no
+   network module and touched no evidence directory, and the four other entry points refused. A
+   result of `4/4 other entry points refuse; C6 is ACTIVATED` means it is NOT deactivated.
+4. **Merge only after independent review**, then confirm on the merged main:
+   - open the branch as its own PR; it is independently reviewed; its CI passes (the `verify` job
+     runs the same live-disabled check in a network namespace, 5/5);
+   - merge it;
+   - on the merged main: `git fetch origin && git show origin/main:tools/compat-live/compat-live.mjs |
+     grep '^export const LIVE_NETWORK_ACCESS'` gives `false`, the same for `AGREED_EVIDENCE_DIR`
+     in `entry.mjs` gives `null`, and the main CI run shows `live-disabled check: 5/5 entry points
+     refuse (C6 disabled)`.
+   Only then is live access disabled again.
 
 No automation triggers either the activation or the deactivation.
 
@@ -172,11 +201,11 @@ No automation triggers either the activation or the deactivation.
 
 | Risk | Bound |
 |---|---|
-| The activated command is run by accident (tests, CI, a script) | no test imports or starts it (guard: `compat-transport-join-transitive`); the live-disabled check reads it, never runs it; no package scripts, no scheduled workflow; it still needs the agreed directory to exist, a valid, unexpired H3 file and the typed approval on a terminal |
+| The activated command is run by accident (tests, CI, a script) | no test imports or starts it (guard: `compat-transport-join-transitive`); the live-disabled check never starts it while activated (it reads the switches first; a mixed state starts nothing); no package scripts, no scheduled workflow; it still needs the agreed directory to exist, a valid, unexpired H3 file and the typed approval on a terminal |
 | More or other requests than reviewed | policy (byte-for-byte manifest requests, 2/2/9/9, 22) and the C6 transport (the four URLs, allowlisted methods, 22, one at a time), independently; no retry, no fallback |
 | Traffic rerouted or TLS weakened | proxy, TLS, CA, preload and `LD_*` variables and any Node.js option refused; TLS verification stated; public addresses only, at DNS and on the socket; no redirect |
 | Evidence lost or misread | journal before each request; whole-or-nothing files; no report for an incomplete run; the Python reference must agree |
-| The activation outlives the run | the mandatory deactivation (§5), right after the run |
+| The activation outlives the run | the mandatory deactivation (§5), right after the run; live access stays enabled until the deactivation is merged; the live-disabled check reports `C6 is ACTIVATED` until then, and `5/5` only after the C6 command has been started and has refused |
 | The evidence directory path in the repository | it names a private directory only; it holds nothing secret, and its contents are never committed |
 
 ## 7. Offline verification of this branch

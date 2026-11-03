@@ -102,18 +102,21 @@ async function command(ctx, { auth, approve, transport = allCompatible(), agreed
   return { code, calls, output: output.join('') };
 }
 const right = (auth) => terminal({ answer: `c6 ${auth.digest.slice(-16)}\n` });
+/** The H3 directory of the reviewed activation; AGREED_EVIDENCE_DIR is it while activated, null once deactivated. */
+const H3_DIR = '/home/vicvalch/rn-net-private/c6-evidence';
 
-test('H3: the agreed evidence directory is the proposed private WSL path, and no fixture or test authorization names it', () => {
-  assert.equal(AGREED_EVIDENCE_DIR, '/home/vicvalch/rn-net-private/c6-evidence');
-  assert.match(AGREED_EVIDENCE_DIR, /^\/[A-Za-z0-9._/-]{1,255}$/);
-  assert.ok(!AGREED_EVIDENCE_DIR.startsWith('/mnt/') && !AGREED_EVIDENCE_DIR.split('/').some((s) => s === '..' || s === '.'));
-  assert.ok(!AGREED_EVIDENCE_DIR.startsWith(new URL('.', ROOT).pathname.replace(/\/$/, '')), 'outside this repository');
+test('H3: the agreed evidence directory is the proposed private WSL path (or null once deactivated), and no fixture or test authorization names it', () => {
+  // Activated: the H3 directory. Deactivated (docs/genesis/rn-net-03b2c6-h3-activation.md §5): null.
+  assert.ok(AGREED_EVIDENCE_DIR === H3_DIR || AGREED_EVIDENCE_DIR === null, String(AGREED_EVIDENCE_DIR));
+  assert.match(H3_DIR, /^\/[A-Za-z0-9._/-]{1,255}$/);
+  assert.ok(!H3_DIR.startsWith('/mnt/') && !H3_DIR.split('/').some((s) => s === '..' || s === '.'));
+  assert.ok(!H3_DIR.startsWith(new URL('.', ROOT).pathname.replace(/\/$/, '')), 'outside this repository');
   // No stored authorization in the repository can authorize the real run: none names the agreed
   // directory, and every one expired long ago (SIM_NOW is in 2026-10; notAfter is SIM_NOW + 30 min).
   const base = new URL('fixtures/compat-c6-live/', ROOT);
   for (const name of readdirSync(base)) {
     const a = JSON.parse(readFileSync(new URL(`${name}/authorization.json`, base), 'utf8'));
-    assert.notEqual(a.evidenceDir, AGREED_EVIDENCE_DIR, name);
+    assert.notEqual(a.evidenceDir, H3_DIR, name);
     assert.ok(Date.parse(a.notAfter) < Date.parse('2026-11-04T00:00:00Z'), name);
   }
 });
@@ -148,7 +151,7 @@ test('H3 negative controls: each refuses before any request, and before the term
   const ctx = setup();
   try {
     const auth = authorization(ctx);
-    const out = await command(ctx, { auth, approve: right(auth).approve, agreed: AGREED_EVIDENCE_DIR });
+    const out = await command(ctx, { auth, approve: right(auth).approve, agreed: H3_DIR });
     assert.match(out.output, /RNCL_DIRECTORY_NOT_AGREED/);
     assert.equal(out.calls.length, 0);
   } finally {
@@ -162,7 +165,7 @@ test('H3: the real agreed directory, unavailable or unwritable, refuses with not
     // The real agreed path, with a file system that refuses every call under it.
     const touched = [];
     const guard = (fn) => (path, ...rest) => {
-      if (String(path).startsWith(AGREED_EVIDENCE_DIR)) {
+      if (String(path).startsWith(H3_DIR)) {
         touched.push(String(path));
         throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
       }
@@ -170,13 +173,13 @@ test('H3: the real agreed directory, unavailable or unwritable, refuses with not
     };
     const io = { ...NODE_IO };
     for (const k of ['openSync', 'lstatSync', 'statfsSync', 'mkdirSync', 'linkSync', 'unlinkSync']) io[k] = guard(NODE_IO[k]);
-    const real = { base: ctx.base, dir: AGREED_EVIDENCE_DIR };
+    const real = { base: ctx.base, dir: H3_DIR };
     const auth = authorization(real);
-    const out = await command(real, { auth, approve: right(auth).approve, agreed: AGREED_EVIDENCE_DIR, evidenceDir: AGREED_EVIDENCE_DIR, io });
+    const out = await command(real, { auth, approve: right(auth).approve, agreed: H3_DIR, evidenceDir: H3_DIR, io });
     assert.equal(out.code, COMPAT_EXIT.REFUSED);
     assert.match(out.output, /RNCL_EVIDENCE/);
     assert.equal(out.calls.length, 0);
-    assert.ok(touched.length > 0 && touched.every((p) => p === AGREED_EVIDENCE_DIR), `only refused calls on the agreed path: ${touched}`);
+    assert.ok(touched.length > 0 && touched.every((p) => p === H3_DIR), `only refused calls on the agreed path: ${touched}`);
     // An unwritable (0500) directory of the right owner.
     chmodSync(ctx.dir, 0o500);
     const ro = authorization(ctx);
