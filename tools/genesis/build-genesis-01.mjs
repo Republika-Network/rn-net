@@ -28,6 +28,7 @@ import {
   intrinsicGas,
   memosSerializedLength,
   payloadHex,
+  PREFLIGHT_LAST_LEDGER_OFFSET,
   REHEARSAL,
   rehearsalObservations,
   rehearsalTransactions,
@@ -137,7 +138,8 @@ export function build() {
       memosSerializedBytes: memosSerializedLength([[ANCHOR_MEMO_TYPE.length / 2, PAYLOAD_LENGTH]]),
       feeDrops: XRPL.feeDrops,
       maxFeeDrops: String(XRPL.maxFeeDrops),
-      lastLedgerOffset: XRPL.lastLedgerOffset,
+      // The value recorded at the RN-NET-03B2-A preflight; the golden file is immutable (prepare.mjs).
+      lastLedgerOffset: PREFLIGHT_LAST_LEDGER_OFFSET,
       unsignedTemplate: xrplAnchorTemplate(commitment),
       boundAtSigning: ['Account', 'Sequence', 'LastLedgerSequence', 'SigningPubKey'],
     },

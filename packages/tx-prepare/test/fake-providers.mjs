@@ -80,14 +80,43 @@ export function xrplServer(opts = {}) {
   };
 }
 
+/** The synthetic chain's block timestamps: 12 s apart, block 9,437,185 at NOW - 1 - shift. */
+export const evmBlockTimestamp = (number, shift = 0) => NOW - 1 - shift - 12 * (9_437_185 - number);
+
 /**
- * One simulated Sepolia provider. `opts`: number (latest block), timestamp, baseFee, nonce,
- * pending, balance, code, estimate, block (a function editing the block), raw[method].
+ * One simulated Sepolia provider (EIP-1898 aware, ADR-RN-018 Amendment C1). `opts`:
+ *   number (latest block), timestamp (of the latest block only), shift (seconds every block of
+ *   the chain is older by), baseFee, block (edits the latest block); pin (edits a block read by
+ *   number), pinBaseFee; nonce, pending, balance, code,
+ *   estimate; eip1898 false (refuses every block-hash object), estimateGasBlockHash false (refuses
+ *   it for eth_estimateGas only); raw[method].
+ * A block-hash object must be {blockHash, requireCanonical: true} naming a block at or below the
+ * latest; anything else is the JSON-RPC error a node gives for an unknown block.
  */
 export function sepoliaServer(opts = {}) {
   const number = opts.number ?? 9_437_184;
   const q = (n) => `0x${BigInt(n).toString(16)}`;
   const ok = (result) => reply(jsonText({ jsonrpc: '2.0', id: 1, result }));
+  const rpcError = (code, message) => reply(jsonText({ jsonrpc: '2.0', id: 1, error: { code, message } }));
+  const blockAt = (n, edit, timestamp) => apply({
+    number: q(n),
+    hash: evmBlockHash(n),
+    parentHash: evmBlockHash(n - 1),
+    timestamp: q(timestamp ?? evmBlockTimestamp(n, opts.shift)),
+    baseFeePerGas: (n === number ? opts.baseFee : opts.pinBaseFee ?? opts.baseFee) ?? '0x47868c00',
+    gasLimit: '0x2255100',
+    gasUsed: '0x1c9c380',
+    transactions: [],
+  }, edit);
+  // undefined: the object is accepted; otherwise the error reply.
+  const pinnedError = (method, at) => {
+    if (at === null || typeof at !== 'object' || Array.isArray(at)) return rpcError(-32602, 'invalid argument 1: block parameter');
+    if (opts.eip1898 === false || (method === 'eth_estimateGas' && opts.estimateGasBlockHash === false)) return rpcError(-32602, 'invalid argument 1: hex string without 0x prefix');
+    const keys = Object.keys(at).sort().join(',');
+    if (keys !== 'blockHash,requireCanonical' || at.requireCanonical !== true) return rpcError(-32602, 'invalid argument 1: block parameter');
+    for (let n = number; n >= number - 64; n--) if (evmBlockHash(n) === at.blockHash) return undefined;
+    return rpcError(-32000, `header for hash not found`);
+  };
   return (method, params) => {
     // A raw hook returns a whole reply, throws a transport error, or returns undefined to answer normally.
     const answer = opts.raw?.[method]?.(params);
@@ -96,24 +125,17 @@ export function sepoliaServer(opts = {}) {
       case 'eth_chainId':
         return ok(opts.chainId ?? '0xaa36a7');
       case 'eth_getBlockByNumber':
-        return ok(apply({
-          number: q(number),
-          hash: evmBlockHash(number),
-          parentHash: evmBlockHash(number - 1),
-          timestamp: q(opts.timestamp ?? NOW - 6),
-          baseFeePerGas: opts.baseFee ?? '0x47868c00',
-          gasLimit: '0x2255100',
-          gasUsed: '0x1c9c380',
-          transactions: [],
-        }, opts.block));
+        if (params[0] === 'latest') return ok(blockAt(number, opts.block, opts.timestamp));
+        return ok(blockAt(Number(BigInt(params[0])), opts.pin));
       case 'eth_getTransactionCount':
-        return ok(params[1] === 'pending' ? (opts.pending ?? opts.nonce ?? '0x0') : (opts.nonce ?? '0x0'));
+        if (params[1] === 'pending') return ok(opts.pending ?? opts.nonce ?? '0x0');
+        return pinnedError(method, params[1]) ?? ok(opts.nonce ?? '0x0');
       case 'eth_getBalance':
-        return ok(opts.balance ?? '0x2386f26fc10000');
+        return pinnedError(method, params[1]) ?? ok(opts.balance ?? '0x2386f26fc10000');
       case 'eth_getCode':
-        return ok(opts.code ?? '0x');
+        return pinnedError(method, params[1]) ?? ok(opts.code ?? '0x');
       case 'eth_estimateGas':
-        return ok(opts.estimate ?? '0x5898');
+        return pinnedError(method, params[1]) ?? ok(opts.estimate ?? '0x5898');
       default:
         throw new Error(`unexpected Sepolia method ${method}`);
     }

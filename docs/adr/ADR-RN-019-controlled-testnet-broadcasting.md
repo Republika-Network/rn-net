@@ -489,3 +489,17 @@ access disabled**. The record below says what was built. It accepts nothing and 
   `rnnet.submission-record.v1`, `rnnet.submission-log-entry.v1`,
   `rnnet.submission-status.v1`) and the outcome classes are unchanged.
 - The only changes are which files may run live, and the budgets, procedures and wording above.
+
+### C3 record (RN-NET-03B2-C3)
+
+- **E1.** `tools/prepare/prepare-live.mjs` exists, read-only and keyless.
+  - It imports no transport, refuses as a command, and the guard keeps it off the write path.
+  - `WRITE_TRANSPORT_JOINERS` is still empty.
+- **E2.** Preparation runs make exactly 4 requests on XRPL and 16 on Sepolia, enforced by
+  `tools/prepare/policy.mjs`.
+- **The rehearsal (readiness §3, item 9) is built.** `tools/rehearsal/` runs preparation, the key
+  tool and the submission end to end on simulated providers and a simulated clock
+  (`fixtures/rehearsal-c3`). Its findings:
+  - the same broadcast authorization used twice is refused (`RNBC_AUTHORIZATION_USED`) with no
+    request;
+  - an XRPL window that closes during the founder's approval gives `NOT_SENT` before any write.

@@ -7,7 +7,7 @@
 // RN-NET-03B2-B2 it is only ever an offline fixture.
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { Network, PREPARATION_REQUESTS, readSepoliaAccount, ReadError, readXrplAccount } from '../../chain-readonly/src/index.mjs';
+import { Network, PREPARATION_REQUESTS, ReadError, readSepoliaHead, readSepoliaPin, readSepoliaPinned, readXrplAccount } from '../../chain-readonly/src/index.mjs';
 import {
   addressFromPublicKey,
   INTENT_FORMAT,
@@ -21,7 +21,7 @@ import {
   XRPL,
   xrplAnchorTemplate,
 } from '../../tx-intent/src/index.mjs';
-import { PrepError, PrepErrorCode as C } from './errors.mjs';
+import { BlockedReason, PrepError, PrepErrorCode as C } from './errors.mjs';
 
 export const PREPARATION_FORMAT = 'rnnet.tx-preparation.v1';
 const GWEI = 1_000_000_000n;
@@ -52,6 +52,10 @@ export const PREPARATION_RULES = Object.freeze({
     maxClockAheadSeconds: 15,
     /** Largest gap between providers' latest blocks. */
     maxBlockSkew: 4,
+    /** The pin is this many blocks below the lowest latest block (ADR-RN-018 Amendment C1, P1.2). */
+    pinDepth: 2,
+    /** Oldest acceptable pinned block, in seconds before `now` (P1.3). */
+    maxPinAgeSeconds: 90,
     /** Largest acceptable base fee: 19 gwei (ADR-RN-016 / design §8). */
     maxBaseFeeWei: 19n * GWEI,
   }),
@@ -110,25 +114,49 @@ function refusal(error, providerId) {
   }
 }
 
-/** Reads one provider with its exact request budget, recording the digest of every exchange. */
-async function readProvider(provider, transport, network, read) {
+/**
+ * One provider's reader for a whole preparation run: one request budget (the exact request list of
+ * PREPARATION_REQUESTS, one attempt each) and the digest of every exchange, across every pass.
+ * `read(step)` runs one step and turns a ReadError into a PrepError for this provider; `blocked`
+ * marks a JSON-RPC error on a block-hash-pinned read (Sepolia pass 2, ADR-RN-018 Amendment C1, P2).
+ */
+function providerReader(provider, transport, network) {
   const exchanges = [];
+  const carriedHash = [];
   const recording = async (request) => {
-    const entry = { method: JSON.parse(new TextDecoder().decode(request.body)).method, requestSha256: sha256(request.body) };
+    const body = JSON.parse(new TextDecoder().decode(request.body));
+    const entry = { method: body.method, requestSha256: sha256(request.body) };
     exchanges.push(entry);
+    // Not part of the record: whether this request carried a block-hash object.
+    carriedHash.push(Array.isArray(body.params) && body.params.some((p) => p !== null && typeof p === 'object' && !Array.isArray(p) && Object.hasOwn(p, 'blockHash')));
     const response = await transport(request);
     if (response !== null && typeof response === 'object' && response.body instanceof Uint8Array) entry.responseSha256 = sha256(response.body);
     return response;
   };
   const budget = { remaining: PREPARATION_REQUESTS[network].length };
   const context = { provider, transport: recording, budget, maxAttempts: PREPARATION_RULES.maxAttempts };
-  let observed;
-  try {
-    observed = await read(context);
-  } catch (error) {
-    throw refusal(error, provider.id);
-  }
-  return { observed, exchanges };
+  const read = async (step, { pinned = false } = {}) => {
+    try {
+      return await step(context);
+    } catch (error) {
+      const prep = refusal(error, provider.id);
+      // Only a read that carried the block-hash object: not the pending nonce (C3 review 3).
+      if (pinned && error.code === 'RNLO_RPC_ERROR' && carriedHash.at(-1) === true) {
+        const method = exchanges.at(-1)?.method;
+        prep.blocked = method === 'eth_estimateGas' ? BlockedReason.GAS_ESTIMATION_UNAVAILABLE : BlockedReason.BLOCK_HASH_READ_REFUSED;
+        prep.method = method;
+      }
+      throw prep;
+    }
+  };
+  return { provider, exchanges, read };
+}
+
+/** Reads one provider in one step, as XRPL preparation does. */
+async function readProvider(provider, transport, network, step) {
+  const reader = providerReader(provider, transport, network);
+  const observed = await reader.read(step);
+  return { observed, exchanges: reader.exchanges };
 }
 
 const intentFrom = (fields) => {
@@ -211,7 +239,16 @@ export async function prepareXrplIntent(input) {
 // --- Ethereum Sepolia ---------------------------------------------------------------------------
 
 /**
- * Prepares the Genesis EIP-1559 self-send from `from`.
+ * Prepares the Genesis EIP-1559 self-send from `from`, in two passes over the same providers
+ * (ADR-RN-018 Amendment C1, P1 to P3):
+ *   1. head pass, on every provider in order: eth_chainId and the latest block, checked for
+ *      freshness and the base-fee cap; then, across providers, skew and one hash per number;
+ *   2. the pin P = lowest latest number - 2, read by number on every provider; every provider must
+ *      return the same hash H, at most 90 s old;
+ *   3. pinned pass, on every provider in order: the nonce, balance, code and gas estimate at
+ *      {blockHash: H, requireCanonical: true}, and the pending nonce.
+ * Never a fallback: a pinned read is never retried by number or by tag, nor sent elsewhere. A
+ * JSON-RPC error on one is RNTP_PROVIDER_ERROR with `blocked` set (P2, P4).
  * @param {{ commitment: string, from: string, now: number,
  *   providers: ReadonlyArray<{ id, network, url, operator }>, transport: (request: object) => Promise<object> }} input
  * @returns {Promise<Readonly<{ intent: object, digest: string }>>}  Throws PrepError.
@@ -223,44 +260,69 @@ export async function prepareSepoliaIntent(input) {
   const rules = PREPARATION_RULES.sepolia;
   const call = { from, input: `0x${payloadHex(commitment)}` };
   const intrinsic = BigInt(intrinsicGas(Buffer.from(payloadHex(commitment), 'hex')).gasUsed);
+  const readers = providers.map((provider) => providerReader(provider, transport, Network.SEPOLIA));
+  const fresh = (block, maxAge, id, what) => {
+    const timestamp = BigInt(block.timestamp);
+    if (BigInt(now) - timestamp > BigInt(maxAge)) throw new PrepError(C.STALE, id, `${what} too old`);
+    if (timestamp - BigInt(now) >= BigInt(rules.maxClockAheadSeconds)) throw new PrepError(C.STALE, id, `${what} is in the future`);
+    if (BigInt(block.baseFeePerGas) > rules.maxBaseFeeWei) throw new PrepError(C.FEE_TOO_HIGH, id, `${what}: base fee above 19 gwei`);
+  };
 
-  const readings = [];
-  for (const provider of providers) {
-    const { observed: o, exchanges } = await readProvider(provider, transport, Network.SEPOLIA, (context) => readSepoliaAccount(context, call));
-    const fail = (code, detail) => {
-      throw new PrepError(code, provider.id, detail);
-    };
-    const timestamp = BigInt(o.block.timestamp);
-    if (BigInt(now) - timestamp > BigInt(rules.maxBlockAgeSeconds)) fail(C.STALE, 'latest block too old');
-    if (timestamp - BigInt(now) >= BigInt(rules.maxClockAheadSeconds)) fail(C.STALE, 'latest block is in the future');
-    if (BigInt(o.block.baseFeePerGas) > rules.maxBaseFeeWei) fail(C.FEE_TOO_HIGH, 'base fee above 19 gwei');
-    if (o.noncePending !== o.nonceLatest) fail(C.NONCE_PENDING, 'a transaction from the sender is pending');
-    if (o.code !== '0x') fail(C.ACCOUNT_UNSUITABLE, 'the sender has code or an EIP-7702 delegation');
-    const estimate = BigInt(o.estimateGas);
-    if (estimate > SEPOLIA.gasLimit) fail(C.GAS_TOO_HIGH, 'estimate above the gas limit');
-    if (estimate < intrinsic) fail(C.INCONSISTENT, 'estimate below the intrinsic gas');
-    readings.push({ provider, o, exchanges });
+  // 1. Head pass: every provider, before any pin or account read.
+  const heads = [];
+  for (const reader of readers) {
+    const { block } = await reader.read((context) => readSepoliaHead(context));
+    fresh(block, rules.maxBlockAgeSeconds, reader.provider.id, 'latest block');
+    heads.push(block);
   }
-
-  const heights = readings.map((r) => BigInt(r.o.block.number));
+  const heights = heads.map((b) => BigInt(b.number));
   if (maxOf(heights) - minOf(heights) > BigInt(rules.maxBlockSkew)) throw new PrepError(C.INCONSISTENT, null, 'providers are too far apart');
-  const blocks = readings.map((r) => r.o.block);
-  if (blocks.some((a) => blocks.some((b) => a.number === b.number && a.hash !== b.hash))) throw new PrepError(C.INCONSISTENT, null, 'one block number with two hashes');
+  if (heads.some((a) => heads.some((b) => a.number === b.number && a.hash !== b.hash))) throw new PrepError(C.INCONSISTENT, null, 'one block number with two hashes');
+
+  // 2. The pin: one block below every head, the same hash on every provider.
+  const pinNumber = minOf(heights) - BigInt(rules.pinDepth);
+  if (pinNumber < 0n) throw new PrepError(C.INCONSISTENT, null, 'the chain is shorter than the pin depth');
+  const pinQuantity = `0x${pinNumber.toString(16)}`;
+  const pins = [];
+  for (const [i, reader] of readers.entries()) {
+    const id = reader.provider.id;
+    const pin = await reader.read((context) => readSepoliaPin(context, pinQuantity));
+    if (pin.number !== pinQuantity) throw new PrepError(C.INCONSISTENT, id, 'the pinned block is not the block asked for');
+    if (pin.hash === heads[i].hash || BigInt(pin.timestamp) > BigInt(heads[i].timestamp)) throw new PrepError(C.INCONSISTENT, id, 'the pinned block does not precede the latest block');
+    fresh(pin, rules.maxPinAgeSeconds, id, 'pinned block');
+    pins.push(pin);
+  }
+  const pin = pins[0];
+  if (pins.some((b) => b.hash !== pin.hash)) throw new PrepError(C.INCONSISTENT, null, 'providers disagree on the pinned block hash');
+  if (pins.some((b) => b.timestamp !== pin.timestamp || b.baseFeePerGas !== pin.baseFeePerGas)) throw new PrepError(C.INCONSISTENT, null, 'one pinned block hash with two contents');
+
+  // 3. Pinned pass: account state at the agreed hash only.
+  const readings = [];
+  for (const reader of readers) {
+    const id = reader.provider.id;
+    const o = await reader.read((context) => readSepoliaPinned(context, { ...call, blockHash: pin.hash }), { pinned: true });
+    if (o.noncePending !== o.nonceLatest) throw new PrepError(C.NONCE_PENDING, id, 'the pending nonce is not the pinned nonce');
+    if (o.code !== '0x') throw new PrepError(C.ACCOUNT_UNSUITABLE, id, 'the sender has code or an EIP-7702 delegation');
+    const estimate = BigInt(o.estimateGas);
+    if (estimate > SEPOLIA.gasLimit) throw new PrepError(C.GAS_TOO_HIGH, id, 'estimate above the gas limit');
+    if (estimate < intrinsic) throw new PrepError(C.INCONSISTENT, id, 'estimate below the intrinsic gas');
+    readings.push({ reader, o });
+  }
   if (new Set(readings.map((r) => r.o.nonceLatest)).size !== 1) throw new PrepError(C.INCONSISTENT, null, 'providers disagree on the nonce');
-  // The fee is set from the highest base fee any provider reported, then capped (ADR-RN-016).
-  const maxFeePerGas = sepoliaMaxFee(`0x${maxOf(readings.map((r) => BigInt(r.o.block.baseFeePerGas))).toString(16)}`);
+  // The fee is set from the pinned block's base fee (P6), then capped (ADR-RN-016).
+  const maxFeePerGas = sepoliaMaxFee(pin.baseFeePerGas);
   const worstCase = SEPOLIA.gasLimit * BigInt(maxFeePerGas);
-  for (const { provider, o } of readings) {
-    if (BigInt(o.balance) < worstCase) throw new PrepError(C.INSUFFICIENT_BALANCE, provider.id, 'balance below gas limit times maxFeePerGas');
+  for (const { reader, o } of readings) {
+    if (BigInt(o.balance) < worstCase) throw new PrepError(C.INSUFFICIENT_BALANCE, reader.provider.id, 'balance below gas limit times maxFeePerGas');
   }
 
   const transaction = sepoliaAnchorTemplate(commitment, { nonce: readings[0].o.nonceLatest, from, maxFeePerGas });
-  const preparation = record(now, readings.map(({ provider, o, exchanges }) => ({
-    id: provider.id,
-    operator: provider.operator,
-    block: { ...o.block },
+  const preparation = record(now, readings.map(({ reader, o }) => ({
+    id: reader.provider.id,
+    operator: reader.provider.operator,
+    block: { ...pin },
     estimateGas: o.estimateGas,
-    exchanges,
+    exchanges: reader.exchanges,
   })));
   return intentFrom({ network: Network.SEPOLIA, commitment, transaction, preparation });
 }

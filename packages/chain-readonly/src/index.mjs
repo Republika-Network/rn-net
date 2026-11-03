@@ -4,5 +4,5 @@ export { CAPTURE_FORMAT, checkCapture, MAX_EXCHANGES_PER_PROVIDER, recordingTran
 export { JsonError, parseRpcJson, RawNumber } from './json.mjs';
 export { encodeLiveReport, LIVE_REPORT_FORMAT, verifyLiveAnchor } from './live.mjs';
 export { ANCESTRY_LIMIT, EVM_HASH, readEvm, readXrpl, XRPL_HASH } from './readers.mjs';
-export { PREPARATION_REQUESTS, readSepoliaAccount, readXrplAccount, xrpDecimal } from './preparation.mjs';
+export { PREPARATION_REQUESTS, readSepoliaHead, readSepoliaPin, readSepoliaPinned, readXrplAccount, xrpDecimal } from './preparation.mjs';
 export { call, ENDPOINTS_FORMAT, LIMITS, loadEndpointConfig, Network, PREPARATION_METHODS, READ_ONLY_METHODS, ReadError, requestBytes, TRANSPORT_CODES } from './rpc.mjs';

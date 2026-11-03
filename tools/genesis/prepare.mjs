@@ -47,6 +47,12 @@ export const REHEARSAL = Object.freeze({
   evmTransactionIndex: 0,
   evmBaseFeePerGas: '0x11',
 });
+/**
+ * The offset the RN-NET-03B2-A preflight rehearsal was built with. fixtures/genesis-proof-01 is
+ * immutable, so its rehearsal keeps this recorded value; preparation binds XRPL.lastLedgerOffset
+ * (80 since RN-NET-03B2-C3, ADR-RN-016 Amendment C1). A test pins both.
+ */
+export const PREFLIGHT_LAST_LEDGER_OFFSET = 20;
 const ctid = (ledger, index, network) => `C${((BigInt(ledger) << 32n) | (BigInt(index) << 16n) | BigInt(network)).toString(16).toUpperCase().padStart(15, '0')}`;
 
 /** The completed, unsigned XRPL and Sepolia transactions the rehearsal uses. */
@@ -54,7 +60,7 @@ export function rehearsalTransactions(commitment) {
   const xrpl = xrplAnchorTemplate(commitment, {
     Account: REHEARSAL.xrplAccount,
     Sequence: REHEARSAL.xrplSequence,
-    LastLedgerSequence: REHEARSAL.xrplLedger - 2 + XRPL.lastLedgerOffset,
+    LastLedgerSequence: REHEARSAL.xrplLedger - 2 + PREFLIGHT_LAST_LEDGER_OFFSET,
     SigningPubKey: REHEARSAL.xrplSigningPubKey,
   });
   const evm = sepoliaAnchorTemplate(commitment, { from: REHEARSAL.evmFrom, nonce: '0x0', maxFeePerGas: sepoliaMaxFee(REHEARSAL.evmBaseFeePerGas) });

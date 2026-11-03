@@ -154,6 +154,13 @@ These block **gate D on both networks**.
    refuses the object form for `eth_estimateGas` only. All are reproduced by the Python reference.
 4. **The entry point** `tools/prepare/prepare-live.mjs` (P9), with an independent review.
 
+**Status (RN-NET-03B2-C3):**
+- Items 1 to 4 are implemented offline, with live network access disabled, together with the
+  rehearsal harness (§3, item 9).
+- The amendments stay Proposed. See the C3 implementation records in ADR-RN-016, ADR-RN-018 and
+  ADR-RN-019.
+- Sepolia preparation stays `BLOCKED` until C6 records block-hash support on both providers.
+
 ### C6: provider compatibility check (one read-only run, after C3 merges)
 
 The run needs its own founder authorization, with this exact budget: **22 requests**, one

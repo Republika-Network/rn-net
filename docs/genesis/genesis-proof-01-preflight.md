@@ -84,7 +84,7 @@ python3 -I -B tools/reference/rnnet_genesis_reference.py
   "Account": "<gate B: new Ed25519 test account>",
   "Fee": "12",
   "Sequence": "<gate D: account_info>",
-  "LastLedgerSequence": "<gate D: latest validated ledger + 20>",
+  "LastLedgerSequence": "<gate D: lowest validated ledger of the two providers + 80>",
   "SigningPubKey": "<gate D: ED + 64 hex>",
   "Memos": [{ "Memo": {
     "MemoType": "726E6E65742E616E63686F722D7061796C6F61642E7631",

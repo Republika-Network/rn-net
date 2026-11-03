@@ -107,6 +107,12 @@ run_checks() {
   echo "::group::Key tool sign log: JavaScript against the Python reference on real directories (no preload; still inside the namespace)"
   node tools/signing/keytool-python.check.mjs "$(command -v python3)"
   echo "::endgroup::"
+  echo "::group::The live entry points refuse as commands (no preload; still inside the namespace)"
+  node tools/broadcast/live-disabled.check.mjs
+  echo "::endgroup::"
+  echo "::group::Offline Genesis rehearsal with the Python reference verifier as a subprocess (no preload; still inside the namespace)"
+  node tools/rehearsal/build-c3-rehearsal.mjs "$(command -v python3)"
+  echo "::endgroup::"
   echo "::group::Independent Python reference against all vectors"
   python3 -I -B tools/reference/rnnet_reference.py
   python3 -I -B tools/reference/rnnet_evidence_reference.py
@@ -116,6 +122,7 @@ run_checks() {
   python3 -I -B tools/reference/rnnet_prep_reference.py
   python3 -I -B tools/reference/rnnet_broadcast_reference.py
   python3 -I -B tools/reference/rnnet_keytool_reference.py
+  python3 -I -B tools/reference/rnnet_rehearsal_reference.py
   echo "::endgroup::"
 }
 
