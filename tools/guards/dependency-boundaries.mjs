@@ -229,8 +229,11 @@ export const PREPARE_PROCESS_PROPERTIES = ['getuid'];
 export const PREPARE_TRANSPORT_JOINERS = [];
 // The C6 provider compatibility manifest and offline run (RN-NET-03B2-C6-PREP): no file in it may
 // reach a network file, the write path, the signer or the key tool (compat-reaches-network,
-// compat-reaches-write-or-key). It has no live entry point.
+// compat-reaches-write-or-key), and no file anywhere may join it to a network file
+// (compat-transport-join-transitive) unless listed below. None is listed: there is no live C6
+// entry point. Adding one is a reviewed change to this list (C6 review 3).
 export const COMPAT_TOOLS = 'tools/compat/';
+export const COMPAT_TRANSPORT_JOINERS = [];
 
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
 // transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
@@ -822,6 +825,7 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     // Nor may the C6 compatibility manifest and its offline run (RN-NET-03B2-C6-PREP): it is data,
     // a classifier and simulated providers only, and it may not reach the write path, the signer or
     // the key tool either. Enabling a live C6 run is a reviewed change to this rule.
+    if (!COMPAT_TRANSPORT_JOINERS.includes(path) && path !== TRANSPORT_FILE && [...seen].some((p) => p.startsWith(COMPAT_TOOLS)) && reachesNetwork) add(path, 'compat-transport-join-transitive');
     if (path.startsWith(COMPAT_TOOLS) || path === 'tools/compat.test.mjs') {
       if (reachesNetwork) add(path, 'compat-reaches-network');
       if ([...seen].some((p) => isWrite(p) || p.startsWith('signer/') || p.startsWith(KEYTOOL) || p.startsWith('tools/signing/'))) add(path, 'compat-reaches-write-or-key');

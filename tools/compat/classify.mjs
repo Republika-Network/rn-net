@@ -34,12 +34,27 @@ const { PASS, BLOCKED, UNRESOLVED } = Status;
 const XRPL_IDS = C6_PROVIDERS.filter((p) => p.network === 'xrpl:testnet').map((p) => p.id);
 const SEPOLIA_IDS = C6_PROVIDERS.filter((p) => p.network === 'evm:11155111').map((p) => p.id);
 
-/** Intrinsic gas of the C6 estimate's call: 21,000 + 16 per non-zero and 4 per zero calldata byte. */
+/**
+ * The gas the C6 estimate's call uses at least, as preparation computes it (packages/tx-intent
+ * intrinsicGas().gasUsed): the larger of the standard intrinsic cost, 21,000 + 4 per calldata token,
+ * and the EIP-7623 floor, 21,000 + 10 per token (a token is 1 per zero byte, 4 per non-zero byte).
+ * For the 42-byte Genesis payload: 21,672 standard, 22,680 floor, so 22,680 (C6 review 1).
+ */
 export function intrinsicGas(data = C6_CALLDATA) {
-  let gas = 21_000;
-  for (let i = 2; i < data.length; i += 2) gas += data.slice(i, i + 2) === '00' ? 4 : 16;
-  return gas;
+  let tokens = 0;
+  for (let i = 2; i < data.length; i += 2) tokens += data.slice(i, i + 2) === '00' ? 1 : 4;
+  return Math.max(21_000 + 4 * tokens, 21_000 + 10 * tokens);
 }
+
+/** The states preparation accepts as synced (packages/tx-prepare, syncedStates). */
+export const XRPL_SYNCED_STATES = Object.freeze(['full', 'proposing', 'validating']);
+/**
+ * JSON-RPC error codes that mean "busy or limited", not "refused": a request answered with one of
+ * them shows nothing about the form it carried, so the check is UNRESOLVED (C6 review 5).
+ * -32005 limit exceeded (EIP-1474), -32090 rate limited (used by some gateways), -32603 internal error.
+ */
+export const TRANSIENT_RPC_CODES = Object.freeze([-32005, -32090, -32603]);
+const transient = (e) => e.outcome === 'RPC_ERROR' && TRANSIENT_RPC_CODES.includes(e.rpcError.code);
 
 /** Parses complete_ledgers ("a-b,c,d-e") into ranges, or null. */
 export function parseLedgerRanges(text) {
@@ -82,10 +97,11 @@ export function classify(evidence) {
       } else {
         if (o.buildVersion === null) add(`xrpl.build_version.${id}`, UNRESOLVED, 'no build_version');
         else add(`xrpl.build_version.${id}`, o.buildVersion === FAIL_HARD_CHECKED_VERSION ? PASS : UNRESOLVED, o.buildVersion === FAIL_HARD_CHECKED_VERSION ? `${o.buildVersion}, the release whose fail_hard was read` : `${o.buildVersion}: fail_hard must be read at this release before gate E`);
-        if (o.validatedSeq === null || o.validatedHash === null || o.validatedAge === null) add(`xrpl.validated.${id}`, BLOCKED, 'validated_ledger {seq, hash, age} missing');
+        if (o.validatedSeq === null || o.validatedHash === null || o.validatedAge === null || o.validatedSeq < 0 || o.validatedAge < 0) add(`xrpl.validated.${id}`, BLOCKED, 'validated_ledger {seq, hash, age >= 0} missing');
+        else if (!XRPL_SYNCED_STATES.includes(o.serverState)) add(`xrpl.validated.${id}`, UNRESOLVED, `server_state ${o.serverState}, not synced`);
         else {
           validated[id] = o;
-          add(`xrpl.validated.${id}`, o.validatedAge <= C6_RULES.xrplMaxAgeSeconds ? PASS : UNRESOLVED, `seq ${o.validatedSeq}, age ${o.validatedAge} s`);
+          add(`xrpl.validated.${id}`, o.validatedAge <= C6_RULES.xrplMaxAgeSeconds ? PASS : UNRESOLVED, `seq ${o.validatedSeq}, age ${o.validatedAge} s, ${o.serverState}`);
         }
         const ranges = parseLedgerRanges(o.completeLedgers);
         if (o.validatedSeq === null) add(`xrpl.history.${id}`, BLOCKED, 'no validated ledger to measure history from');
@@ -138,12 +154,15 @@ export function classify(evidence) {
   }
 
   const pins = SEPOLIA_IDS.map((id) => of('pin', id));
+  // P as the run asked for it (both pins carry the same number: the request is built once).
+  const pinRequested = pins[0].request === null ? null : JSON.parse(pins[0].request).params[0];
   if (pins.some((p) => p.outcome !== 'OK')) add('sepolia.pin_agreement', UNRESOLVED, pins.map((p) => `${p.providerId}: ${p.outcome === 'OK' ? 'ok' : noAnswer(p)}`).join('; '));
   else {
     const blocks = pins.map((p) => p.observed.block);
-    if (blocks.some((b) => b === null || b.hash === null || b.timestamp === null || b.number === null)) add('sepolia.pin_agreement', BLOCKED, 'a pinned block {number, hash, timestamp} is missing');
-    else if (blocks.some((b) => b.number !== blocks[0].number)) add('sepolia.pin_agreement', BLOCKED, 'a provider returned another block number for P');
+    if (blocks.some((b) => b === null || b.hash === null || b.timestamp === null || b.number === null || b.baseFeePerGas === null)) add('sepolia.pin_agreement', BLOCKED, 'a pinned block {number, hash, timestamp} is missing');
+    else if (blocks.some((b) => b.number !== pinRequested)) add('sepolia.pin_agreement', BLOCKED, 'a provider returned another block than P');
     else if (blocks.some((b) => b.hash !== blocks[0].hash)) add('sepolia.pin_agreement', BLOCKED, `block ${num(blocks[0].number)} pinned with two hashes`);
+    else if (blocks.some((b) => b.timestamp !== blocks[0].timestamp || b.baseFeePerGas !== blocks[0].baseFeePerGas)) add('sepolia.pin_agreement', BLOCKED, 'one pinned block hash with two contents');
     else {
       const age = now - num(blocks[0].timestamp);
       add('sepolia.pin_agreement', age <= C6_RULES.sepoliaPinMaxAgeSeconds ? PASS : UNRESOLVED, `block ${num(blocks[0].number)}, one hash, age ${age} s`);
@@ -158,7 +177,7 @@ export function classify(evidence) {
       const e = of(form, id);
       let s;
       if (e.outcome === 'OK') s = e.observed.value === null ? BLOCKED : PASS;
-      else if (e.outcome === 'RPC_ERROR') s = BLOCKED;
+      else if (e.outcome === 'RPC_ERROR') s = transient(e) ? UNRESOLVED : BLOCKED;
       else s = UNRESOLVED;
       account.push(s);
       add(`sepolia.eip1898.${name}.${id}`, s, e.outcome === 'OK' ? (e.observed.value === null ? 'result is not the expected type' : `result ${e.observed.value}`) : e.outcome === 'RPC_ERROR' ? rpcDetail(e) : noAnswer(e));
@@ -170,11 +189,12 @@ export function classify(evidence) {
       gs = v !== null && num(v) >= intrinsic && num(v) <= C6_RULES.gasLimit ? PASS : BLOCKED;
       add(`sepolia.estimate_gas.${id}`, gs, v === null ? 'result is not a QUANTITY' : `estimate ${num(v)} (intrinsic ${intrinsic}, limit ${C6_RULES.gasLimit})`);
     } else {
-      gs = g.outcome === 'RPC_ERROR' ? BLOCKED : UNRESOLVED;
+      gs = g.outcome === 'RPC_ERROR' && !transient(g) ? BLOCKED : UNRESOLVED;
       add(`sepolia.estimate_gas.${id}`, gs, g.outcome === 'RPC_ERROR' ? rpcDetail(g) : noAnswer(g));
     }
     const u = of('balance_unknown_hash', id);
-    if (u.outcome === 'RPC_ERROR') add(`sepolia.unknown_hash.${id}`, PASS, `refused: ${rpcDetail(u)}`);
+    if (u.outcome === 'RPC_ERROR' && transient(u)) add(`sepolia.unknown_hash.${id}`, UNRESOLVED, `busy, not a refusal: ${rpcDetail(u)}`);
+    else if (u.outcome === 'RPC_ERROR') add(`sepolia.unknown_hash.${id}`, PASS, `refused: ${rpcDetail(u)}`);
     else if (u.outcome === 'OK') add(`sepolia.unknown_hash.${id}`, BLOCKED, 'served a block hash it cannot know');
     else add(`sepolia.unknown_hash.${id}`, UNRESOLVED, noAnswer(u));
     const f = of('finalized', id);
@@ -222,14 +242,19 @@ export function branches(checks, sepoliaVerdict) {
   if (sepoliaVerdict === PASS) return ['A'];
   const sepolia = checks.filter((c) => c.id.startsWith('sepolia.'));
   const blocked = sepolia.filter((c) => c.status === BLOCKED);
-  const accountAllPass = sepolia.filter((c) => c.id.startsWith('sepolia.eip1898.')).every((c) => c.status === PASS);
+  // B per provider: its estimate refused while none of its own account reads was refused. An
+  // estimate check is never E: a refused estimate alone is B; with a refused account read, the
+  // account read is the E (C6 review 4).
+  const providerOf = (c) => c.id.slice(c.id.lastIndexOf('.') + 1);
+  const accountRefused = (p) => sepolia.some((c) => c.id.startsWith('sepolia.eip1898.') && providerOf(c) === p && c.status === BLOCKED);
+  const isEstimate = (c) => c.id.startsWith('sepolia.estimate_gas.');
   const isC = (c) => c.id === 'sepolia.head_agreement' || c.id === 'sepolia.pin_agreement';
-  const isB = (c) => accountAllPass && c.id.startsWith('sepolia.estimate_gas.');
+  const isB = (c) => isEstimate(c) && !accountRefused(providerOf(c));
   const isD = (c) => c.id === 'sepolia.finality_window';
   const out = [];
   if (blocked.some(isB)) out.push('B');
   if (blocked.some(isC)) out.push('C');
   if (blocked.some(isD)) out.push('D');
-  if (blocked.some((c) => !isB(c) && !isC(c) && !isD(c))) out.push('E');
+  if (blocked.some((c) => !isEstimate(c) && !isC(c) && !isD(c))) out.push('E');
   return out.length > 0 ? out : ['UNRESOLVED'];
 }

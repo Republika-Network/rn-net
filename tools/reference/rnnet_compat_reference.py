@@ -71,11 +71,15 @@ QUANTITY = re.compile(r"0x(?:0|[1-9a-f][0-9a-f]*)")
 EVM_HASH = re.compile(r"0x[0-9a-f]{64}")
 DATA = re.compile(r"0x(?:[0-9a-f]{2}){0,64}")
 XRPL_HASH = re.compile(r"[0-9A-F]{64}")
-BUILD = re.compile(r"[0-9A-Za-z.+-]{1,64}")
+BUILD = re.compile(r"\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[a-z0-9]{1,16}(?:\.\d{1,4})?)?")
 LEDGERS = re.compile(r"(?:empty|[0-9,-]{1,256})")
 STATE = re.compile(r"[a-z_]{1,32}")
 RPC_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}")
 SAFE = 2 ** 53 - 1
+SYNCED = ("full", "proposing", "validating")
+TRANSIENT = (-32005, -32090, -32603)
+TRANSPORT_CODES = ("RNLO_TIMEOUT", "RNLO_CONNECTION", "RNLO_RESPONSE_TOO_LARGE", "RNLO_REDIRECT", "RNLO_BLOCKED_ADDRESS")
+MANIFEST_SHA256 = "2a45e37c0067e6e7e9aaa0705a298c712335b9a85060e332f794bac935088037"
 
 
 def canon(value):
@@ -124,8 +128,11 @@ def sanitize(value):
     if not isinstance(value, str):
         return None
     ascii_text = "".join(ch if " " <= ch <= "~" else "?" for ch in value)
-    ascii_text = re.sub(r"https?://\S*", "<url>", ascii_text)
+    ascii_text = re.sub(r"[A-Za-z][A-Za-z0-9+.-]*://\S*", "<url>", ascii_text)
+    ascii_text = re.sub(r"\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{1,5}\b", "<host>", ascii_text)
+    ascii_text = re.sub(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}", lambda m: "<ip>" if re.search(r"[0-9A-Fa-f]", m.group(0)) else m.group(0), ascii_text)
     ascii_text = re.sub(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", "<ip>", ascii_text)
+    ascii_text = re.sub(r"[A-Za-z0-9_+/=-]{32,}", lambda m: m.group(0) if re.fullmatch(r"0x[0-9a-fA-F]+", m.group(0)) else "<token>", ascii_text)
     return ascii_text[:160]
 
 
@@ -230,7 +237,7 @@ def replay(transcript):
     sent = {p: 0 for p in BUDGET}
     exchanges, problems, i = [], [], 0
     for seq, (rid, prov, method, form, needs) in enumerate(REQUESTS, 1):
-        rec = {"seq": seq, "id": rid, "providerId": prov, "method": method, "request": None, "requestSha256": None, "outcome": "NOT_SENT", "httpStatus": None,
+        rec = {"seq": seq, "id": rid, "providerId": prov, "method": method, "request": None, "requestSha256": None, "outcome": "NOT_SENT", "transportCode": None, "httpStatus": None,
                "responseSha256": None, "responseBytes": None, "rpcError": None, "observed": None, "notSentReason": None}
         exchanges.append(rec)
         miss = unmet(needs, prov, st)
@@ -249,7 +256,9 @@ def replay(transcript):
         t = transcript[i]
         i += 1
         if "error" in t:
-            rec["outcome"] = "TIMEOUT" if t["error"] == "RNLO_TIMEOUT" else "TRANSPORT_ERROR"
+            code = t["error"] if t["error"] in TRANSPORT_CODES else None
+            rec["transportCode"] = code
+            rec["outcome"] = {"RNLO_TIMEOUT": "TIMEOUT", "RNLO_RESPONSE_TOO_LARGE": "TOO_LARGE"}.get(code, "TRANSPORT_ERROR")
             continue
         body = t["text"].encode("utf-8") + b" " * t["pad"]
         rec["responseSha256"], rec["responseBytes"] = sha(body), len(body)
@@ -277,8 +286,13 @@ def replay(transcript):
 
 
 def intrinsic():
-    data = bytes.fromhex(CALLDATA[2:])
-    return 21_000 + sum(4 if b == 0 else 16 for b in data)
+    """Gas used at least: max(standard, EIP-7623 floor); tokens are 1 per zero and 4 per non-zero byte."""
+    tokens = sum(1 if b == 0 else 4 for b in bytes.fromhex(CALLDATA[2:]))
+    return max(21_000 + 4 * tokens, 21_000 + 10 * tokens)
+
+
+def transient(e):
+    return e["outcome"] == "RPC_ERROR" and e["rpcError"]["code"] in TRANSIENT
 
 
 def ranges(text):
@@ -316,8 +330,10 @@ def classify(now, exchanges):
                     add(f"xrpl.{c}.{p}", "UNRESOLVED")
             else:
                 add(f"xrpl.build_version.{p}", "PASS" if o["buildVersion"] == FAIL_HARD_VERSION else "UNRESOLVED")
-                if None in (o["validatedSeq"], o["validatedHash"], o["validatedAge"]):
+                if None in (o["validatedSeq"], o["validatedHash"], o["validatedAge"]) or o["validatedSeq"] < 0 or o["validatedAge"] < 0:
                     add(f"xrpl.validated.{p}", "BLOCKED")
+                elif o["serverState"] not in SYNCED:
+                    add(f"xrpl.validated.{p}", "UNRESOLVED")
                 else:
                     validated[p] = o
                     add(f"xrpl.validated.{p}", "PASS" if o["validatedAge"] <= 30 else "UNRESOLVED")
@@ -368,10 +384,11 @@ def classify(now, exchanges):
     if any(x["outcome"] != "OK" for x in pins):
         add("sepolia.pin_agreement", "UNRESOLVED")
     else:
+        asked = json.loads(pins[0]["request"])["params"][0]
         bl = [x["observed"]["block"] for x in pins]
-        if any(b is None or None in (b["hash"], b["timestamp"], b["number"]) for b in bl):
+        if any(b is None or None in (b["hash"], b["timestamp"], b["number"], b["baseFeePerGas"]) for b in bl):
             add("sepolia.pin_agreement", "BLOCKED")
-        elif any(b["number"] != bl[0]["number"] or b["hash"] != bl[0]["hash"] for b in bl):
+        elif any(b["number"] != asked or b["hash"] != bl[0]["hash"] or b["timestamp"] != bl[0]["timestamp"] or b["baseFeePerGas"] != bl[0]["baseFeePerGas"] for b in bl):
             add("sepolia.pin_agreement", "BLOCKED")
         else:
             add("sepolia.pin_agreement", "PASS" if now - int(bl[0]["timestamp"], 16) <= 90 else "UNRESOLVED")
@@ -382,7 +399,7 @@ def classify(now, exchanges):
         acct = []
         for form, name in (("nonce_at_hash", "nonce"), ("balance_at_hash", "balance"), ("code_at_hash", "code")):
             e = of(form, p)
-            s = ("BLOCKED" if e["observed"]["value"] is None else "PASS") if e["outcome"] == "OK" else "BLOCKED" if e["outcome"] == "RPC_ERROR" else "UNRESOLVED"
+            s = ("BLOCKED" if e["observed"]["value"] is None else "PASS") if e["outcome"] == "OK" else "BLOCKED" if e["outcome"] == "RPC_ERROR" and not transient(e) else "UNRESOLVED"
             acct.append(s)
             add(f"sepolia.eip1898.{name}.{p}", s)
         g = of("estimate_at_hash", p)
@@ -390,10 +407,10 @@ def classify(now, exchanges):
             v = g["observed"]["value"]
             gs = "PASS" if v is not None and gas_min <= int(v, 16) <= 30_000 else "BLOCKED"
         else:
-            gs = "BLOCKED" if g["outcome"] == "RPC_ERROR" else "UNRESOLVED"
+            gs = "BLOCKED" if g["outcome"] == "RPC_ERROR" and not transient(g) else "UNRESOLVED"
         add(f"sepolia.estimate_gas.{p}", gs)
         u = of("balance_unknown_hash", p)
-        add(f"sepolia.unknown_hash.{p}", "PASS" if u["outcome"] == "RPC_ERROR" else "BLOCKED" if u["outcome"] == "OK" else "UNRESOLVED")
+        add(f"sepolia.unknown_hash.{p}", "UNRESOLVED" if transient(u) else "PASS" if u["outcome"] == "RPC_ERROR" else "BLOCKED" if u["outcome"] == "OK" else "UNRESOLVED")
         f = of("finalized", p)
         if f["outcome"] != "OK":
             add(f"sepolia.finalized.{p}", "UNRESOLVED")
@@ -429,12 +446,13 @@ def branches(checks, sepolia_verdict):
         return ["A"]
     sep = [(c, s) for c, s in checks if c.startswith("sepolia.")]
     blocked = [c for c, s in sep if s == "BLOCKED"]
-    acct_pass = all(s == "PASS" for c, s in sep if c.startswith("sepolia.eip1898."))
+    refused = {c.rsplit(".", 1)[1] for c in blocked if c.startswith("sepolia.eip1898.")}
+    is_est = lambda c: c.startswith("sepolia.estimate_gas.")  # noqa: E731
     is_c = lambda c: c in ("sepolia.head_agreement", "sepolia.pin_agreement")  # noqa: E731
-    is_b = lambda c: acct_pass and c.startswith("sepolia.estimate_gas.")  # noqa: E731
+    is_b = lambda c: is_est(c) and c.rsplit(".", 1)[1] not in refused  # noqa: E731
     is_d = lambda c: c == "sepolia.finality_window"  # noqa: E731
     out = [name for name, pred in (("B", is_b), ("C", is_c), ("D", is_d)) if any(pred(c) for c in blocked)]
-    if any(not (is_b(c) or is_c(c) or is_d(c)) for c in blocked):
+    if any(not (is_est(c) or is_c(c) or is_d(c)) for c in blocked):
         out.append("E")
     return out or ["UNRESOLVED"]
 
@@ -451,6 +469,8 @@ def checks_of(root):
     yield "manifest methods are read-only, none writes", all(r["method"] in READ_ONLY[NETWORK[r["providerId"]]] and r["method"] not in WRITE for r in manifest["requests"]) and not any(WRITE & s for s in READ_ONLY.values())
     yield "manifest limits: one attempt, 10 s, 256 KiB, no retry, no fallback", manifest["limits"] == {"attempts": 1, "timeoutMs": 10_000, "maxResponseBytes": MAX_BYTES} and manifest["retry"] is False and manifest["fallback"] is False
     yield "manifest constants are the label-derived values", (manifest["testAddress"], manifest["calldata"], manifest["absentXrplTransaction"], manifest["unknownBlockHash"], manifest["pinDepth"]) == (TEST_ADDRESS, CALLDATA, ABSENT_TX, UNKNOWN_HASH, PIN_DEPTH)
+    yield "the manifest's canonical digest is the one a read authorization binds", hashlib.sha256(canon(manifest).encode("utf-8")).hexdigest() == MANIFEST_SHA256
+    yield "the estimate minimum is the EIP-7623 floor, 22,680", intrinsic() == 22_680
     b1 = (root / "fixtures/signing-b1/golden.json").read_text("utf-8")
     yield "the test address is the B1 label-derived address", TEST_ADDRESS in b1
 
@@ -469,6 +489,10 @@ def checks_of(root):
         yield f"{case['name']} -> X {verdict['xrpl']}, S {verdict['sepolia']} {'+'.join(br)} ({count} requests)", same
         yield f"{case['name']}: at most 22 requests, within each provider's budget, none repeated on a provider", count <= 22 and all(sent[p] <= BUDGET[p] for p in BUDGET) and len({(e["providerId"], e["request"]) for e in exchanges if e["request"]}) == count
     yield "every decision branch A to E and UNRESOLVED is covered", seen_branches >= {"A", "B", "C", "D", "E", "UNRESOLVED"}
+    names = {c["name"] for c in fixture["cases"]}
+    yield "every threshold has a fixture on each side", all(f"edge-{n}" in names for n in (
+        "head-skew-4", "head-age-60", "head-age-61", "head-ahead-14", "head-ahead-15", "pin-age-90", "pin-age-91", "finality-apart-64", "finality-apart-65",
+        "finality-apart-192", "finality-apart-193", "estimate-22679", "estimate-30000", "xrpl-age-30", "xrpl-age-31", "xrpl-skew-4", "xrpl-skew-5"))
 
 
 def main(root: Path) -> int:

@@ -134,7 +134,7 @@ function template(entry) {
   });
 }
 
-/** The manifest as data (fixtures/compat-c6/manifest.json is this, canonical). */
+/** The manifest as data. fixtures/compat-c6/manifest.json is this, indented for reading; the digest a read authorization binds is of manifestBytes(). */
 export function describeManifest() {
   const requests = C6_REQUESTS.map((e) => {
     let params = template(e);
@@ -158,7 +158,7 @@ export function describeManifest() {
   };
 }
 
-/** The manifest's canonical bytes. */
+/** The manifest's canonical bytes: the C6 manifest digest is their SHA-256 (docs §0, §8). */
 export const manifestBytes = () => canonicalBytes(describeManifest());
 
 /**

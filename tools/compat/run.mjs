@@ -13,7 +13,7 @@
 //   - the raw bodies are returned separately, for private storage only.
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { parseRpcJson } from '../../packages/chain-readonly/src/index.mjs';
+import { parseRpcJson, TRANSPORT_CODES } from '../../packages/chain-readonly/src/index.mjs';
 import { classify } from './classify.mjs';
 import { buildParams, C6_BUDGET, C6_LIMITS, C6_PIN_DEPTH, C6_REQUESTS, C6_TOTAL_REQUESTS, checkManifest, entryBytes, providerOf } from './manifest.mjs';
 
@@ -35,7 +35,7 @@ const QUANTITY = /^0x(?:0|[1-9a-f][0-9a-f]*)$/;
 const EVM_HASH = /^0x[0-9a-f]{64}$/;
 const DATA = /^0x(?:[0-9a-f]{2}){0,64}$/;
 const XRPL_HASH = /^[0-9A-F]{64}$/;
-const BUILD = /^[0-9A-Za-z.+-]{1,64}$/;
+const BUILD = /^\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[a-z0-9]{1,16}(?:\.\d{1,4})?)?$/;
 const LEDGERS = /^(?:empty|[0-9,-]{1,256})$/;
 const STATE = /^[a-z_]{1,32}$/;
 const RPC_NAME = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
@@ -44,11 +44,21 @@ const safeInt = (v) => (Number.isSafeInteger(v) ? v : null);
 const match = (re, v) => (typeof v === 'string' && re.test(v) ? v : null);
 const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
-/** An error message as evidence: printable ASCII, URLs and IPv4 addresses masked, at most 160 characters. */
+/**
+ * An error message as evidence: printable ASCII; URLs, host:port, IPv6 and IPv4 addresses and
+ * long opaque tokens masked (a 0x-prefixed hex value is kept: it is chain data); at most 160
+ * characters. The order is fixed; tools/reference/rnnet_compat_reference.py applies the same.
+ */
 export function sanitizeMessage(value) {
   if (typeof value !== 'string') return null;
   const ascii = Array.from(value, (ch) => (ch >= ' ' && ch <= '~' ? ch : '?')).join('');
-  return ascii.replace(/https?:\/\/\S*/g, '<url>').replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, '<ip>').slice(0, 160);
+  return ascii
+    .replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S*/g, '<url>')
+    .replace(/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{1,5}\b/g, '<host>')
+    .replace(/[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}/g, (m) => (/[0-9A-Fa-f]/.test(m) ? '<ip>' : m))
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, '<ip>')
+    .replace(/[A-Za-z0-9_+\/=-]{32,}/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>'))
+    .slice(0, 160);
 }
 
 /** The block members the run keeps, or null. */
@@ -140,7 +150,7 @@ export async function runCompatibility({ endpoints, transport, now }) {
   for (const entry of C6_REQUESTS) {
     const id = entry.providerId;
     const provider = providerOf(entry);
-    const record = { seq: entry.seq, id: entry.id, providerId: id, method: entry.method, request: null, requestSha256: null, outcome: Outcome.NOT_SENT, httpStatus: null, responseSha256: null, responseBytes: null, rpcError: null, observed: null, notSentReason: null };
+    const record = { seq: entry.seq, id: entry.id, providerId: id, method: entry.method, request: null, requestSha256: null, outcome: Outcome.NOT_SENT, transportCode: null, httpStatus: null, responseSha256: null, responseBytes: null, rpcError: null, observed: null, notSentReason: null };
     exchanges.push(record);
     const missing = unmet(entry, state);
     if (missing !== null) {
@@ -162,7 +172,10 @@ export async function runCompatibility({ endpoints, transport, now }) {
     try {
       response = await transport({ providerId: id, url: provider.url, body, timeoutMs: C6_LIMITS.timeoutMs, maxResponseBytes: C6_LIMITS.maxResponseBytes });
     } catch (error) {
-      record.outcome = error?.code === 'RNLO_TIMEOUT' ? Outcome.TIMEOUT : Outcome.TRANSPORT_ERROR;
+      // The transport's own codes are a fixed set, so they need no sanitizing (C6 review 7).
+      const code = TRANSPORT_CODES.includes(error?.code) ? error.code : null;
+      record.transportCode = code;
+      record.outcome = code === 'RNLO_TIMEOUT' ? Outcome.TIMEOUT : code === 'RNLO_RESPONSE_TOO_LARGE' ? Outcome.TOO_LARGE : Outcome.TRANSPORT_ERROR;
       continue;
     }
     if (!isObject(response) || !Number.isInteger(response.status) || !(response.body instanceof Uint8Array)) {
@@ -201,14 +214,14 @@ function learn(entry, record, state) {
     if (state.identity[id] && o.validatedSeq !== null) state.validatedSeq[id] = o.validatedSeq;
   } else if (entry.form === 'chain_id') {
     state.identity[id] = o.chainId === SEPOLIA_CHAIN;
-  } else if (entry.form === 'head' && o.block?.number !== null && o.block?.hash !== null) {
+  } else if (entry.form === 'head' && o.block !== null && o.block.number !== null && o.block.hash !== null) {
     state.heads[id] = BigInt(o.block.number);
     const heads = C6_REQUESTS.filter((e) => e.form === 'head').map((e) => state.heads[e.providerId]);
     if (heads.every((h) => typeof h === 'bigint')) {
       const lowest = heads.reduce((a, b) => (b < a ? b : a));
       if (lowest >= BigInt(C6_PIN_DEPTH)) state.pinNumber = `0x${(lowest - BigInt(C6_PIN_DEPTH)).toString(16)}`;
     }
-  } else if (entry.form === 'pin' && o.block?.number === state.pinNumber && o.block?.hash !== null) {
+  } else if (entry.form === 'pin' && o.block !== null && o.block.number === state.pinNumber && o.block.hash !== null) {
     state.pinHash[id] = o.block.hash;
   }
 }

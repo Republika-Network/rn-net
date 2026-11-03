@@ -4,10 +4,11 @@
 are illustrative; no provider's real error shape is known before the C6 run.
 
 - `manifest.json`: the 22-request read-only manifest (`rnnet.provider-compat-manifest.v1`), as
-  `tools/compat/manifest.mjs` describes it. Its SHA-256 is cited in
-  [the C6 document](../../docs/genesis/rn-net-03b2c6-provider-compatibility.md); a founder read
-  authorization for the run would bind it.
-- `cases.json`: 28 scenarios. Each holds the transcript of simulated responses, in the order sent
+  `tools/compat/manifest.mjs` describes it. The digest a read authorization would bind is the SHA-256 of its
+  canonical bytes (`manifestBytes()`), cited in
+  [the C6 document](../../docs/genesis/rn-net-03b2c6-provider-compatibility.md); this file is an
+  indented copy for reading.
+- `cases.json`: 57 scenarios, including a fixture on each side of every threshold. Each holds the transcript of simulated responses, in the order sent
   (`text`, plus `pad` trailing spaces for the oversized case), and the
   `rnnet.provider-compat-evidence.v1` evidence `tools/compat/run.mjs` produced from it.
 

@@ -25,9 +25,12 @@ function world(s) {
     },
     searchedAll: s.searchedAll ?? {},
     sepolia: {
-      'sepolia-publicnode': { chainId: '0xaa36a7', head: 9_500_000, headAge: 6, fork: '', pinFork: '', finalizedLag: 70, ...(s.sepolia?.['sepolia-publicnode'] ?? {}) },
-      'sepolia-1rpc': { chainId: '0xaa36a7', head: 9_500_001, headAge: 1, fork: '', pinFork: '', finalizedLag: 71, ...(s.sepolia?.['sepolia-1rpc'] ?? {}) },
+      'sepolia-publicnode': { chainId: '0xaa36a7', head: 9_500_000, fork: '', pinFork: '', finalizedLag: 70, ...(s.sepolia?.['sepolia-publicnode'] ?? {}) },
+      'sepolia-1rpc': { chainId: '0xaa36a7', head: 9_500_001, fork: '', pinFork: '', finalizedLag: 71, ...(s.sepolia?.['sepolia-1rpc'] ?? {}) },
     },
+    // One chain clock, the same on every provider: block n is ts(n). Block 9_500_000 is 13 s old,
+    // shifted by `chainShift`; blocks at or below 9_499_998 are `gap` s older (missed slots).
+    ts: (n) => now - 13 - (s.chainShift ?? 0) - (9_500_000 - n) * 12 - (n <= 9_499_998 ? s.gap ?? 0 : 0),
     override: s.override ?? {},
   };
 }
@@ -48,6 +51,7 @@ export function simulatedTransport(s = {}) {
     const o = w.override[entry.id];
     if (o?.timeout) throw Object.assign(new Error('timeout'), { code: 'RNLO_TIMEOUT' });
     if (o?.connection) throw Object.assign(new Error('connection'), { code: 'RNLO_CONNECTION' });
+    if (o?.tooLarge) throw Object.assign(new Error('too large'), { code: 'RNLO_RESPONSE_TOO_LARGE' });
     if (o?.text !== undefined) return { status: o.status ?? 200, body: Buffer.concat([Buffer.from(o.text, 'utf8'), Buffer.alloc(o.pad ?? 0, 0x20)]) };
     if (o?.http !== undefined) return { status: o.http, body: Buffer.from(o.httpText ?? '', 'utf8') };
     if (provider.network === 'xrpl:testnet') return { status: 200, body: json({ result: xrplResult(w, provider.id, entry, body.params[0], o) }) };
@@ -80,7 +84,7 @@ function xrplResult(w, id, entry, params, o) {
 
 function sepoliaResult(w, id, entry, params) {
   const e = w.sepolia[id];
-  const block = (n, fork) => ({ number: q(n), hash: blockHash(n, fork), parentHash: blockHash(n - 1, fork), timestamp: q(w.now - e.headAge - (e.head - n) * 12), baseFeePerGas: q(1_000_000_000), transactions: [] });
+  const block = (n, fork) => ({ number: q(n), hash: blockHash(n, fork), parentHash: blockHash(n - 1, fork), timestamp: q(w.ts(n)), baseFeePerGas: q(1_000_000_000), transactions: [] });
   switch (entry.form) {
     case 'chain_id':
       return e.chainId;
@@ -118,8 +122,31 @@ export const SCENARIOS = Object.freeze([
   { name: 'unknown-hash-served', models: 'E', override: { S16: { result: '0x0' } } },
   { name: 'sepolia-wrong-chain-1rpc', models: 'E', sepolia: { 'sepolia-1rpc': { chainId: '0x1' } } },
   { name: 'head-timeout-1rpc', models: 'UNRESOLVED', override: { S04: { timeout: true } } },
-  { name: 'head-stale', models: 'UNRESOLVED', sepolia: { 'sepolia-publicnode': { headAge: 75 } } },
-  { name: 'head-skew-5', models: 'UNRESOLVED', sepolia: { 'sepolia-1rpc': { head: 9_500_005 } } },
+  { name: 'head-stale', models: 'UNRESOLVED', chainShift: 75 },
+  { name: 'head-skew-5', models: 'UNRESOLVED', chainShift: -1, sepolia: { 'sepolia-publicnode': { head: 9_499_996 } } },
+  // Threshold edges (C6 review 9): each pair is one step either side of a rule.
+  { name: 'edge-head-skew-4', models: 'A', sepolia: { 'sepolia-publicnode': { head: 9_499_997 } } },
+  { name: 'edge-head-age-60', models: 'A', chainShift: 47 },
+  { name: 'edge-head-age-61', models: 'UNRESOLVED', chainShift: 48 },
+  { name: 'edge-head-ahead-14', models: 'A', chainShift: -15 },
+  { name: 'edge-head-ahead-15', models: 'UNRESOLVED', chainShift: -16 },
+  { name: 'edge-pin-age-90', models: 'A', gap: 53 },
+  { name: 'edge-pin-age-91', models: 'UNRESOLVED', gap: 54 },
+  { name: 'edge-finality-apart-64', models: 'A', sepolia: { 'sepolia-1rpc': { finalizedLag: 135 } } },
+  { name: 'edge-finality-apart-65', models: 'UNRESOLVED', sepolia: { 'sepolia-1rpc': { finalizedLag: 136 } } },
+  { name: 'edge-finality-apart-192', models: 'UNRESOLVED', sepolia: { 'sepolia-1rpc': { finalizedLag: 263 } } },
+  { name: 'edge-finality-apart-193', models: 'D', sepolia: { 'sepolia-1rpc': { finalizedLag: 264 } } },
+  { name: 'edge-estimate-22679', models: 'B', override: { S10: { result: '0x5897' } } },
+  { name: 'edge-estimate-30000', models: 'A', override: { S10: { result: '0x7530' } } },
+  { name: 'pin-wrong-number-both', models: 'C', override: { S05: { result: { number: '0x90f55d', hash: `0x${'ab'.repeat(32)}`, timestamp: '0x6add7b00', baseFeePerGas: '0x3b9aca00' } }, S06: { result: { number: '0x90f55d', hash: `0x${'ab'.repeat(32)}`, timestamp: '0x6add7b00', baseFeePerGas: '0x3b9aca00' } } } },
+  { name: 'pin-two-contents', models: 'C', override: { S06: { result: { number: '0x90f55e', hash: blockHash(9_499_998), timestamp: q(SIM_NOW - 40), baseFeePerGas: '0x1' } } } },
+  { name: 'head-result-null', models: 'E', override: { S03: { result: null } } },
+  { name: 'pin-result-null', models: 'C', override: { S06: { result: null } } },
+  { name: 'transport-too-large', models: 'UNRESOLVED', override: { S08: { tooLarge: true } } },
+  { name: 'unknown-hash-rate-limited', models: 'UNRESOLVED', override: { S15: { rpcError: { code: -32005, message: 'limit exceeded' } } } },
+  { name: 'estimate-internal-error', models: 'UNRESOLVED', override: { S14: { rpcError: { code: -32603, message: 'internal error' } } } },
+  { name: 'estimate-refused-account-timeout', models: 'B', override: { S10: { rpcError: { code: -32602, message: 'invalid block parameter' } }, S12: { timeout: true } } },
+  { name: 'estimate-refused-same-provider-account-refused', models: 'E', override: { S14: { rpcError: { code: -32602, message: 'invalid block parameter' } }, S12: { rpcError: { code: -32602, message: 'invalid block parameter' } } } },
   { name: 'estimate-rate-limited', models: 'UNRESOLVED', override: { S10: { http: 429 } } },
   { name: 'code-invalid-json', models: 'UNRESOLVED', override: { S09: { text: '{"jsonrpc":"2.0","id":1,"result":' } } },
   { name: 'response-too-large', models: 'UNRESOLVED', override: { S07: { text: '{"jsonrpc":"2.0","id":1,"result":"0x0"}', pad: 262_145 } } },
@@ -131,5 +158,12 @@ export const SCENARIOS = Object.freeze([
   { name: 'xrpl-history-short', models: 'XRPL BLOCKED', xrpl: { 'xrpl-testnet-ripple': { complete: '21949500-21950000' } } },
   { name: 'xrpl-stale', models: 'XRPL UNRESOLVED', xrpl: { 'xrpl-testnet-xrpl-labs': { age: 45 } } },
   { name: 'xrpl-ledger-conflict', models: 'XRPL BLOCKED', xrpl: { 'xrpl-testnet-xrpl-labs': { seq: 21_950_000, fork: '-fork', complete: '21000000-21950000' } } },
+  { name: 'xrpl-server-state-connected', models: 'XRPL UNRESOLVED', xrpl: { 'xrpl-testnet-ripple': { state: 'connected' } } },
+  { name: 'xrpl-negative-age', models: 'XRPL BLOCKED', xrpl: { 'xrpl-testnet-ripple': { age: -1 } } },
+  { name: 'xrpl-build-version-with-address', models: 'XRPL UNRESOLVED', xrpl: { 'xrpl-testnet-ripple': { build: '3.4.1-10.0.0.7' } } },
+  { name: 'edge-xrpl-age-30', models: 'A', xrpl: { 'xrpl-testnet-ripple': { age: 30 } } },
+  { name: 'edge-xrpl-age-31', models: 'XRPL UNRESOLVED', xrpl: { 'xrpl-testnet-ripple': { age: 31 } } },
+  { name: 'edge-xrpl-skew-4', models: 'A', xrpl: { 'xrpl-testnet-xrpl-labs': { seq: 21_950_004, complete: '21000000-21950004' } } },
+  { name: 'edge-xrpl-skew-5', models: 'XRPL UNRESOLVED', xrpl: { 'xrpl-testnet-xrpl-labs': { seq: 21_950_005, complete: '21000000-21950005' } } },
   { name: 'xrpl-server-info-connection-error', models: 'XRPL UNRESOLVED', override: { X01: { connection: true } } },
 ].map((s) => Object.freeze(s)));

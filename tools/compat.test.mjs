@@ -2,18 +2,21 @@
 // its classification and its fixtures. Offline: nothing here builds a transport.
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { READ_ONLY_METHODS, requestBytes } from '../packages/chain-readonly/src/index.mjs';
-import { payloadHex } from '../packages/tx-intent/src/index.mjs';
+import { intrinsicGas as txIntrinsicGas, payloadHex } from '../packages/tx-intent/src/index.mjs';
 import { GENESIS_COMMITMENT, REVIEWED_PREPARATION_PROVIDERS } from './prepare/entry.mjs';
 import { buildCases, fixtureText, replayTranscript } from './compat/build-c6-fixtures.mjs';
 import { branches, classify, intrinsicGas, parseLedgerRanges } from './compat/classify.mjs';
-import { C6_BUDGET, C6_CALLDATA, C6_COMMITMENT, C6_LIMITS, C6_PROVIDERS, C6_REQUESTS, C6_TEST_ADDRESS, C6_TOTAL_REQUESTS, C6_UNKNOWN_BLOCK_HASH, checkManifest, describeManifest, WRITE_METHODS } from './compat/manifest.mjs';
+import { C6_BUDGET, C6_CALLDATA, C6_COMMITMENT, C6_LIMITS, C6_PROVIDERS, C6_REQUESTS, C6_TEST_ADDRESS, C6_TOTAL_REQUESTS, C6_UNKNOWN_BLOCK_HASH, checkManifest, describeManifest, manifestBytes, WRITE_METHODS } from './compat/manifest.mjs';
 import { runCompatibility, sanitizeMessage } from './compat/run.mjs';
 import { SCENARIOS, SIM_NOW, simulatedTransport } from './compat/simulated.mjs';
 
 const ROOT = new URL('../', import.meta.url);
+/** The digest a C6 read authorization binds: SHA-256 of the manifest's canonical bytes. */
+const C6_MANIFEST_SHA256 = 'sha256:2a45e37c0067e6e7e9aaa0705a298c712335b9a85060e332f794bac935088037';
 const read = (path) => readFileSync(new URL(path, ROOT), 'utf8');
 const endpoints = () => JSON.parse(read('config/rpc-endpoints.json'));
 const scenario = (name) => SCENARIOS.find((s) => s.name === name);
@@ -55,7 +58,9 @@ test('the estimate uses the Genesis payload and the public test address, as prep
   assert.equal(C6_CALLDATA, `0x${payloadHex(GENESIS_COMMITMENT)}`);
   const b1 = read('fixtures/signing-b1/golden.json');
   assert.ok(b1.includes(C6_TEST_ADDRESS), 'the B1 label-derived test address');
-  assert.equal(intrinsicGas(), 21_000 + [...Buffer.from(C6_CALLDATA.slice(2), 'hex')].reduce((g, b) => g + (b === 0 ? 4 : 16), 0));
+  // The same minimum preparation enforces: the EIP-7623 floor, 22,680 for this payload (C6 review 1).
+  assert.equal(intrinsicGas(), txIntrinsicGas(Buffer.from(C6_CALLDATA.slice(2), 'hex')).gasUsed);
+  assert.equal(intrinsicGas(), 22_680);
 });
 
 test('fixtures/compat-c6/manifest.json is the manifest', () => {
@@ -125,6 +130,36 @@ const EXPECTED = {
   'xrpl-stale': ['UNRESOLVED', 'PASS', ['A']],
   'xrpl-ledger-conflict': ['BLOCKED', 'PASS', ['A']],
   'xrpl-server-info-connection-error': ['UNRESOLVED', 'PASS', ['A']],
+  // C6 review: threshold edges, malformed blocks, transient codes, per-provider B, content check.
+  'edge-head-skew-4': ['PASS', 'PASS', ['A']],
+  'edge-head-age-60': ['PASS', 'PASS', ['A']],
+  'edge-head-age-61': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'edge-head-ahead-14': ['PASS', 'PASS', ['A']],
+  'edge-head-ahead-15': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'edge-pin-age-90': ['PASS', 'PASS', ['A']],
+  'edge-pin-age-91': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'edge-finality-apart-64': ['PASS', 'PASS', ['A']],
+  'edge-finality-apart-65': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'edge-finality-apart-192': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'edge-finality-apart-193': ['PASS', 'BLOCKED', ['D']],
+  'edge-estimate-22679': ['PASS', 'BLOCKED', ['B']],
+  'edge-estimate-30000': ['PASS', 'PASS', ['A']],
+  'pin-wrong-number-both': ['PASS', 'BLOCKED', ['C']],
+  'pin-two-contents': ['PASS', 'BLOCKED', ['C']],
+  'head-result-null': ['PASS', 'BLOCKED', ['E']],
+  'pin-result-null': ['PASS', 'BLOCKED', ['C']],
+  'transport-too-large': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'unknown-hash-rate-limited': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'estimate-internal-error': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
+  'estimate-refused-account-timeout': ['PASS', 'BLOCKED', ['B']],
+  'estimate-refused-same-provider-account-refused': ['PASS', 'BLOCKED', ['E']],
+  'xrpl-server-state-connected': ['UNRESOLVED', 'PASS', ['A']],
+  'xrpl-negative-age': ['BLOCKED', 'PASS', ['A']],
+  'xrpl-build-version-with-address': ['UNRESOLVED', 'PASS', ['A']],
+  'edge-xrpl-age-30': ['PASS', 'PASS', ['A']],
+  'edge-xrpl-age-31': ['UNRESOLVED', 'PASS', ['A']],
+  'edge-xrpl-skew-4': ['PASS', 'PASS', ['A']],
+  'edge-xrpl-skew-5': ['UNRESOLVED', 'PASS', ['A']],
 };
 
 test('every scenario has its expected verdicts and Sepolia branch', async () => {
@@ -167,6 +202,27 @@ test('dependencies: a missing head leaves the pins and pinned reads NOT_SENT; ot
   assert.equal(evidence.compatibilityCandidate['sepolia-1rpc'].eip1898AccountReads, null);
 });
 
+test('a malformed head or pin is BLOCKED evidence, never a crash, and the run still completes (C6 review 2)', async () => {
+  for (const [S, value] of [['S03', null], ['S03', '0x1'], ['S04', 7], ['S05', null], ['S06', []]]) {
+    const { evidence } = await run({ override: { [S]: { result: value } } });
+    assert.equal(evidence.exchanges.length, 22);
+    assert.equal(evidence.verdict.sepolia, 'BLOCKED', `${S} ${JSON.stringify(value)}`);
+  }
+});
+
+test('the transport codes are recorded; a transport size refusal is TOO_LARGE (C6 review 7)', async () => {
+  const { evidence } = await run(scenario('transport-too-large'));
+  const s08 = evidence.exchanges.find((e) => e.id === 'S08');
+  assert.deepEqual([s08.outcome, s08.transportCode], ['TOO_LARGE', 'RNLO_RESPONSE_TOO_LARGE']);
+  const odd = await runCompatibility({ endpoints: endpoints(), now: SIM_NOW, transport: async () => { throw Object.assign(new Error('x'), { code: 'SECRET host 10.0.0.1' }); } });
+  assert.ok(odd.evidence.exchanges.filter((e) => e.outcome !== 'NOT_SENT').every((e) => e.outcome === 'TRANSPORT_ERROR' && e.transportCode === null));
+});
+
+test('the manifest digest is the SHA-256 of its canonical bytes (C6 review 10)', () => {
+  assert.equal(`sha256:${createHash('sha256').update(manifestBytes()).digest('hex')}`, C6_MANIFEST_SHA256);
+  assert.match(read('docs/genesis/rn-net-03b2c6-provider-compatibility.md'), new RegExp(C6_MANIFEST_SHA256.slice('sha256:'.length)));
+});
+
 test('a provider on the wrong network gets nothing more', async () => {
   const { evidence } = await run(scenario('sepolia-wrong-chain-1rpc'));
   assert.equal(evidence.sentPerProvider['sepolia-1rpc'], 1);
@@ -181,6 +237,8 @@ test('error messages are sanitized: printable ASCII, URLs and IPv4 masked, at mo
   assert.match(m, /^[ -~]*$/);
   assert.ok(!/https?:|10\.0\.0\.7|192\.168/.test(m), m);
   assert.equal(sanitizeMessage('a\u00e9\u{1F600}b'), 'a??b');
+  assert.equal(sanitizeMessage('dial internal-geth-3.prod.svc.cluster.local:8545 from 2001:db8:85a3::8a2e:370:7334 Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCD'), 'dial <host> from <ip> Bearer <token>');
+  assert.equal(sanitizeMessage(`hash 0x${'ab'.repeat(32)} unknown`), `hash 0x${'ab'.repeat(32)} unknown`);
   assert.equal(sanitizeMessage(7), null);
 });
 

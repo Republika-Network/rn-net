@@ -991,6 +991,17 @@ test('C6-PREP: the compatibility tools reach no network file, write path, signer
     assert.ok(out.includes('tools/compat/run.mjs:compat-reaches-write-or-key'), `${target}: ${out.join(' ')}`);
   }
   assert.ok(!found([['tools/compat/run.mjs', run], ['tools/compat/helper.mjs', 'export const x = 1;']]).some((f) => /:compat-reaches/.test(f)));
+  // A joiner outside tools/compat/ (a would-be live entry point) is reported too (C6 review 3).
+  const transport = ['tools/live/https-transport.mjs', "import https from 'node:https';\nexport const httpsTransport = https;"];
+  for (const [path, content] of [
+    ['tools/c6-live.mjs', "import { runCompatibility } from './compat/run.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';\nexport const go = () => runCompatibility({ transport: httpsTransport });"],
+    ['tools/live/c6-join.mjs', "import { runCompatibility } from '../compat/run.mjs';\nimport { httpsTransport } from './https-transport.mjs';\nexport const a = [runCompatibility, httpsTransport];"],
+    ['tools/c6-indirect.mjs', "import { a } from './c6-relay.mjs';\nimport { httpsTransport } from './live/https-transport.mjs';\nexport const b = [a, httpsTransport];"],
+  ]) {
+    const relay = ['tools/c6-relay.mjs', "import { runCompatibility } from './compat/run.mjs';\nexport const a = runCompatibility;"];
+    const out = found([transport, ['tools/compat/run.mjs', 'export const runCompatibility = 1;'], relay, [path, content]]);
+    assert.ok(out.includes(`${path}:compat-transport-join-transitive`), `${path}: ${out.join(' ')}`);
+  }
 });
 
 test('C2 N1 residual: hand-written network code anywhere in tools/ counts as network in the graph', () => {

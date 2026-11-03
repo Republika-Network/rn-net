@@ -12,5 +12,6 @@ RN-NET-03B2-C6-PREP. See [the C6 document](../../docs/genesis/rn-net-03b2c6-prov
 
 **No live entry point exists.** Nothing here imports a transport or a network module, the write
 path, the signer or the key tool; the guard enforces it (`compat-reaches-network`,
-`compat-reaches-write-or-key`). Running C6 against real providers needs a separately reviewed
+`compat-reaches-write-or-key`), and no file anywhere may join `tools/compat/` to a network file
+(`compat-transport-join-transitive`, `COMPAT_TRANSPORT_JOINERS` empty). Running C6 against real providers needs a separately reviewed
 entry point and a founder read authorization for exactly 22 requests.
