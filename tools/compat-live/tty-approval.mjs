@@ -24,7 +24,7 @@ export function createTtyApproval(io = TTY_IO) {
     const fd = io.openSync(TTY_PATH, constants.O_RDWR | constants.O_NOCTTY);
     try {
       if (!io.isatty(fd)) throw new Error('not a terminal');
-      const out = Buffer.from(`${prompt}\n> `, 'utf8');
+      const out = Buffer.from(`${prompt}\n(press Ctrl-U first to clear anything typed before this prompt)\n> `, 'utf8');
       let written = 0;
       while (written < out.length) written += io.writeSync(fd, out, written, out.length - written);
       const answer = Buffer.alloc(MAX_ANSWER_BYTES + 1);
@@ -47,9 +47,11 @@ export function createTtyApproval(io = TTY_IO) {
 export const MAX_TYPE_AHEAD_BYTES = 65_536;
 
 /**
- * Discards what was typed on the terminal before the prompt (C6-LIVE-ENABLE review), so only a line
- * typed after the founder has seen the prompt can answer it: the terminal is read without
- * blocking until it has nothing more. Refuses (throws) if it does not run dry.
+ * Discards the complete lines typed on the terminal before the prompt (C6-LIVE-ENABLE review): the
+ * terminal is read without blocking until it has nothing more. Refuses (throws) if it does not run
+ * dry. A line typed but not yet ended with Enter stays in the terminal's own line buffer (canonical
+ * mode) and is not discarded; the prompt therefore asks for Ctrl-U first, which clears it. Typing
+ * the right answer ahead needs the digest the prompt shows (round-2 review F1, accepted residual).
  */
 function discardTypeAhead(io) {
   const fd = io.openSync(TTY_PATH, constants.O_RDONLY | constants.O_NOCTTY | constants.O_NONBLOCK);

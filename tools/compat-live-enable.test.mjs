@@ -424,7 +424,7 @@ test('the approval is typed on the terminal: never read from standard input, one
   assert.equal(await createTtyApproval(ok.io)('PROMPT'), 'c6 0123456789abcdef');
   assert.deepEqual(ok.seen.opened, [TTY_PATH, TTY_PATH]);
   assert.equal(TTY_PATH, '/dev/tty');
-  assert.match(ok.seen.written, /^PROMPT\n> $/);
+  assert.match(ok.seen.written, /^PROMPT\n\(press Ctrl-U first to clear anything typed before this prompt\)\n> $/);
   assert.equal(ok.seen.closed, 2);
   // Typed before the prompt (type-ahead, a stuck key, a paste): discarded, never an answer.
   const ahead = fakeTty({ typedAhead: 'c6 0123456789abcdef\n', input: 'no\n' });

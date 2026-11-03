@@ -67,7 +67,7 @@ const evidenceRefusal = (detail) => new CompatEntryError(CompatEntryCode.EVIDENC
 
 const NEXT_STEP = Object.freeze({
   RUN: 'Next, offline and separately: python3 -I -B tools/reference/rnnet_compat_reference.py --run <run directory> --record. Then the founder reviews the sanitized evidence. Nothing is published, and a repeat is a new authorization, never a retry.',
-  REFUSED: 'No C6 run was completed. A new run needs a new authorization (a new authorizationId).',
+  REFUSED: 'No C6 run was completed. If a run directory was created, this authorization is used: a new run needs a new authorization (a new authorizationId).',
 });
 
 /** "1-5, 7" from [1, 2, 3, 4, 5, 7]. */

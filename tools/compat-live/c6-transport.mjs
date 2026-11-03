@@ -14,6 +14,8 @@
 //     that is one canonical JSON-RPC request object of the manifest's shape (no other key, no
 //     duplicate key), whose method is one the manifest uses for that provider's network (an
 //     allowlist: every other method, a write or signing method above all, is refused);
+//     It checks the method and the top-level shape, not the params: the byte-for-byte manifest
+//     check is the policy's (round-2 review F4);
 //   - anything it refuses is refused WITHOUT being sent, with RNCL_TRANSPORT_REFUSED, which the
 //     policy records as never sent and which stops the run (C6-LIVE-ENABLE review B1);
 //   - one request at a time;

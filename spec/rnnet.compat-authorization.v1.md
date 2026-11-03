@@ -79,8 +79,10 @@ CA, preload or any Node.js option is present. Then the flow, in order; any refus
    digest; the answer must be exactly `c6 <last 16 hex digits of the authorization digest>`. The
    prompt is written to, and the answer read from, the controlling terminal (`/dev/tty`) only:
    standard input is never read, so a pipe, a here-document or another program cannot answer.
-   Anything typed on the terminal before the prompt is read without blocking and discarded first,
-   so only a line typed after the prompt answers it. Without a terminal there is no approval
+   Complete lines typed on the terminal before the prompt are read without blocking and discarded
+   first. A line typed but not ended with Enter stays in the terminal's line buffer, so the prompt
+   asks the founder to press Ctrl-U first (accepted residual: typing the right answer ahead needs the
+   digest the prompt shows). Without a terminal there is no approval
    (`tty-approval.mjs`);
 6. the time is read again after the approval, and the authorization re-checked against it;
 7. durability (N1): the evidence directory is private (`0700`, owned by the founder, not a link).
@@ -203,8 +205,9 @@ header followed by the records the transcript implies, and both checkers compare
 - the authorization: `authorizationId`, `authorizationDigest`, `authorizationFileSha256`,
   `manifestSha256`, `providers`, `requestBudget` and `publication`;
 - `observedAt`;
-- `requestCount` (the requests the run handed to the policy), `sentPerProvider` and
-  `forwardedRequests` (the requests that reached the transport);
+- `requestCount` and `sentPerProvider` (the requests the run handed to the policy, in all and per
+  provider: they include calls the policy or the C6 transport then refused) and
+  `forwardedRequests` (the requests that reached the network);
 - `policyViolation`;
 - `transcriptSha256`, `evidenceSha256`, and `responses` (call, file, bytes, SHA-256);
 - every check's `id` and `status` (its free-text detail is in `evidence.json` only);
@@ -336,6 +339,9 @@ characters (bounded time and memory), keeps at most 160, and masks, in this orde
 If anything that may be a credential remains (`@`, `=`, `://`, or a word such as password,
 pass, pwd, secret, bearer, api key, private key, mnemonic, seed, credential, cookie, session,
 authorization, auth, jwt, `token:`), the whole message is replaced by `<withheld>` (fail closed,
-review N-c). A 0x-prefixed integer (`0x7f000001`) is kept: it has the form of chain data.
+review N-c). Accepted residuals, by design or as defense in depth only: a 0x-prefixed integer
+(`0x7f000001`) is kept because it has the form of chain data; a 12-digit octal integer, a
+digit-less hyphenated token (`sk-proj-abcdEFGH`), a run shaped like an RPC method name, and an
+IPv6 zone suffix (`<ip>%eth0`) also survive.
 `vectors/compat/sanitizer.json` pins the output on 50 fixed cases and the SHA-256 of the output over
 a seeded corpus of 4,000 strings that both implementations generate; both must reproduce it.
