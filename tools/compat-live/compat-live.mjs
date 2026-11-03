@@ -24,8 +24,12 @@ import { CompatEntryCode } from './entry.mjs';
 import { COMPAT_EXIT } from './flow.mjs';
 import { createTtyApproval } from './tty-approval.mjs';
 
-/** False until the founder-controlled enabling change. A test pins it; the command refuses while it is false. */
-export const LIVE_NETWORK_ACCESS = false;
+/**
+ * TRUE on the RN-NET-03B2-C6-H3 activation branch only: the founder-controlled single-run
+ * activation. It must be restored to false by the reviewed post-run deactivation change
+ * (docs/genesis/rn-net-03b2c6-h3-activation.md §5). A test pins it.
+ */
+export const LIVE_NETWORK_ACCESS = true;
 
 /** The command line: refuses while LIVE_NETWORK_ACCESS is false, before reading anything. */
 export async function main() {

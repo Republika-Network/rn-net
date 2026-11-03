@@ -95,14 +95,15 @@ async function run(ctx, { transport, approve, now = () => SIM_NOW, argv = null, 
 
 const cleanup = (ctx) => rmSync(ctx.base, { recursive: true, force: true });
 
-test('C6 live access is still disabled: two locks, one listed joiner, one narrow transport file', () => {
-  // Lock 1: the command refuses before reading anything (tools/broadcast/live-disabled.check.mjs runs it).
+test('RN-NET-03B2-C6-H3: exactly the two switches are activated; one listed joiner, one narrow transport file', () => {
+  // The activation branch: both switches set, each exactly once, and nothing else about the gate.
+  // (On main, and after the post-run deactivation, they are false and null; see
+  // docs/genesis/rn-net-03b2c6-h3-activation.md §5.) The command is read, never imported or run.
   const command = read('tools/compat-live/compat-live.mjs');
-  assert.match(command, /^export const LIVE_NETWORK_ACCESS = false;$/m);
+  assert.match(command, /^export const LIVE_NETWORK_ACCESS = true;$/m);
   assert.equal((command.match(/^[^/\n]*LIVE_NETWORK_ACCESS = /gm) ?? []).length, 1);
   assert.match(command, /if \(!LIVE_NETWORK_ACCESS\) \{\n\s+process\.stderr\.write\(`\$\{CompatEntryCode\.LIVE_DISABLED\}: live network access is disabled/);
-  // Lock 2: no evidence directory is agreed, so even an enabled command refuses every run.
-  assert.equal(AGREED_EVIDENCE_DIR, null);
+  assert.equal(AGREED_EVIDENCE_DIR, '/home/vicvalch/rn-net-private/c6-evidence');
   // The guard lists the command as the one joiner, and two files that may reach the transport.
   assert.deepEqual(COMPAT_TRANSPORT_JOINERS, ['tools/compat-live/compat-live.mjs']);
   assert.deepEqual(COMPAT_LIVE_NETWORK_FILES, ['tools/compat-live/compat-live.mjs', 'tools/compat-live/c6-transport.mjs']);
