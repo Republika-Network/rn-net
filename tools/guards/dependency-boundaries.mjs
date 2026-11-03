@@ -227,6 +227,13 @@ export const PREPARE_PROCESS_PROPERTIES = ['getuid'];
 // providers), so no file may wire it, or tx-prepare, to the transport (C3 review 1). Enabling live
 // preparation is a reviewed change to this list.
 export const PREPARE_TRANSPORT_JOINERS = [];
+// The C6 provider compatibility manifest and offline run (RN-NET-03B2-C6-PREP): no file in it may
+// reach a network file, the write path, the signer or the key tool (compat-reaches-network,
+// compat-reaches-write-or-key), and no file anywhere may join it to a network file
+// (compat-transport-join-transitive) unless listed below. None is listed: there is no live C6
+// entry point. Adding one is a reviewed change to this list (C6 review 3).
+export const COMPAT_TOOLS = 'tools/compat/';
+export const COMPAT_TRANSPORT_JOINERS = [];
 
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
 // transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
@@ -795,7 +802,6 @@ function checkWriteTransportClosure(files, add, wholeTree) {
   for (const importer of unresolvedImporters) if (!GUARD_TEST_DATA.test(importer)) network.add(importer);
   const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
   for (const path of edges.keys()) {
-    if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
     const seen = new Set([path]);
     const stack = [path];
     while (stack.length) {
@@ -803,6 +809,10 @@ function checkWriteTransportClosure(files, add, wholeTree) {
       for (const next of edges.get(at) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
     }
     const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
+    // Checked before the write-joiner exemption below, so no listed file elsewhere can join the C6
+    // tools to the network either (C6 re-check N4).
+    if (!COMPAT_TRANSPORT_JOINERS.includes(path) && path !== TRANSPORT_FILE && [...seen].some((p) => p.startsWith(COMPAT_TOOLS)) && reachesNetwork) add(path, 'compat-transport-join-transitive');
+    if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
     const reachesWrite = [...seen].some(isWrite);
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
     const reachesPrepare = [...seen].some((p) => p.startsWith('packages/tx-prepare/') || p.startsWith(PREPARE_TOOLS));
@@ -815,6 +825,13 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     // Nor may the offline rehearsal, which joins preparation, the key tool and the write path
     // (RN-NET-03B2-C3): it runs on simulated providers only.
     if ((path.startsWith('tools/rehearsal/') || path === 'tools/rehearsal.test.mjs') && reachesNetwork) add(path, 'rehearsal-reaches-network');
+    // Nor may the C6 compatibility manifest and its offline run (RN-NET-03B2-C6-PREP): it is data,
+    // a classifier and simulated providers only, and it may not reach the write path, the signer or
+    // the key tool either. Enabling a live C6 run is a reviewed change to this rule.
+    if (path.startsWith(COMPAT_TOOLS) || path === 'tools/compat.test.mjs') {
+      if (reachesNetwork) add(path, 'compat-reaches-network');
+      if ([...seen].some((p) => isWrite(p) || p.startsWith('signer/') || p.startsWith(KEYTOOL) || p.startsWith('tools/signing/'))) add(path, 'compat-reaches-write-or-key');
+    }
     // Nor may anything else reach key generation or the key tool through an allowed file (review
     // C4-5): only signer/, the key tool and their listed importers.
     const inner = path.startsWith('signer/') || path.startsWith(KEYTOOL) || KEYGEN_IMPORTERS.includes(path) || KEYTOOL_IMPORTERS.includes(path);
