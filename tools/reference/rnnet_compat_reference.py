@@ -14,11 +14,18 @@ Re-implements, without the JavaScript tools:
     branches, the compatibility candidate and the finality-window numbers.
 The free-text `detail` of each check is not compared; everything else in the evidence is.
 
-Checks fixtures/compat-c6/ from the transcripts alone. Offline; standard library only.
+Checks fixtures/compat-c6/ from the transcripts alone, and every run directory of the C6 entry
+point in fixtures/compat-c6-live/ (RN-NET-03B2-C6-LIVE) from its files alone. Offline; standard
+library only.
 Run: python3 -I -B <this file>
+     python3 -I -B <this file> --run <run directory> [--record]
+       checks ONE run directory of tools/compat-live/compat-live.mjs: the authorization's binding,
+       every request rebuilt byte for byte, every response digest, the evidence recomputed, the
+       report rebuilt byte for byte; --record writes the result to python-reference.txt (0600, once).
 """
 import hashlib
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -121,7 +128,42 @@ def strict_json(data):
     def no_constant(_):
         raise ValueError("constant")
 
-    return json.loads(data.decode("utf-8"), object_pairs_hook=pairs, parse_constant=no_constant)
+    text = data.decode("utf-8")
+    check_depth(text)
+    return json.loads(text, object_pairs_hook=pairs, parse_constant=no_constant)
+
+
+MAX_DEPTH = 64
+
+
+def check_depth(text):
+    """packages/chain-readonly's limit, without recursion: the top value is at depth 1 and no value may
+    be deeper than 64, so a container at depth 64 must be empty (C6-LIVE review N-a: the reference had
+    no limit, accepted what the run refuses, and crashed on very deep input)."""
+    depth, in_string, escape, must_close = 0, False, False, False
+    for ch in text:
+        if in_string:
+            if escape:
+                escape = False
+            elif ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch in " \t\n\r":
+            continue
+        if must_close and ch not in "]}":
+            raise ValueError("nesting too deep")
+        must_close = False
+        if ch in "[{":
+            depth += 1
+            if depth > MAX_DEPTH:
+                raise ValueError("nesting too deep")
+            must_close = depth == MAX_DEPTH
+        elif ch in "]}":
+            depth -= 1
+        elif ch == '"':
+            in_string = True
 
 
 def sanitize(value):
@@ -267,7 +309,7 @@ def replay(transcript):
             rec["transportCode"] = code
             rec["outcome"] = {"RNLO_TIMEOUT": "TIMEOUT", "RNLO_RESPONSE_TOO_LARGE": "TOO_LARGE"}.get(code, "TRANSPORT_ERROR")
             continue
-        body = t["text"].encode("utf-8") + b" " * t["pad"]
+        body = t["body"] if "body" in t else t["text"].encode("utf-8") + b" " * t["pad"]
         rec["responseSha256"], rec["responseBytes"] = sha(body), len(body)
         rec.update(interpret(prov, form, t["status"], body))
         if rec["outcome"] != "OK":
@@ -502,8 +544,138 @@ def checks_of(root):
         "finality-apart-192", "finality-apart-193", "estimate-22679", "estimate-30000", "xrpl-age-30", "xrpl-age-31", "xrpl-skew-4", "xrpl-skew-5"))
 
 
+# --- RN-NET-03B2-C6-LIVE: a run directory of the C6 entry point ---------------------------------
+
+AUTH_FIELDS = ["authorizationId", "evidenceDir", "format", "manifestSha256", "notAfter", "providers", "publication", "requestBudget", "scope"]
+AUTH_DOMAIN = b"rnnet:compat-authorization:v1\x00"
+RUN_FILES = {"authorization.json", "transcript.json", "evidence.json", "report.json"}
+CALL_FIELDS = {"call", "providerId", "requestSha256", "status", "responseFile", "responseSha256", "responseBytes", "error", "policy"}
+UTC = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z")
+
+
+def stored(value):
+    return canon(value) + "\n"
+
+
+def read_authorization(text):
+    """Parses and checks an rnnet.compat-authorization.v1 text; returns (authorization, digest)."""
+    body = text[:-1] if text.endswith("\n") else text
+    a = json.loads(body)
+    assert canon(a) == body, "authorization is not canonical"
+    assert isinstance(a, dict) and sorted(a) == AUTH_FIELDS, "authorization fields"
+    assert a["format"] == "rnnet.compat-authorization.v1"
+    assert re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?", a["authorizationId"])
+    assert a["publication"] == "none"
+    assert UTC.fullmatch(a["notAfter"])
+    digest = "sha256:" + hashlib.sha256(AUTH_DOMAIN + body.encode("utf-8")).hexdigest()
+    return a, digest
+
+
+def overall(verdict, violation):
+    if "BLOCKED" in (verdict["xrpl"], verdict["sepolia"]):
+        return "BLOCKED"
+    return "PASS" if verdict == {"xrpl": "PASS", "sepolia": "PASS"} and violation is None else "UNRESOLVED"
+
+
+def run_checks(run_dir: Path, private: bool):
+    """Checks one run directory from its files alone: the authorization's binding, every request
+    rebuilt byte for byte, every response's digest, and the evidence and report recomputed here."""
+    names = {p.name for p in run_dir.iterdir()}
+    raw = lambda name: (run_dir / name).read_bytes()  # noqa: E731
+    yield "the run directory holds the four run files", RUN_FILES <= names
+    if not RUN_FILES <= names:
+        return
+    if private:
+        yield "the run directory is private (0700) and every file in it is 0600", (run_dir.stat().st_mode & 0o777) == 0o700 and all(((run_dir / n).stat().st_mode & 0o777) == 0o600 for n in names)
+    auth_text = raw("authorization.json").decode("utf-8")
+    a, digest = read_authorization(auth_text)
+    yield "the authorization binds the reviewed manifest digest", a["manifestSha256"] == "sha256:" + MANIFEST_SHA256
+    yield "the authorization names the four reviewed providers at their URLs with their budget, in manifest order", a["providers"] == [{"id": p, "requests": BUDGET[p], "url": u} for p, _, u in PROVIDERS]
+    yield "the authorization budget is exactly 22 requests", a["requestBudget"] == 22 == sum(BUDGET.values())
+    transcript_text = raw("transcript.json").decode("utf-8")
+    transcript = json.loads(transcript_text)
+    yield "the transcript is canonical", stored(transcript) == transcript_text and transcript["format"] == "rnnet.provider-compat-transcript.v1" and set(transcript) == {"format", "calls"}
+    calls = transcript["calls"]
+    yield "the transcript calls are numbered in order, with exactly the recorded fields", [c["call"] for c in calls] == list(range(1, len(calls) + 1)) and all(set(c) == CALL_FIELDS for c in calls)
+    files = {c["responseFile"] for c in calls if c["responseFile"] is not None}
+    yield "the run directory holds exactly the run files and the recorded responses", names == RUN_FILES | files
+    replayable, bodies_ok = [], True
+    for c in calls:
+        if c["policy"] is not None or c["error"] is not None:
+            replayable.append({"providerId": c["providerId"], "error": c["error"]})
+            bodies_ok = bodies_ok and c["responseFile"] is None and c["status"] is None
+            continue
+        body = raw(c["responseFile"])
+        bodies_ok = bodies_ok and c["responseFile"] == f"response-{c['call']:02d}.bin" and sha(body) == c["responseSha256"] and len(body) == c["responseBytes"] <= MAX_BYTES
+        replayable.append({"providerId": c["providerId"], "status": c["status"], "body": body})
+    yield "every stored response matches its recorded digest and size, within 256 KiB", bodies_ok
+    exchanges, count, sent, problems = replay(replayable)
+    sent_requests = [e for e in exchanges if e["request"] is not None]
+    yield "the transcript replays in manifest order with no unused call", not problems
+    yield "every request the run sent is the one rebuilt here, byte for byte", [c["requestSha256"] for c in calls] == [e["requestSha256"] for e in sent_requests]
+    yield "at most 22 requests, within each provider's budget, no write method", count == len(calls) <= 22 and all(sent[p] <= BUDGET[p] for p in BUDGET) and all(json.loads(e["request"])["method"] not in WRITE for e in sent_requests)
+    evidence_text = raw("evidence.json").decode("utf-8")
+    ev = json.loads(evidence_text)
+    yield "the evidence is canonical", stored(ev) == evidence_text
+    checks, verdict, br, candidate, finality = classify(ev["observedAt"], exchanges)
+    yield "the evidence is what this reference computes (the free-text details aside)", (
+        set(ev) == {"format", "observedAt", "requestCount", "sentPerProvider", "exchanges", "checks", "verdict", "sepoliaBranches", "compatibilityCandidate", "finality", "authorizationId", "authorizationDigest", "manifestSha256"}
+        and ev["format"] == "rnnet.provider-compat-evidence.v1" and ev["exchanges"] == exchanges and ev["requestCount"] == count and ev["sentPerProvider"] == sent
+        and [(c["id"], c["status"]) for c in ev["checks"]] == checks and ev["verdict"] == verdict and ev["sepoliaBranches"] == br
+        and ev["compatibilityCandidate"] == candidate and ev["finality"] == finality
+        and (ev["authorizationId"], ev["authorizationDigest"], ev["manifestSha256"]) == (a["authorizationId"], digest, a["manifestSha256"]))
+    violation = next((c["policy"] for c in calls if c["policy"] is not None), None)
+    report = {
+        "format": "rnnet.provider-compat-report.v1", "authorizationId": a["authorizationId"], "authorizationDigest": digest,
+        "authorizationFileSha256": sha(auth_text.encode("utf-8")), "manifestSha256": a["manifestSha256"],
+        "providers": a["providers"], "requestBudget": a["requestBudget"], "publication": a["publication"],
+        "observedAt": ev["observedAt"], "requestCount": count, "sentPerProvider": sent,
+        "forwardedRequests": sum(1 for c in calls if c["policy"] is None), "policyViolation": violation,
+        "transcriptSha256": sha(transcript_text.encode("utf-8")), "evidenceSha256": sha(evidence_text.encode("utf-8")),
+        "responses": [{"call": c["call"], "file": c["responseFile"], "bytes": c["responseBytes"], "sha256": c["responseSha256"]} for c in calls if c["responseFile"] is not None],
+        "checks": [{"id": c, "status": s} for c, s in checks], "verdict": verdict, "sepoliaBranches": br,
+        "compatibilityCandidate": candidate, "finality": finality, "overall": overall(verdict, violation),
+    }
+    report_text = raw("report.json").decode("utf-8")
+    yield f"report.json is rebuilt byte for byte here: {report['overall']} (XRPL {verdict['xrpl']}, Sepolia {verdict['sepolia']} {'+'.join(br)}), {sha(report_text.encode('utf-8'))}", stored(report) == report_text
+
+
+def run_main(run_dir: Path, record: bool) -> int:
+    results = []
+    try:
+        results = list(run_checks(run_dir, private=True))
+    except (AssertionError, KeyError, TypeError, ValueError, OSError) as error:
+        results.append((f"the run directory could not be checked: {type(error).__name__}", False))
+    failed = [name for name, ok in results if not ok]
+    lines = [("ok   " if ok else "FAIL ") + name for name, ok in results]
+    lines.append(f"compat run reference: {len(results) - len(failed)}/{len(results)} checks agree; {'AGREES' if not failed and results else 'DOES NOT AGREE'}")
+    text = "\n".join(lines) + "\n"
+    sys.stdout.write(text)
+    if record:
+        # Written once, privately and durably, beside the run's own files.
+        fd = os.open(run_dir / "python-reference.txt", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            os.write(fd, text.encode("utf-8"))
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    return 1 if failed or not results else 0
+
+
+def fixture_run_checks(root: Path):
+    base = root / "fixtures/compat-c6-live"
+    dirs = sorted(p for p in base.iterdir() if p.is_dir())
+    overalls = set()
+    for d in dirs:
+        for name, ok in run_checks(d, private=False):
+            if name.startswith("report.json is rebuilt"):
+                overalls.add(name.split(": ", 1)[1].split(" ", 1)[0])
+            yield f"compat-c6-live/{d.name}: {name}", ok
+    yield "the C6-LIVE run fixtures cover PASS, BLOCKED and UNRESOLVED", overalls >= {"PASS", "BLOCKED", "UNRESOLVED"}
+
+
 def main(root: Path) -> int:
-    results = list(checks_of(root))
+    results = list(checks_of(root)) + list(fixture_run_checks(root))
     failed = [name for name, ok in results if not ok]
     for name in failed:
         print("FAIL", name)
@@ -512,4 +684,8 @@ def main(root: Path) -> int:
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 3 and sys.argv[1] == "--run" and sys.argv[3:] in ([], ["--record"]):
+        sys.exit(run_main(Path(sys.argv[2]), sys.argv[3:] == ["--record"]))
+    if len(sys.argv) != 1:
+        sys.exit("usage: rnnet_compat_reference.py [--run <run directory> [--record]]")
     sys.exit(main(HERE.parent.parent))

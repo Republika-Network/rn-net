@@ -3,6 +3,10 @@
 - Status: **prepared offline, not run.** This document, the manifest and the offline run code
   (`tools/compat/`) authorize **no live RPC request**. The run needs its own written founder read
   authorization (H3, §8) and a separately reviewed live entry point (§8).
+- C6-LIVE (RN-NET-03B2-C6-LIVE): the entry point exists, **disabled for live network access**:
+  [`tools/compat-live/`](../../tools/compat-live/README.md), with the H3 format
+  [rnnet.compat-authorization.v1](../../spec/rnnet.compat-authorization.v1.md). It still sends
+  nothing until a separately reviewed enabling change (§8, item 2).
 - Basis: [ADR-RN-018](../adr/ADR-RN-018-transaction-preparation-reads.md) Amendment C1, P4, P5
   and P7; [readiness analysis](rn-net-03b2c-operational-readiness.md) §4 "C6" and "Sepolia
   finality constraints"; [ADR-RN-013](../adr/ADR-RN-013-read-only-rpc-architecture.md) limits.
@@ -256,7 +260,24 @@ directory outside every repository (H11), and are never published. Publishing an
    - check the manifest digest (the canonical one, §0);
    - read `now` after the founder's approval;
    - write the evidence privately (`0700`/`0600`, `wx`).
-   It is not built here.
+
+   **Built in C6-LIVE, disabled** (`tools/compat-live/`,
+   [spec](../../spec/rnnet.compat-authorization.v1.md)). It imports no transport. The guard keeps
+   it off the network (`compat-live-reaches-network`) and away from the write path, keys and
+   preparation (`compat-live-reaches-write-or-key`), and `COMPAT_TRANSPORT_JOINERS` stays empty.
+   On top of the points above it:
+   - pins the endpoint file by digest;
+   - checks every request against a policy that is independent of the run, including expiry
+     before each request and a deadline of its own;
+   - stores each body as it arrives;
+   - reproduces the report from the stored files, in JavaScript and in the independent Python
+     reference (`--run`).
+
+   The separately reviewed **enabling change** must:
+   - set the agreed evidence directory;
+   - import the transport;
+   - list the entry point in `COMPAT_TRANSPORT_JOINERS`;
+   - set `LIVE_NETWORK_ACCESS`.
 3. **The H3 read authorization**, written by the founder for one run. It names:
    - exactly 22 requests;
    - the four provider ids and URLs;
@@ -308,7 +329,8 @@ This authorizes no key generation, funding, signing, broadcasting or publication
 
 1. **Founder:** merge the acceptance PR for ADR-RN-016/018 Amendments C1 (offline scope). Have
    this preparation PR reviewed.
-2. **C6-LIVE**, then the run (§8): the entry point PR, then H3, then one run of 22 requests,
+2. **C6-LIVE**, then the run (§8): the entry point PR (built, disabled), the reviewed enabling
+   change, then H3, then one run of 22 requests, the Python reference over the run directory,
    then the evidence review.
 3. **By result** (§6): A, record compatibility; B, C, D or E, the smallest corrective review.
    XRPL: a `build_version` other than 3.4.1 means reading `fail_hard` at that release before

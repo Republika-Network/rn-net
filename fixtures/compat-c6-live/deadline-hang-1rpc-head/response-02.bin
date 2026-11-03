@@ -1,0 +1,1 @@
+{"result":{"status":"success","info":{"build_version":"3.4.1","complete_ledgers":"21000000-21950001","network_id":1,"server_state":"full","load_factor":1,"validated_ledger":{"age":1,"base_fee_xrp":0.00001,"hash":"B5135F22DFE9DC5DF64BD8BEA0E1814D51729008C8FF4413CEE2563EA725BAFB","reserve_base_xrp":1,"reserve_inc_xrp":0.2,"seq":21950001}}}}
