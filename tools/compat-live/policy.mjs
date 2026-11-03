@@ -32,6 +32,30 @@ export const COMPAT_TRANSCRIPT_FORMAT = 'rnnet.provider-compat-transcript.v1';
 export const STORAGE_ERROR = 'RNCL_STORAGE';
 /** A request body is a few hundred bytes; anything larger is not a manifest request. */
 export const MAX_REQUEST_BYTES = 4096;
+/**
+ * The policy's own deadline is the request's plus this grace (C6-LIVE-ENABLE review B1): the
+ * transport's own timer (exactly timeoutMs) settles first, so the transport is idle before the next
+ * request. The policy deadline only bounds a transport that never settles; then the C6 transport is
+ * still busy and refuses the next request, which stops the run.
+ */
+export const POLICY_DEADLINE_GRACE_MS = 2000;
+/** The code with which the C6 transport refuses a request it did not send (review B1). */
+export const TRANSPORT_REFUSED = 'RNCL_TRANSPORT_REFUSED';
+
+/**
+ * The request's members, each read once, the body copied once (review N1 of C6-LIVE-ENABLE): every
+ * check, the transcript and the transport see the same bytes.
+ */
+function snapshot(request) {
+  if (request === null || typeof request !== 'object') return { providerId: null, url: null, body: null, timeoutMs: null, maxResponseBytes: null };
+  const providerId = request.providerId;
+  const url = request.url;
+  const raw = request.body;
+  const timeoutMs = request.timeoutMs;
+  const maxResponseBytes = request.maxResponseBytes;
+  const genuine = raw instanceof Uint8Array && ArrayBuffer.isView(raw) && raw.length <= MAX_REQUEST_BYTES;
+  return Object.freeze({ providerId: typeof providerId === 'string' ? providerId : null, url: typeof url === 'string' ? url : null, body: genuine ? new Uint8Array(raw) : null, timeoutMs, maxResponseBytes });
+}
 
 const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 const coded = (code, message) => Object.assign(new Error(message), { code });
@@ -153,11 +177,12 @@ export function createCompatPolicy({ providers, notAfter, clock, evidence, sleep
     return null;
   };
 
-  const wrap = (inner) => async (request) => {
+  const wrap = (inner) => async (given) => {
+    const request = snapshot(given);
     const call = transcript.length + 1;
-    const entry = { call, providerId: typeof request?.providerId === 'string' ? request.providerId : null, requestSha256: request?.body instanceof Uint8Array ? sha256(request.body) : null, status: null, responseFile: null, responseSha256: null, responseBytes: null, error: null, policy: null };
+    const entry = { call, providerId: request.providerId, requestSha256: request.body !== null ? sha256(request.body) : null, status: null, responseFile: null, responseSha256: null, responseBytes: null, error: null, policy: null };
     transcript.push(entry);
-    const marks = { send: false, outcome: false };
+    const marks = { send: false, outcome: false, refusedByTransport: false };
     journaled.push(marks);
     if (violation === null) violation = check(request);
     if (violation !== null) {
@@ -176,7 +201,7 @@ export function createCompatPolicy({ providers, notAfter, clock, evidence, sleep
     const outcome = () => {
       marks.outcome = journal(call, { call, event: 'outcome', error: entry.error, responseBytes: entry.responseBytes, responseFile: entry.responseFile, responseSha256: entry.responseSha256, status: entry.status }, 'after');
     };
-    const timer = sleep(request.timeoutMs);
+    const timer = sleep(request.timeoutMs + POLICY_DEADLINE_GRACE_MS);
     const deadline = new Promise((_, reject) => {
       timer.then(() => reject(coded('RNLO_TIMEOUT', 'deadline')));
     });
@@ -186,6 +211,15 @@ export function createCompatPolicy({ providers, notAfter, clock, evidence, sleep
       const forwarded = Object.freeze({ providerId: request.providerId, url: request.url, body: Uint8Array.from(request.body), timeoutMs: request.timeoutMs, maxResponseBytes: request.maxResponseBytes });
       response = await Promise.race([Promise.resolve().then(() => inner(forwarded)), deadline]);
     } catch (error) {
+      // The C6 transport refused it without sending it: recorded as such, never as a transport
+      // error, and nothing more is sent (policy and transport disagree; review B1).
+      if (error?.code === TRANSPORT_REFUSED) {
+        entry.error = TRANSPORT_REFUSED;
+        marks.refusedByTransport = true;
+        if (violation === null) violation = `the C6 transport refused call ${call}`;
+        outcome();
+        throw coded('RNCL_REQUEST_POLICY', violation);
+      }
       // Only the transport's own fixed codes are kept; anything else is a bare TRANSPORT_ERROR.
       entry.error = TRANSPORT_CODES.includes(error?.code) ? error.code : 'TRANSPORT_ERROR';
       outcome();
@@ -234,11 +268,11 @@ export function createCompatPolicy({ providers, notAfter, clock, evidence, sleep
     const notSent = [];
     transcript.forEach((e, i) => {
       const m = journaled[i];
-      if (!m.send) notSent.push(e.call);
+      if (!m.send || m.refusedByTransport) notSent.push(e.call);
       else if (m.outcome && e.error !== STORAGE_ERROR) recorded.push(e.call);
       else sentUnrecorded.push(e.call);
     });
-    return { recorded, sentUnrecorded, notSent, notReached: Math.max(0, C6_TOTAL_REQUESTS - transcript.length), forwarded: total };
+    return { recorded, sentUnrecorded, notSent, notReached: Math.max(0, C6_TOTAL_REQUESTS - transcript.length), forwarded: total - journaled.filter((m) => m.refusedByTransport).length };
   };
 
   return Object.freeze({

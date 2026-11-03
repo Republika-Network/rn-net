@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import {
   C6_TRANSPORT_ENVIRONMENT,
   C6_TRANSPORT_LIMITS,
+  C6_TRANSPORT_METHODS,
   C6_TRANSPORT_PROVIDERS,
   C6_TRANSPORT_REFUSED_ENVIRONMENT,
   C6_TRANSPORT_REFUSED_METHODS,
@@ -19,7 +20,8 @@ import {
 const json = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
 const CLEAN = Object.freeze({ PATH: '/usr/bin', HOME: '/home/founder', LANG: 'C.UTF-8' });
 const body = (method, params = []) => Buffer.from(JSON.stringify({ id: 1, jsonrpc: '2.0', method, params }));
-const req = (id, extra = {}) => ({ providerId: id, url: C6_TRANSPORT_PROVIDERS.find((p) => p.id === id)?.url, body: body('eth_chainId'), timeoutMs: 10_000, maxResponseBytes: 262_144, ...extra });
+const XRPL_BODY = Buffer.from('{"method":"server_info","params":[{"api_version":2}]}');
+const req = (id, extra = {}) => ({ providerId: id, url: C6_TRANSPORT_PROVIDERS.find((p) => p.id === id)?.url, body: String(id).startsWith('xrpl-') ? XRPL_BODY : body('eth_chainId'), timeoutMs: 10_000, maxResponseBytes: 262_144, ...extra });
 const fakeBase = (answer = async () => ({ status: 200, body: Buffer.from('{"jsonrpc":"2.0","id":1,"result":"0x1"}') })) => {
   const calls = [];
   const base = async (r) => {
@@ -39,6 +41,8 @@ test('the transport copy of the providers is exactly the reviewed manifest and e
   assert.equal(C6_TRANSPORT_LIMITS.maxResponseBytes, manifest.limits.maxResponseBytes);
   assert.equal(C6_TRANSPORT_PROVIDERS.reduce((n, p) => n + p.requests, 0), 22);
   for (const m of ['eth_sendRawTransaction', 'eth_sendTransaction', 'eth_sign', 'submit', 'sign', 'wallet_propose']) assert.ok(C6_TRANSPORT_REFUSED_METHODS.includes(m), m);
+  // The allowlist is exactly the manifest's methods per provider.
+  for (const p of C6_TRANSPORT_PROVIDERS) assert.deepEqual([...C6_TRANSPORT_METHODS[p.id]].sort(), [...new Set(manifest.requests.filter((r) => r.providerId === p.id).map((r) => r.method))].sort(), p.id);
   assert.ok(!manifest.requests.some((r) => C6_TRANSPORT_REFUSED_METHODS.includes(r.method)));
 });
 
@@ -78,11 +82,20 @@ test('only the four reviewed providers at their reviewed URLs, with the manifest
     ['inherited providerId', Object.create({ providerId: 'sepolia-1rpc' })],
     ['__proto__ provider', { ...req('sepolia-1rpc'), providerId: '__proto__' }],
     ...C6_TRANSPORT_REFUSED_METHODS.map((m) => [`write method ${m}`, req('sepolia-1rpc', { body: body(m, ['0x00']) })]),
+    // C6-LIVE-ENABLE review N1: an allowlist, not only a denylist; and the manifest's exact shape.
+    ...['eth_submitWork', 'eth_sendUserOperation', 'eth_call', 'debug_traceCall', 'admin_addPeer', 'ledger_accept', 'stop', 'ledger_data'].map((m) => [`unlisted method ${m}`, req('sepolia-1rpc', { body: body(m) })]),
+    ['an XRPL method on Sepolia', req('sepolia-1rpc', { body: body('server_info') })],
+    ['a Sepolia method on XRPL', req('xrpl-testnet-ripple', { body: body('eth_chainId') })],
+    ['a duplicate method key', req('sepolia-1rpc', { body: Buffer.from('{"id":1,"jsonrpc":"2.0","method":"eth_sendRawTransaction","method":"eth_chainId","params":[]}') })],
+    ['not canonical', req('sepolia-1rpc', { body: Buffer.from('{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}') })],
+    ['an extra key', req('sepolia-1rpc', { body: Buffer.from('{"id":1,"jsonrpc":"2.0","method":"eth_chainId","params":[],"x":1}') })],
+    ['another id', req('sepolia-1rpc', { body: Buffer.from('{"id":2,"jsonrpc":"2.0","method":"eth_chainId","params":[]}') })],
+    ['xrpl without the params array', req('xrpl-testnet-ripple', { body: Buffer.from('{"method":"server_info","params":{}}') })],
   ];
   for (const [label, request] of cases) {
     const { base, calls } = fakeBase();
     const t = createC6Transport({ env: CLEAN, execArgv: [], base });
-    await assert.rejects(t(request), { code: 'RNLO_BLOCKED_ADDRESS' }, label);
+    await assert.rejects(t(request), { code: 'RNCL_TRANSPORT_REFUSED' }, label);
     assert.equal(calls.length, 0, label);
   }
   // What the base transport sees: the reviewed URL and limits, and a copy of the body.
@@ -106,12 +119,12 @@ test('at most 22 requests and each provider its own count, failures included: no
   await assert.rejects(t(req('xrpl-testnet-xrpl-labs')), { code: 'RNLO_TIMEOUT' });
   fail = false;
   await t(req('xrpl-testnet-xrpl-labs'));
-  await assert.rejects(t(req('xrpl-testnet-xrpl-labs')), { code: 'RNLO_BLOCKED_ADDRESS' });
+  await assert.rejects(t(req('xrpl-testnet-xrpl-labs')), { code: 'RNCL_TRANSPORT_REFUSED' });
   assert.equal(calls.length, 2);
   // Fill every other provider's count: 2 + 9 + 9, then nothing more for anyone.
   for (const [id, n] of [['xrpl-testnet-ripple', 2], ['sepolia-publicnode', 9], ['sepolia-1rpc', 9]]) for (let i = 0; i < n; i += 1) await t(req(id));
   assert.equal(calls.length, 22);
-  for (const p of C6_TRANSPORT_PROVIDERS) await assert.rejects(t(req(p.id)), { code: 'RNLO_BLOCKED_ADDRESS' });
+  for (const p of C6_TRANSPORT_PROVIDERS) await assert.rejects(t(req(p.id)), { code: 'RNCL_TRANSPORT_REFUSED' });
   assert.equal(calls.length, 22);
 });
 
@@ -120,7 +133,7 @@ test('one request at a time, and the response is bounded and copied', async () =
   const { base, calls } = fakeBase(() => new Promise((ok) => { release = () => ok({ status: 200, body: Buffer.from('{}') }); }));
   const t = createC6Transport({ env: CLEAN, execArgv: [], base });
   const first = t(req('sepolia-1rpc'));
-  await assert.rejects(t(req('sepolia-publicnode')), { code: 'RNLO_BLOCKED_ADDRESS' });
+  await assert.rejects(t(req('sepolia-publicnode')), { code: 'RNCL_TRANSPORT_REFUSED' });
   release();
   await first;
   assert.equal(calls.length, 1);

@@ -63,6 +63,9 @@ export const CASE_INPUTS = Object.freeze([
   'dial internal-geth-3.prod.svc.cluster.local:8545 from 2001:db8:85a3::8a2e:370:7334', 'node geth-7.internal.example.com down', 'localhost refused', 'LOCALHOST:8545',
   'Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCD', 'token: 1a2b3c', 'password hunter2', 'your session expired', 'id ab12cd34ef56 unknown',
   'hexutil.Uint64 odd length', 'retry at 12:34:56', 'missing trie node 5c1f2e3d4c5b6a7980a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f607 (path )',
+  // C6-LIVE-ENABLE review N3
+  'user:pass:word', 'sk_live_abcdefghijklmnop', 'ghp_ABCDEFGHIJKLMNOPQRST', 'ip 2130706433', 'host 10.1 down', 'internal.10', 'my.host.1', 'user admin pass hunter2',
+  'the method eth_sendRawTransaction does not exist', 'block 0x1b4 not found',
   `key 0x${'ab'.repeat(32)}`, 'aé\u{1F600}b', `${'w '.repeat(250)}198.51.100.7`, `from ::ffff:198.51.100.7 ${'a.'.repeat(5000)}`,
 ]);
 

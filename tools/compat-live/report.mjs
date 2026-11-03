@@ -14,7 +14,7 @@ import { createHash } from 'node:crypto';
 import { canonicalize } from '../../packages/canonical/src/index.mjs';
 import { runCompatibility } from '../compat/run.mjs';
 import { JOURNAL_FILE, JOURNAL_FORMAT, journalRecords, storedText } from './entry.mjs';
-import { responseFileName, STORAGE_ERROR } from './policy.mjs';
+import { responseFileName, STORAGE_ERROR, TRANSPORT_REFUSED } from './policy.mjs';
 
 export const COMPAT_REPORT_FORMAT = 'rnnet.provider-compat-report.v1';
 /** The files of a run directory, besides the response bodies. */
@@ -34,7 +34,9 @@ export function runViolation(transcript) {
   const policy = transcript.calls.find((c) => c.policy !== null)?.policy;
   if (policy !== undefined) return policy;
   const stored = transcript.calls.find((c) => c.error === STORAGE_ERROR);
-  return stored === undefined ? null : `response storage failed at call ${stored.call}`;
+  if (stored !== undefined) return `response storage failed at call ${stored.call}`;
+  const refused = transcript.calls.find((c) => c.error === TRANSPORT_REFUSED);
+  return refused === undefined ? null : `the C6 transport refused call ${refused.call}`;
 }
 
 /** The overall status of a run. */
@@ -63,7 +65,8 @@ export function buildReport({ authorization: a, digest, authorizationText, trans
     requestCount: evidence.requestCount,
     sentPerProvider: { ...evidence.sentPerProvider },
     // What actually reached the transport: requestCount less the calls the policy refused.
-    forwardedRequests: transcript.calls.filter((c) => c.policy === null).length,
+    // A call the C6 transport refused never reached the network (review B1).
+    forwardedRequests: transcript.calls.filter((c) => c.policy === null && c.error !== TRANSPORT_REFUSED).length,
     policyViolation,
     transcriptSha256: textSha(transcriptText),
     evidenceSha256: textSha(evidenceText),

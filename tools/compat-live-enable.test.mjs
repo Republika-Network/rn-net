@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -390,17 +390,27 @@ test('the command wiring: the environment is checked first, the default evidence
 });
 
 test('the approval is typed on the terminal: never read from standard input, one bounded line, no terminal no approval', async () => {
-  const fakeTty = ({ tty = true, input = 'c6 0123456789abcdef\n', chunk = 1 } = {}) => {
-    const seen = { opened: [], written: '', closed: 0 };
+  const fakeTty = ({ tty = true, input = 'c6 0123456789abcdef\n', chunk = 1, typedAhead = '' } = {}) => {
+    const seen = { opened: [], written: '', closed: 0, discarded: 0 };
     let pos = 0;
+    let ahead = Buffer.from(typedAhead, 'utf8');
     const bytes = Buffer.from(input, 'utf8');
     return {
       seen,
       io: {
-        openSync: (path) => { seen.opened.push(path); return 42; },
-        isatty: (fd) => fd === 42 && tty,
+        // fd 43: the non-blocking read that discards type-ahead; fd 42: the prompt and the answer.
+        openSync: (path, flags) => { seen.opened.push(path); return (flags & constants.O_NONBLOCK) ? 43 : 42; },
+        isatty: (fd) => (fd === 42 || fd === 43) && tty,
         writeSync: (fd, b, off, len) => { seen.written += Buffer.from(b).subarray(off, off + len).toString(); return len; },
         readSync: (fd, buf, off, len) => {
+          if (fd === 43) {
+            if (ahead.length === 0) throw Object.assign(new Error('EAGAIN'), { code: 'EAGAIN' });
+            const n = Math.min(len, ahead.length);
+            ahead.copy(buf, off, 0, n);
+            ahead = ahead.subarray(n);
+            seen.discarded += n;
+            return n;
+          }
           const n = Math.min(chunk, len, bytes.length - pos);
           bytes.copy(buf, off, pos, pos + n);
           pos += n;
@@ -412,19 +422,93 @@ test('the approval is typed on the terminal: never read from standard input, one
   };
   const ok = fakeTty();
   assert.equal(await createTtyApproval(ok.io)('PROMPT'), 'c6 0123456789abcdef');
-  assert.deepEqual(ok.seen.opened, [TTY_PATH]);
+  assert.deepEqual(ok.seen.opened, [TTY_PATH, TTY_PATH]);
   assert.equal(TTY_PATH, '/dev/tty');
   assert.match(ok.seen.written, /^PROMPT\n> $/);
-  assert.equal(ok.seen.closed, 1);
+  assert.equal(ok.seen.closed, 2);
+  // Typed before the prompt (type-ahead, a stuck key, a paste): discarded, never an answer.
+  const ahead = fakeTty({ typedAhead: 'c6 0123456789abcdef\n', input: 'no\n' });
+  assert.equal(await createTtyApproval(ahead.io)('P'), 'no');
+  assert.equal(ahead.seen.discarded, 20);
+  const flood = fakeTty({ typedAhead: 'x'.repeat(70_000) });
+  await assert.rejects(createTtyApproval(flood.io)('P'), /does not stop/);
   assert.equal(await createTtyApproval(fakeTty({ input: 'c6 0123456789abcdef\r\n', chunk: 64 }).io)('P'), 'c6 0123456789abcdef');
   for (const [label, options] of [['not a terminal', { tty: false }], ['no answer', { input: '' }], ['an endless line', { input: 'c'.repeat(MAX_ANSWER_BYTES + 10) }]]) {
     const f = fakeTty(options);
     await assert.rejects(createTtyApproval(f.io)('P'), Error, label);
-    assert.equal(f.seen.closed, 1, label);
+    assert.ok(f.seen.closed >= 1, label);
   }
   const noTty = { ...fakeTty().io, openSync: () => { throw Object.assign(new Error('x'), { code: 'ENXIO' }); } };
   await assert.rejects(createTtyApproval(noTty)('P'));
   // The module never touches standard input.
   const source = readFileSync(new URL('tools/compat-live/tty-approval.mjs', ROOT), 'utf8').replace(/^\s*\/\/.*$/gm, '');
   assert.ok(!/stdin|process\.|readline/.test(source));
+});
+
+/**
+ * A stand-in with the C6 transport's busy and refusal semantics (c6-transport.mjs; tested there),
+ * whose own timer fires at timeoutMs, on a clock scaled down 100 times; the policy's sleep is on the
+ * same clock. `hang(r)` true: that request never answers (`settles` false: not even its timer).
+ */
+function busyTransport({ hang, settles = true, inner = allCompatible() }) {
+  let busy = false;
+  const reached = [];
+  const transport = async (r) => {
+    if (busy) throw Object.assign(new Error('RNCL_TRANSPORT_REFUSED'), { code: 'RNCL_TRANSPORT_REFUSED' });
+    busy = true;
+    reached.push(r.providerId);
+    try {
+      if (hang(r)) {
+        if (!settles) return await new Promise(() => {});
+        await new Promise((ok) => setTimeout(ok, r.timeoutMs / 100));
+        throw Object.assign(new Error('RNLO_TIMEOUT'), { code: 'RNLO_TIMEOUT' });
+      }
+      return await inner(r);
+    } finally {
+      busy = false;
+    }
+  };
+  return { transport, reached };
+}
+const scaledSleep = (ms) => {
+  let handle;
+  const p = new Promise((ok) => { handle = setTimeout(ok, ms / 100); });
+  p.cancel = () => clearTimeout(handle);
+  return p;
+};
+
+test('review B1: a provider timeout costs that one request; nothing else is refused, and nothing is recorded as sent that was not', async () => {
+  const ctx = setup();
+  try {
+    const ripple = (r) => r.providerId === 'xrpl-testnet-ripple';
+    const t = busyTransport({ hang: ripple });
+    const { result, runDir } = await run(ctx, { transport: t.transport, sleep: scaledSleep });
+    assert.equal(result.outcome, 'UNRESOLVED', result.message);
+    const calls = JSON.parse(readFileSync(join(runDir, 'transcript.json'), 'utf8')).calls;
+    assert.equal(calls[0].error, 'RNLO_TIMEOUT');
+    assert.ok(calls.every((c) => c.error !== 'RNCL_TRANSPORT_REFUSED' && c.policy === null), JSON.stringify(calls.map((c) => c.error)));
+    // Ripple's ranged lookup needs its identity, so it is NOT_SENT; the other 21 all reached the transport.
+    assert.equal(t.reached.length, 21);
+    assert.equal(result.summary.forwarded, 21);
+    assert.equal(calls.filter((c) => c.error === null).length, 20);
+  } finally {
+    cleanup(ctx);
+  }
+  // A transport that never settles: the policy's own deadline (timeoutMs + grace) ends the call;
+  // the next request finds the transport busy, is refused WITHOUT being sent, and the run stops.
+  const stuck = setup();
+  try {
+    const t = busyTransport({ hang: (r) => r.providerId === 'xrpl-testnet-ripple', settles: false });
+    const { result, runDir } = await run(stuck, { transport: t.transport, sleep: scaledSleep });
+    assert.equal(t.reached.length, 1);
+    const calls = JSON.parse(readFileSync(join(runDir, 'transcript.json'), 'utf8')).calls;
+    assert.deepEqual([calls[0].error, calls[1].error], ['RNLO_TIMEOUT', 'RNCL_TRANSPORT_REFUSED']);
+    assert.ok(calls.slice(2).every((c) => c.policy === 'the C6 transport refused call 2'));
+    assert.deepEqual(result.summary.notSent, calls.slice(1).map((c) => c.call));
+    assert.equal(result.summary.forwarded, 1);
+    assert.match(result.message, /refused before sending \(never sent\): 2-/);
+    assert.notEqual(result.outcome, 'PASS');
+  } finally {
+    cleanup(stuck);
+  }
 });

@@ -98,9 +98,10 @@ export function createHttpsTransport({ request = httpsRequest, lookup = guardedL
         fn(value);
       }
     };
+    // Settled first, then destroyed: an error the destruction raises cannot replace the cause.
     const abort = (code) => {
-      req?.destroy();
       finish(reject, fail(code));
+      req?.destroy();
     };
     const timer = setTimeout(() => abort('RNLO_TIMEOUT'), timeoutMs);
     try {
@@ -116,27 +117,30 @@ export function createHttpsTransport({ request = httpsRequest, lookup = guardedL
         headers: { 'content-type': 'application/json', accept: 'application/json', 'accept-encoding': 'identity', 'content-length': body.length },
       }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400) {
+          finish(reject, fail('RNLO_REDIRECT'));
           res.destroy();
-          return finish(reject, fail('RNLO_REDIRECT'));
+          return;
         }
         // Only identity bodies: a compressed body would expand past the limit after it is read.
         const encoding = res.headers['content-encoding'];
         if (encoding !== undefined && String(encoding).toLowerCase() !== 'identity') {
+          finish(reject, fail('RNLO_CONNECTION'));
           res.destroy();
-          return finish(reject, fail('RNLO_CONNECTION'));
+          return;
         }
         const declared = Number(res.headers['content-length']);
         if (Number.isFinite(declared) && declared > maxResponseBytes) {
+          finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
           res.destroy();
-          return finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
+          return;
         }
         let size = 0;
         res.on('data', (chunk) => {
           if (settled) return;
           size += chunk.length;
           if (size > maxResponseBytes) {
-            res.destroy();
             finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
+            res.destroy();
           } else chunks.push(chunk);
         });
         res.on('end', () => finish(resolve, { status: res.statusCode, body: new Uint8Array(Buffer.concat(chunks)) }));

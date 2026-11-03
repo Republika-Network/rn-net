@@ -58,27 +58,32 @@ export const SANITIZER_MASKS = Object.freeze([
   ['userinfo-at', /\S*@\S*/g, '<userinfo>'],
   // any word holding "=": key=value, a query string, base64 padding
   ['key-value', /\S*=\S*/g, '<kv>'],
-  // four or more dotted numbers, whatever is next to them except another digit (N-b)
-  ['ipv4', /(?<![0-9])\d+(?:\.\d+){3,}/g, '<ip>'],
+  // two or more dotted numbers (IPv4, and its 2- and 3-part forms), whatever is next to them
+  // except another digit (N-b: no \b)
+  ['ipv4', /(?<![0-9])\d+(?:\.\d+)+/g, '<ip>'],
+  // a bare 8- to 10-digit decimal: an IPv4 address as one integer (2130706433)
+  ['ipv4-integer', /(?<![0-9A-Za-z])\d{8,10}(?![0-9A-Za-z])/g, '<ip>'],
   // IPv6, including the ::ffff: prefix left of a masked IPv4-mapped address
   ['ipv6', /[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}/g, (m) => (/[0-9A-Fa-f]/.test(m) ? '<ip>' : m)],
   // name:port and a.b.c:port; not next to another name or dot character (N-b: no \b)
   ['host-port', /(?<![A-Za-z0-9.:-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d{1,5}(?![0-9])/g, '<host>'],
   // a word joined to another by one colon with no space: user:password (scheme-less userinfo)
-  ['userinfo-colon', /[^\s:]+:[^\s:]+/g, '<userinfo>'],
-  // a bare dotted host name whose last label starts with a letter, and localhost
-  ['hostname', /(?<![A-Za-z0-9.-])(?:[A-Za-z0-9-]+\.)+[A-Za-z][A-Za-z0-9-]*(?![A-Za-z0-9-])|(?<![A-Za-z0-9-])[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt](?![A-Za-z0-9-])/g, '<host>'],
+  ['userinfo-colon', /[^\s:]+(?::[^\s:]+)+/g, '<userinfo>'],
+  // a bare dotted name (a host name, whatever its labels), and localhost
+  ['hostname', /(?<![A-Za-z0-9.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?![A-Za-z0-9-])|(?<![A-Za-z0-9-])[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt](?![A-Za-z0-9-])/g, '<host>'],
   // opaque runs of 32 or more characters, except 0x-prefixed hex chain data
   ['long-token', /[A-Za-z0-9_+\/-]{32,}/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>')],
   // shorter opaque runs (12 to 31) mixing letters and digits, except 0x-prefixed hex
   ['short-token', /(?<![A-Za-z0-9_+\/-])(?=[A-Za-z0-9_+\/-]*[0-9])(?=[A-Za-z0-9_+\/-]*[A-Za-z])[A-Za-z0-9_+\/-]{12,31}(?![A-Za-z0-9_+\/-])/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>')],
+  // runs of 16 to 31 holding "_" (sk_live_..., ghp_...), except a JSON-RPC method name (eth_...)
+  ['underscore-token', /(?<![A-Za-z0-9_+\/-])(?=[A-Za-z0-9_+\/-]*_)[A-Za-z0-9_+\/-]{16,31}(?![A-Za-z0-9_+\/-])/g, (m) => (/^(?:eth|net|web3|debug|trace|txpool|engine)_[A-Za-z]+$/.test(m) ? m : '<token>')],
 ]);
 /**
  * What may still be sensitive after masking: the message is then withheld whole (fail closed),
  * never kept in part.
  */
 export const SANITIZER_WITHHELD = '<withheld>';
-const SUSPICIOUS = /[@=]|:\/\/|passw|passphrase|secret|bearer|basic\s|api[\s_-]?key|apikey|access[\s_-]?key|private[\s_-]?key|mnemonic|seed|credential|cookie|session|authoriz|\bauth\b|\bjwt\b|\btoken\s*:/i;
+const SUSPICIOUS = /[@=]|:\/\/|passw|\bpass\b|\bpwd\b|passphrase|secret|bearer|basic\s|api[\s_-]?key|apikey|access[\s_-]?key|private[\s_-]?key|mnemonic|seed|credential|cookie|session|authoriz|\bauth\b|\bjwt\b|\btoken\s*:/i;
 
 /**
  * An error message as evidence: printable ASCII; URLs, words holding "@" or "=", host:port,

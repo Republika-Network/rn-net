@@ -1,0 +1,7 @@
+{"authorizationDigest":"sha256:319108f499ac590c9dd6adbefef1aa320041a4b28bdd8355c2f6b1441512049f","authorizationId":"c6-fixture-transport-stuck-refuses-next","format":"rnnet.provider-compat-journal.v1"}
+{"call":1,"event":"send","providerId":"xrpl-testnet-ripple","requestSha256":"sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d"}
+{"call":1,"error":"RNLO_TIMEOUT","event":"outcome","responseBytes":null,"responseFile":null,"responseSha256":null,"status":null}
+{"call":2,"event":"send","providerId":"xrpl-testnet-xrpl-labs","requestSha256":"sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d"}
+{"call":2,"error":"RNCL_TRANSPORT_REFUSED","event":"outcome","responseBytes":null,"responseFile":null,"responseSha256":null,"status":null}
+{"call":3,"event":"refused","policy":"the C6 transport refused call 2"}
+{"call":4,"event":"refused","policy":"the C6 transport refused call 2"}

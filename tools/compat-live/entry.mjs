@@ -227,8 +227,10 @@ export function checkDurability(dir, { io = NODE_IO, minFreeBytes = MIN_FREE_BYT
   }
   const free = BigInt(fs.bavail) * BigInt(fs.bsize);
   if (free < BigInt(minFreeBytes)) throw evidenceError(`${dir}: ${free} bytes free, at least ${minFreeBytes} are required`);
-  const probe = join(dir, '.c6-durability-probe');
-  const linked = join(dir, '.c6-durability-probe-linked');
+  // Names of this probe only: a probe left by a killed run never blocks, and none is removed but its own.
+  const tag = createHash('sha256').update(`${Date.now()}:${Math.random()}:${dir}`).digest('hex').slice(0, 16);
+  const probe = join(dir, `.c6-durability-probe-${tag}`);
+  const linked = join(dir, `.c6-durability-probe-${tag}-linked`);
   let fd = null;
   try {
     fd = io.openSync(probe, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);

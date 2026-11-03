@@ -46,6 +46,20 @@ const hangOn = (providerId, method, inner) => async (request) => {
   if (request.providerId === providerId && JSON.parse(Buffer.from(request.body).toString('utf8')).method === method) return new Promise(() => {});
   return inner(request);
 };
+// The C6 transport's busy refusal, over hangOn: busy while a request is pending.
+const busyAfterHang = (providerId, method, inner) => {
+  const hanging = hangOn(providerId, method, inner);
+  let busy = false;
+  return async (request) => {
+    if (busy) throw Object.assign(new Error('RNCL_TRANSPORT_REFUSED'), { code: 'RNCL_TRANSPORT_REFUSED' });
+    busy = true;
+    try {
+      return await hanging(request);
+    } finally {
+      busy = false;
+    }
+  };
+};
 /** The policy's deadline in the fixtures: fires one macrotask later, after any simulated answer. */
 const immediateDeadline = () => new Promise((resolve) => setImmediate(resolve));
 const neverDeadline = () => new Promise(() => {});
@@ -56,6 +70,9 @@ export const RUN_FIXTURES = Object.freeze([
     .map((name) => ({ name, transport: () => simulatedTransport(scenario(name)) })),
   // The deadline is the policy's own: a provider that never answers is a TIMEOUT after timeoutMs.
   { name: 'deadline-hang-1rpc-head', transport: () => hangOn('sepolia-1rpc', 'eth_getBlockByNumber', simulatedTransport({})), sleep: immediateDeadline },
+  // A transport that never settles (review B1): the policy's own deadline ends call 1, the next
+  // request finds the C6 transport busy and is refused without being sent, and the run stops.
+  { name: 'transport-stuck-refuses-next', transport: () => busyAfterHang('xrpl-testnet-ripple', 'server_info', simulatedTransport({})), sleep: immediateDeadline },
   // The authorization expires during the run: the policy refuses from that request on; nothing more is sent.
   { name: 'authorization-expires-mid-run', transport: () => simulatedTransport({}), expiresAfterCalls: 10 },
   // A response that cannot be stored stops the run; it is never read as a transport error (review

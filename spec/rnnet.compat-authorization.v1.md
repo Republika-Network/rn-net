@@ -79,13 +79,15 @@ CA, preload or any Node.js option is present. Then the flow, in order; any refus
    digest; the answer must be exactly `c6 <last 16 hex digits of the authorization digest>`. The
    prompt is written to, and the answer read from, the controlling terminal (`/dev/tty`) only:
    standard input is never read, so a pipe, a here-document or another program cannot answer.
-   Without a terminal there is no approval (`tty-approval.mjs`);
+   Anything typed on the terminal before the prompt is read without blocking and discarded first,
+   so only a line typed after the prompt answers it. Without a terminal there is no approval
+   (`tty-approval.mjs`);
 6. the time is read again after the approval, and the authorization re-checked against it;
-7. durability (N1): the evidence directory is private (`0700`, owned by the founder, not a link),
-   has at least 64 MiB free, and passes a probe (a file created, written, fsynced, linked and
-   removed). Then its run lock `c6-run.lock` is taken (`O_EXCL`): one run at a time in the
-   directory, whatever its authorization. A lock left by a killed run stays, and blocks, until the
-   founder removes it after checking that no run is active;
+7. durability (N1): the evidence directory is private (`0700`, owned by the founder, not a link).
+   Its run lock `c6-run.lock` is taken (`O_EXCL`): one run at a time in the directory, whatever its
+   authorization. A lock left by a killed run stays, and blocks, until the founder removes it after
+   checking that no run is active. Then, under the lock, it must have at least 64 MiB free and pass
+   a probe (a file of this run's own name created, written, fsynced, linked and removed);
 8. `<evidence-dir>/<authorizationId>/` is created, mode `0700`. `mkdir` fails if it exists, so an
    authorization runs at most once (`RNCL_AUTHORIZATION_USED`). The authorization text is stored
    first, then the journal is started (§5);
@@ -124,9 +126,18 @@ Before each request it checks:
 - **the journal has durably recorded the request** (a `send` record, appended and fsynced). If it
   cannot, the request is not sent: a request with no `send` record was never sent (N1).
 
+The request's members are read **once**, into a frozen snapshot (its body copied once), and every
+check, the transcript and the transport use that snapshot only: a request object whose members
+change between reads cannot pass one body to the checks and another to the network.
+
 It then calls the transport **once**, with a fresh copy of exactly the checked request. It does not
-retry, and it never sends a request to another provider. If the transport has not answered after
-the deadline, the call is a TIMEOUT.
+retry, and it never sends a request to another provider. Its own deadline is the request's
+10,000 ms plus a grace of 2,000 ms (review B1): the HTTPS transport's own 10,000 ms timer settles
+first, so the transport is idle before the next request. The policy's deadline only bounds a
+transport that never settles; the C6 transport is then still busy and refuses the next request.
+A request the C6 transport refuses (`RNCL_TRANSPORT_REFUSED`) was **not sent**: it is recorded with
+that `error`, counted as never sent and not forwarded, its refusal becomes the run's policy
+violation, and nothing more is sent.
 
 The response is read once (review F4): its `status` and `body` are each read a single time. The
 status must be an integer from 100 to 599 (review F6). The body must be a genuine `Uint8Array` or
@@ -173,9 +184,10 @@ an I/O error never leaves a truncated or undurable file under a run file's name.
 After one failed append, nothing more is appended. In a complete run the journal is exactly the
 header followed by the records the transcript implies, and both checkers compare it byte for byte.
 
-**An incomplete run** (refused with `RNCL_EVIDENCE`) holds `authorization.json` and
-`journal.ndjson`, the responses stored before the failure, and `transcript.json` if it could be
-written, never `evidence.json` and `report.json`. Read from the disk alone:
+**An incomplete run** (refused with `RNCL_EVIDENCE` or `RNCL_NOT_REPRODUCED`) holds
+`authorization.json` and `journal.ndjson`, the responses stored before the failure,
+`transcript.json` if it could be written, and `evidence.json` only if what failed came after it
+(the report's write or its reproduction); never `report.json`. Read from the disk alone:
 
 - a call with no `send` record was **never sent**;
 - a call with a `send` record and an `outcome` (no `RNCL_STORAGE`) was **sent and recorded**;
@@ -231,7 +243,9 @@ RN-NET-03B2-C6-LIVE-ENABLE implemented and reviewed the enabling code:
 3. in the guard, `COMPAT_TRANSPORT_JOINERS` lists exactly `tools/compat-live/compat-live.mjs`, and
    `compat-live-reaches-network` is narrowed: only `compat-live.mjs` and `c6-transport.mjs` may
    reach a network file, only `tools/live/https-transport.mjs`, and only `c6-transport.mjs` may
-   import it directly (`compat-live-transport-not-narrowed`); `c6-transport.mjs` imports nothing of
+   import it directly; with `c6-transport.mjs` removed from the import graph, no other file in
+   tools/compat-live/ reaches any network file, through any relay anywhere
+   (`compat-live-transport-not-narrowed`); `c6-transport.mjs` imports nothing of
    `tools/compat/`. The transport file itself is no longer exempt from
    `compat-transport-join-transitive` (review N-d).
 
@@ -264,7 +278,12 @@ fault in the run, the manifest or the policy cannot widen it. Whatever it is ask
 - at most 22 requests in all and 2, 2, 9, 9 per provider, counted before sending (a failure still
   counts: no retry); one request at a time;
 - a deadline of exactly 10,000 ms and a response limit of exactly 262,144 bytes; a request body of
-  1 to 4,096 bytes that is one JSON object whose method is not a write, signing or key method;
+  1 to 4,096 bytes in canonical form (so no duplicate key) and of the manifest's shape (XRPL
+  `{method, params: [ {…} ]}`, Sepolia `{id: 1, jsonrpc: "2.0", method, params: […]}`), whose
+  method is one the manifest uses for that provider (an allowlist: `server_info` and `tx` on XRPL;
+  `eth_chainId`, `eth_getBlockByNumber`, `eth_getTransactionCount`, `eth_getBalance`, `eth_getCode`
+  and `eth_estimateGas` on Sepolia), and never a write, signing or key method;
+- anything it refuses is refused without being sent (`RNCL_TRANSPORT_REFUSED`);
 - no environment that could reroute or weaken it. It refuses to be built if any of these is
   present, in any letter case, even empty: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`,
   `NODE_USE_ENV_PROXY`, `GLOBAL_AGENT_HTTP(S)_PROXY`, `NODE_TLS_REJECT_UNAUTHORIZED`,
@@ -302,16 +321,21 @@ characters (bounded time and memory), keeps at most 160, and masks, in this orde
 1. `scheme://…` → `<url>`;
 2. any word holding `@` (user:password@host, user@host, an e-mail address) → `<userinfo>`;
 3. any word holding `=` (key=value, a query string) → `<kv>`;
-4. four or more dotted numbers, whatever is next to them except another digit (review N-b: `ip_10.1.2.3`) → `<ip>`;
-5. IPv6 (and so the `::ffff:` left of a masked IPv4-mapped address) → `<ip>`;
-6. `name:port`, `a.b.c:port` → `<host>`;
-7. a word joined to another by one colon (scheme-less user:password) → `<userinfo>`;
-8. a bare dotted host name whose last label starts with a letter, and `localhost` → `<host>`;
-9. runs of 32 or more opaque characters → `<token>`, except 0x-prefixed hex (chain data);
-10. runs of 12 to 31 characters mixing letters and digits → `<token>`, except 0x-prefixed hex.
+4. two or more dotted numbers, whatever is next to them except another digit (review N-b:
+   `ip_10.1.2.3`, and the 2- and 3-part forms `10.1`) → `<ip>`;
+5. a bare 8- to 10-digit decimal (an IPv4 address as one integer) → `<ip>`;
+6. IPv6 (and so the `::ffff:` left of a masked IPv4-mapped address) → `<ip>`;
+7. `name:port`, `a.b.c:port` → `<host>`;
+8. words joined by colons with no space (scheme-less `user:password`, `user:pass:word`) → `<userinfo>`;
+9. a bare dotted name (`my.host.1`, `internal.10`) and `localhost` → `<host>`;
+10. runs of 32 or more opaque characters → `<token>`, except 0x-prefixed hex (chain data);
+11. runs of 12 to 31 characters mixing letters and digits → `<token>`, except 0x-prefixed hex;
+12. runs of 16 to 31 holding `_` (`sk_live_…`, `ghp_…`) → `<token>`, except a JSON-RPC method name
+    (`eth_…`, `net_…`, `web3_…`, `debug_…`, `trace_…`, `txpool_…`, `engine_…`).
 
 If anything that may be a credential remains (`@`, `=`, `://`, or a word such as password,
-secret, bearer, api key, private key, mnemonic, seed, credential, cookie, session, authorization,
-auth, jwt, `token:`), the whole message is replaced by `<withheld>` (fail closed, review N-c).
-`vectors/compat/sanitizer.json` pins the output on 40 fixed cases and the SHA-256 of the output over
+pass, pwd, secret, bearer, api key, private key, mnemonic, seed, credential, cookie, session,
+authorization, auth, jwt, `token:`), the whole message is replaced by `<withheld>` (fail closed,
+review N-c). A 0x-prefixed integer (`0x7f000001`) is kept: it has the form of chain data.
+`vectors/compat/sanitizer.json` pins the output on 50 fixed cases and the SHA-256 of the output over
 a seeded corpus of 4,000 strings that both implementations generate; both must reproduce it.

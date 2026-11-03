@@ -394,7 +394,7 @@ test('the policy deadline and response limit hold whatever the transport does', 
   const slept = [];
   const hang = makePolicy({ sleep: (ms) => { slept.push(ms); return Promise.resolve(); }, respond: () => { asked += 1; return new Promise(() => {}); } });
   await assert.rejects(hang.t(preq('S01')), (e) => e.code === 'RNLO_TIMEOUT');
-  assert.deepEqual(slept, [10_000]);
+  assert.deepEqual(slept, [12_000], 'the policy deadline is the request deadline plus its grace (review B1)');
   assert.equal(asked, 1);
   const big = makePolicy({ respond: async () => ({ status: 200, body: Buffer.alloc(262_145, 0x20) }) });
   await assert.rejects(big.t(preq('S01')), (e) => e.code === 'RNLO_RESPONSE_TOO_LARGE');

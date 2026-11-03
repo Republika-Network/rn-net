@@ -17,8 +17,8 @@
 //   6. the founder approves this one run by typing `c6` and the digest's last 16 hex digits, after
 //      seeing every value it is bound to;
 //   7. `now` is read after the approval; the authorization is checked again at that time;
-//   8. the evidence directory is private, has room for the whole run and passes a durable write
-//      probe, and its run lock is free (one run at a time);
+//   8. the evidence directory is private, its run lock is free and taken (one run at a time), and
+//      it has room for the whole run and passes a durable write probe;
 //   9. the run directory <evidence-dir>/<authorizationId>/ is created (0700): one run per
 //      authorization, whatever its outcome; the authorization text is stored, then the journal;
 //  10. tools/compat/run.mjs sends the manifest requests through the request policy
@@ -141,11 +141,12 @@ export async function compatLive({ argv, deps }) {
     const now = clock();
     if (now > notAfter) refuse(CompatEntryCode.AUTHORIZATION_EXPIRED, `void since ${a.notAfter} (expired during the approval)`);
     checkEvidenceDirectory(args['evidence-dir'], uid, io);
-    checkDurability(args['evidence-dir'], { io, minFreeBytes: deps.minFreeBytes });
+    // The lock first, so no two runs probe or write at once (C6-LIVE-ENABLE review: probe race).
     const release = acquireRunLock(args['evidence-dir'], a.authorizationId, io);
     let outcome;
     let runDirectory = null;
     try {
+      checkDurability(args['evidence-dir'], { io, minFreeBytes: deps.minFreeBytes });
       runDirectory = createRunDirectory(args['evidence-dir'], a.authorizationId, io);
       try {
         writeNewFile(runDirectory, RUN_FILES.authorization, authorizationText, io);
@@ -240,6 +241,7 @@ function result({ outcome, code, detail, runDirectory = null, report = null, rep
     );
     if (report.policyViolation !== null) lines.push(`request policy stopped the run: ${report.policyViolation}`);
   }
+  if (summary !== null) lines.push(describeSummary(summary));
   if (runDirectory !== null) lines.push(`evidence: ${runDirectory}`);
   lines.push(outcome === 'REFUSED' ? NEXT_STEP.REFUSED : NEXT_STEP.RUN);
   return Object.freeze({ exitCode: COMPAT_EXIT[outcome], outcome, code, runDirectory, reportSha256, report, summary, message: lines.join('\n') });

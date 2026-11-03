@@ -8,10 +8,14 @@
 // What it allows, whatever its caller asks:
 //   - exactly the four reviewed provider ids, each only at its reviewed URL (no substitution, no
 //     fallback, no other host, port, path, scheme or credential);
-//   - at most 22 requests in all, and each provider's own count (2, 2, 9, 9); no retry: a refused
-//     or failed request still counts;
+//   - at most 22 requests in all, and each provider's own count (2, 2, 9, 9), counted when a request
+//     is handed to the HTTPS transport; no retry: a request that failed there still counts;
 //   - a 10 s deadline and a 256 KiB response limit, exactly; a request body of at most 4096 bytes
-//     that is one JSON-RPC request object, never a write or signing method;
+//     that is one canonical JSON-RPC request object of the manifest's shape (no other key, no
+//     duplicate key), whose method is one the manifest uses for that provider's network (an
+//     allowlist: every other method, a write or signing method above all, is refused);
+//   - anything it refuses is refused WITHOUT being sent, with RNCL_TRANSPORT_REFUSED, which the
+//     policy records as never sent and which stops the run (C6-LIVE-ENABLE review B1);
 //   - one request at a time;
 //   - none of the environment that could reroute or weaken it: a proxy variable, a TLS override,
 //     an extra CA, NODE_OPTIONS or a key log file, and no Node.js option (--use-openssl-ca, --tls-*,
@@ -21,6 +25,7 @@
 // (no private, loopback, link-local, multicast or reserved address), identity bodies only, a
 // streaming size limit, and no connection reuse.
 import { Buffer } from 'node:buffer';
+import { canonicalBytes } from '../../packages/canonical/src/index.mjs';
 import { createHttpsTransport } from '../live/https-transport.mjs';
 
 /** The four reviewed providers (config/rpc-endpoints.json, the C6 manifest), in manifest order. */
@@ -30,6 +35,13 @@ export const C6_TRANSPORT_PROVIDERS = Object.freeze([
   Object.freeze({ id: 'sepolia-publicnode', url: 'https://ethereum-sepolia-rpc.publicnode.com/', requests: 9 }),
   Object.freeze({ id: 'sepolia-1rpc', url: 'https://public.1rpc.io/sepolia', requests: 9 }),
 ]);
+/** The methods the manifest uses, per network of the provider: the only ones sent. */
+export const C6_TRANSPORT_METHODS = Object.freeze({
+  'xrpl-testnet-ripple': Object.freeze(['server_info', 'tx']),
+  'xrpl-testnet-xrpl-labs': Object.freeze(['server_info', 'tx']),
+  'sepolia-publicnode': Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas']),
+  'sepolia-1rpc': Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getTransactionCount', 'eth_getBalance', 'eth_getCode', 'eth_estimateGas']),
+});
 export const C6_TRANSPORT_LIMITS = Object.freeze({ totalRequests: 22, timeoutMs: 10_000, maxResponseBytes: 262_144, maxRequestBytes: 4096 });
 /** Methods that write, sign or hold keys: never sent, whatever the policy says. */
 export const C6_TRANSPORT_REFUSED_METHODS = Object.freeze([
@@ -56,7 +68,9 @@ export class C6TransportEnvironmentError extends Error {
   }
 }
 
-const blocked = () => Object.assign(new Error('RNLO_BLOCKED_ADDRESS'), { code: 'RNLO_BLOCKED_ADDRESS' });
+export const C6_TRANSPORT_REFUSED = 'RNCL_TRANSPORT_REFUSED';
+const refused = () => Object.assign(new Error(C6_TRANSPORT_REFUSED), { code: C6_TRANSPORT_REFUSED });
+const sameBytes = (a, b) => a.length === b.length && Buffer.from(a).equals(Buffer.from(b));
 const connection = () => Object.assign(new Error('RNLO_CONNECTION'), { code: 'RNLO_CONNECTION' });
 
 /** Refuses an environment or Node.js options that could reroute or weaken the transport. */
@@ -85,18 +99,32 @@ export function createC6Transport({ env, execArgv, base = createHttpsTransport()
   return async (request) => {
     const id = request?.providerId;
     const provider = typeof id === 'string' ? providers.get(id) : undefined;
-    if (provider === undefined || request.url !== provider.url) throw blocked();
-    if (request.timeoutMs !== L.timeoutMs || request.maxResponseBytes !== L.maxResponseBytes) throw blocked();
-    if (!(request.body instanceof Uint8Array) || request.body.length === 0 || request.body.length > L.maxRequestBytes) throw blocked();
+    if (provider === undefined || request.url !== provider.url) throw refused();
+    if (request.timeoutMs !== L.timeoutMs || request.maxResponseBytes !== L.maxResponseBytes) throw refused();
+    if (!(request.body instanceof Uint8Array) || request.body.length === 0 || request.body.length > L.maxRequestBytes) throw refused();
     const body = Uint8Array.from(request.body);
     let message;
     try {
       message = JSON.parse(Buffer.from(body).toString('utf8'));
     } catch {
-      throw blocked();
+      throw refused();
     }
-    if (message === null || typeof message !== 'object' || Array.isArray(message) || typeof message.method !== 'string' || C6_TRANSPORT_REFUSED_METHODS.includes(message.method)) throw blocked();
-    if (busy || total >= L.totalRequests || sent.get(id) >= provider.requests) throw blocked();
+    if (message === null || typeof message !== 'object' || Array.isArray(message) || typeof message.method !== 'string' || C6_TRANSPORT_REFUSED_METHODS.includes(message.method)) throw refused();
+    if (!C6_TRANSPORT_METHODS[id].includes(message.method)) throw refused();
+    // The manifest's shape, in canonical form: XRPL { method, params: [ {...} ] }, Sepolia
+    // { id: 1, jsonrpc: "2.0", method, params: [...] }. A duplicate key cannot survive the
+    // canonical comparison (JSON.parse keeps one; the bytes held two).
+    const keys = Object.keys(message).sort().join(',');
+    const xrpl = id.startsWith('xrpl-');
+    if (xrpl ? keys !== 'method,params' || !Array.isArray(message.params) || message.params.length !== 1 : keys !== 'id,jsonrpc,method,params' || message.id !== 1 || message.jsonrpc !== '2.0' || !Array.isArray(message.params)) throw refused();
+    let canonical;
+    try {
+      canonical = canonicalBytes(message);
+    } catch {
+      throw refused();
+    }
+    if (!sameBytes(canonical, body)) throw refused();
+    if (busy || total >= L.totalRequests || sent.get(id) >= provider.requests) throw refused();
     // Counted before it is sent: a request that fails is never sent again by this transport.
     total += 1;
     sent.set(id, sent.get(id) + 1);

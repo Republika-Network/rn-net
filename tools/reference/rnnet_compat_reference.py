@@ -168,21 +168,24 @@ def check_depth(text):
 
 HEX_0X = re.compile(r"0x[0-9a-fA-F]+", re.A)
 HEX_DIGIT = re.compile(r"[0-9A-Fa-f]", re.A)
+RPC_METHOD = re.compile(r"(?:eth|net|web3|debug|trace|txpool|engine)_[A-Za-z]+", re.A)
 # The masks of tools/compat/run.mjs SANITIZER_MASKS, in the same order (C6-LIVE-ENABLE, N-b, N-c).
 SANITIZER_MASKS = [
     ("url", re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S*", re.A), "<url>"),
     ("userinfo-at", re.compile(r"\S*@\S*", re.A), "<userinfo>"),
     ("key-value", re.compile(r"\S*=\S*", re.A), "<kv>"),
-    ("ipv4", re.compile(r"(?<![0-9])\d+(?:\.\d+){3,}", re.A), "<ip>"),
+    ("ipv4", re.compile(r"(?<![0-9])\d+(?:\.\d+)+", re.A), "<ip>"),
+    ("ipv4-integer", re.compile(r"(?<![0-9A-Za-z])\d{8,10}(?![0-9A-Za-z])", re.A), "<ip>"),
     ("ipv6", re.compile(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}", re.A), lambda m: "<ip>" if HEX_DIGIT.search(m.group(0)) else m.group(0)),
     ("host-port", re.compile(r"(?<![A-Za-z0-9.:-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d{1,5}(?![0-9])", re.A), "<host>"),
-    ("userinfo-colon", re.compile(r"[^\s:]+:[^\s:]+", re.A), "<userinfo>"),
-    ("hostname", re.compile(r"(?<![A-Za-z0-9.-])(?:[A-Za-z0-9-]+\.)+[A-Za-z][A-Za-z0-9-]*(?![A-Za-z0-9-])|(?<![A-Za-z0-9-])[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt](?![A-Za-z0-9-])", re.A), "<host>"),
+    ("userinfo-colon", re.compile(r"[^\s:]+(?::[^\s:]+)+", re.A), "<userinfo>"),
+    ("hostname", re.compile(r"(?<![A-Za-z0-9.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?![A-Za-z0-9-])|(?<![A-Za-z0-9-])[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt](?![A-Za-z0-9-])", re.A), "<host>"),
     ("long-token", re.compile(r"[A-Za-z0-9_+/-]{32,}", re.A), lambda m: m.group(0) if HEX_0X.fullmatch(m.group(0)) else "<token>"),
     ("short-token", re.compile(r"(?<![A-Za-z0-9_+/-])(?=[A-Za-z0-9_+/-]*[0-9])(?=[A-Za-z0-9_+/-]*[A-Za-z])[A-Za-z0-9_+/-]{12,31}(?![A-Za-z0-9_+/-])", re.A), lambda m: m.group(0) if HEX_0X.fullmatch(m.group(0)) else "<token>"),
+    ("underscore-token", re.compile(r"(?<![A-Za-z0-9_+/-])(?=[A-Za-z0-9_+/-]*_)[A-Za-z0-9_+/-]{16,31}(?![A-Za-z0-9_+/-])", re.A), lambda m: m.group(0) if RPC_METHOD.fullmatch(m.group(0)) else "<token>"),
 ]
 WITHHELD = "<withheld>"
-SUSPICIOUS = re.compile(r"[@=]|://|passw|passphrase|secret|bearer|basic\s|api[\s_-]?key|apikey|access[\s_-]?key|private[\s_-]?key|mnemonic|seed|credential|cookie|session|authoriz|\bauth\b|\bjwt\b|\btoken\s*:", re.A | re.I)
+SUSPICIOUS = re.compile(r"[@=]|://|passw|\bpass\b|\bpwd\b|passphrase|secret|bearer|basic\s|api[\s_-]?key|apikey|access[\s_-]?key|private[\s_-]?key|mnemonic|seed|credential|cookie|session|authoriz|\bauth\b|\bjwt\b|\btoken\s*:", re.A | re.I)
 PLACEHOLDER = re.compile(r"<(?:url|userinfo|kv|host|ip|token)>", re.A)
 
 
@@ -665,6 +668,10 @@ def journal_summary(records):
             outcome[r["call"]] = r
         elif r["event"] == "refused":
             refused.append(r["call"])
+    # The C6 transport refused it without sending it (review B1).
+    by_transport = [c for c in sent if c in outcome and outcome[c]["error"] == "RNCL_TRANSPORT_REFUSED"]
+    sent = [c for c in sent if c not in by_transport]
+    refused = sorted(refused + by_transport)
     recorded = [c for c in sent if c in outcome and outcome[c]["error"] != "RNCL_STORAGE"]
     unrecorded = [c for c in sent if c not in recorded]
     return recorded, unrecorded, refused
@@ -674,7 +681,9 @@ def incomplete_run_checks(run_dir: Path, names, a, digest, private: bool):
     """A run refused because an evidence write failed (N1): what it holds must be consistent, and it
     must never carry evidence.json or report.json."""
     raw = lambda name: (run_dir / name).read_bytes()  # noqa: E731
-    yield "an incomplete run holds no evidence.json and no report.json", not ({"evidence.json", "report.json"} & names)
+    # evidence.json may be there only when the report could not be stored or reproduced after it
+    # (C6-LIVE-ENABLE review N4); report.json never is.
+    yield "an incomplete run holds no report.json, and evidence.json only beside a stored transcript", "report.json" not in names and ("evidence.json" not in names or "transcript.json" in names)
     yield "no partially written file is left under a run file's name", not any(n.startswith(".") for n in names)
     records, torn = journal_lines(raw("journal.ndjson").decode("utf-8"))
     yield "the journal starts with its header for this authorization", bool(records) and records[0] == {"authorizationDigest": digest, "authorizationId": a["authorizationId"], "format": JOURNAL_FORMAT}
@@ -698,7 +707,7 @@ def incomplete_run_checks(run_dir: Path, names, a, digest, private: bool):
         unrecorded = [c for c in unrecorded if c in reached]
         files = {c["responseFile"] for c in calls if c["responseFile"] is not None}
         yield "every stored response matches its recorded digest and size", all(sha(raw(c["responseFile"])) == c["responseSha256"] and len(raw(c["responseFile"])) == c["responseBytes"] for c in calls if c["responseFile"] is not None)
-        yield "the run directory holds only the run files and the recorded responses", names - {"python-reference.txt"} <= INCOMPLETE_FILES | {"transcript.json"} | files | {f"response-{c['call']:02d}.bin" for c in calls}
+        yield "the run directory holds only the run files and the recorded responses", names - {"python-reference.txt"} <= INCOMPLETE_FILES | {"transcript.json", "evidence.json"} | files | {f"response-{c['call']:02d}.bin" for c in calls}
     rng = lambda xs: ",".join(str(x) for x in xs) or "none"  # noqa: E731
     # Without a transcript the journal alone is read conservatively: a "send" with no outcome was
     # possibly sent. A call with no "send" record was never sent.
@@ -764,12 +773,15 @@ def run_checks(run_dir: Path, private: bool):
     if violation is None:
         # A response that could not be stored stops the run (C6-LIVE review F1).
         violation = next((f"response storage failed at call {c['call']}" for c in calls if c["error"] == "RNCL_STORAGE"), None)
+    if violation is None:
+        # The C6 transport refused it without sending it (C6-LIVE-ENABLE review B1).
+        violation = next((f"the C6 transport refused call {c['call']}" for c in calls if c["error"] == "RNCL_TRANSPORT_REFUSED"), None)
     report = {
         "format": "rnnet.provider-compat-report.v1", "authorizationId": a["authorizationId"], "authorizationDigest": digest,
         "authorizationFileSha256": sha(auth_text.encode("utf-8")), "manifestSha256": a["manifestSha256"],
         "providers": a["providers"], "requestBudget": a["requestBudget"], "publication": a["publication"],
         "observedAt": ev["observedAt"], "requestCount": count, "sentPerProvider": sent,
-        "forwardedRequests": sum(1 for c in calls if c["policy"] is None), "policyViolation": violation,
+        "forwardedRequests": sum(1 for c in calls if c["policy"] is None and c["error"] != "RNCL_TRANSPORT_REFUSED"), "policyViolation": violation,
         "transcriptSha256": sha(transcript_text.encode("utf-8")), "evidenceSha256": sha(evidence_text.encode("utf-8")),
         "responses": [{"call": c["call"], "file": c["responseFile"], "bytes": c["responseBytes"], "sha256": c["responseSha256"]} for c in calls if c["responseFile"] is not None],
         "checks": [{"id": c, "status": s} for c, s in checks], "verdict": verdict, "sepoliaBranches": br,

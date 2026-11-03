@@ -1223,6 +1223,12 @@ test('C6-LIVE(-ENABLE): only the command and the narrow C6 transport reach the n
   // The command may not import the reviewed transport directly: only through the C6 transport.
   const direct = found([['tools/compat-live/compat-live.mjs', "import { httpsTransport } from '../live/https-transport.mjs';\nexport const r = httpsTransport;"], transport]);
   assert.ok(direct.includes('tools/compat-live/compat-live.mjs:compat-live-transport-not-narrowed'), direct.join(' '));
+  // Nor through a relay anywhere (C6-LIVE-ENABLE review N2): every route goes through the C6 transport.
+  for (const [relayPath, relay] of [['tools/live/relay.mjs', "export { httpsTransport } from './https-transport.mjs';"], ['tools/verify-x.mjs', "import { httpsTransport } from './live/https-transport.mjs';\nexport const t = httpsTransport;"]]) {
+    const spec = relayPath === 'tools/live/relay.mjs' ? '../live/relay.mjs' : '../verify-x.mjs';
+    const out = found([['tools/compat-live/compat-live.mjs', `import { ${relayPath.endsWith('relay.mjs') ? 'httpsTransport' : 't'} } from '${spec}';\nexport const r = 1;`], [relayPath, relay], transport, c6]);
+    assert.ok(out.includes('tools/compat-live/compat-live.mjs:compat-live-transport-not-narrowed'), `${relayPath}: ${out.join(' ')}`);
+  }
   // The C6 transport may not reach tools/compat/: it would be a second, unlisted joiner.
   const widened = found([['tools/compat-live/c6-transport.mjs', "import { C6_PROVIDERS } from '../compat/manifest.mjs';\nimport { createHttpsTransport } from '../live/https-transport.mjs';\nexport const a = [C6_PROVIDERS, createHttpsTransport];"], ['tools/compat/manifest.mjs', 'export const C6_PROVIDERS = [];'], transport]);
   assert.ok(widened.includes('tools/compat-live/c6-transport.mjs:compat-transport-join-transitive'), widened.join(' '));

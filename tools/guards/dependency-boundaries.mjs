@@ -854,6 +854,17 @@ function checkWriteTransportClosure(files, add, wholeTree) {
       const networkReached = [...seen].filter((p) => p === TRANSPORT_FILE || network.has(p));
       if (reachesNetwork && (!COMPAT_LIVE_NETWORK_FILES.includes(path) || networkReached.some((p) => p !== TRANSPORT_FILE))) add(path, 'compat-live-reaches-network');
       if ((edges.get(path) ?? []).includes(TRANSPORT_FILE) && path !== COMPAT_LIVE_TRANSPORT_FILE) add(path, 'compat-live-transport-not-narrowed');
+      // Every route to the network goes through the C6 transport (C6-LIVE-ENABLE review N2): with
+      // it removed from the graph, nothing here reaches a network file, through a relay anywhere.
+      if (path !== COMPAT_LIVE_TRANSPORT_FILE) {
+        const around = new Set([path]);
+        const queue = [path];
+        while (queue.length) {
+          const at = queue.pop();
+          for (const next of edges.get(at) ?? []) if (next !== COMPAT_LIVE_TRANSPORT_FILE && !around.has(next)) { around.add(next); queue.push(next); }
+        }
+        if ([...around].some((p) => p === TRANSPORT_FILE || network.has(p))) add(path, 'compat-live-transport-not-narrowed');
+      }
       const forbidden = (p) => isWrite(p) || ['signer/', 'txverify/', KEYTOOL, 'tools/signing/', 'tools/broadcast/', PREPARE_TOOLS, 'packages/tx-prepare/', 'tools/rehearsal/'].some((d) => p.startsWith(d));
       if ([...seen].some(forbidden)) add(path, 'compat-live-reaches-write-or-key');
     }
