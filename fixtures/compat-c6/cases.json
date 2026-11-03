@@ -32186,6 +32186,785 @@
    }
   },
   {
+   "name": "error-message-mapped-ipv6-and-long",
+   "models": "B",
+   "now": 1793000000,
+   "transcript": [
+    {
+     "providerId": "xrpl-testnet-ripple",
+     "status": 200,
+     "text": "{\"result\":{\"status\":\"success\",\"info\":{\"build_version\":\"3.4.1\",\"complete_ledgers\":\"21900000-21950000\",\"network_id\":1,\"server_state\":\"full\",\"load_factor\":1,\"validated_ledger\":{\"age\":2,\"base_fee_xrp\":0.00001,\"hash\":\"6CBA1D9AE62B98C8785B64132A5F441DCBFE3EAFE588BBBA1B42C8EC3AC1F525\",\"reserve_base_xrp\":1,\"reserve_inc_xrp\":0.2,\"seq\":21950000}}}}",
+     "pad": 0
+    },
+    {
+     "providerId": "xrpl-testnet-xrpl-labs",
+     "status": 200,
+     "text": "{\"result\":{\"status\":\"success\",\"info\":{\"build_version\":\"3.4.1\",\"complete_ledgers\":\"21000000-21950001\",\"network_id\":1,\"server_state\":\"full\",\"load_factor\":1,\"validated_ledger\":{\"age\":1,\"base_fee_xrp\":0.00001,\"hash\":\"B5135F22DFE9DC5DF64BD8BEA0E1814D51729008C8FF4413CEE2563EA725BAFB\",\"reserve_base_xrp\":1,\"reserve_inc_xrp\":0.2,\"seq\":21950001}}}}",
+     "pad": 0
+    },
+    {
+     "providerId": "xrpl-testnet-ripple",
+     "status": 200,
+     "text": "{\"result\":{\"status\":\"error\",\"error\":\"txnNotFound\",\"error_code\":29,\"error_message\":\"Transaction not found.\",\"request\":{\"api_version\":2,\"binary\":false,\"max_ledger\":21950000,\"min_ledger\":21949001,\"transaction\":\"B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45\"},\"searched_all\":true}}",
+     "pad": 0
+    },
+    {
+     "providerId": "xrpl-testnet-xrpl-labs",
+     "status": 200,
+     "text": "{\"result\":{\"status\":\"error\",\"error\":\"txnNotFound\",\"error_code\":29,\"error_message\":\"Transaction not found.\",\"request\":{\"api_version\":2,\"binary\":false,\"max_ledger\":21950001,\"min_ledger\":21949002,\"transaction\":\"B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45\"},\"searched_all\":true}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0xaa36a7\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0xaa36a7\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"number\":\"0x90f560\",\"hash\":\"0xe89e086ea38167d3f00853c257f103496c4db7895c2181c7e08a58df3951caa7\",\"parentHash\":\"0x9776778b4501c816f1ba1d0a0beeed13bddb0bb28d22033065348ab10b7ec7f0\",\"timestamp\":\"0x6adf0233\",\"baseFeePerGas\":\"0x3b9aca00\",\"transactions\":[]}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"number\":\"0x90f561\",\"hash\":\"0x436695f6b4ba37b4aed543a42734e010e1e1432820138f9f50b782c4abf6ac8a\",\"parentHash\":\"0xe89e086ea38167d3f00853c257f103496c4db7895c2181c7e08a58df3951caa7\",\"timestamp\":\"0x6adf023f\",\"baseFeePerGas\":\"0x3b9aca00\",\"transactions\":[]}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"number\":\"0x90f55e\",\"hash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"parentHash\":\"0xa75f037c0ad50fed37506cd85608119edccdf6e1a52a996e54c2e638df8e48c2\",\"timestamp\":\"0x6adf021b\",\"baseFeePerGas\":\"0x3b9aca00\",\"transactions\":[]}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"number\":\"0x90f55e\",\"hash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"parentHash\":\"0xa75f037c0ad50fed37506cd85608119edccdf6e1a52a996e54c2e638df8e48c2\",\"timestamp\":\"0x6adf021b\",\"baseFeePerGas\":\"0x3b9aca00\",\"transactions\":[]}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x0\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x0\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x5898\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x0\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x0\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"0x\"}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"from ::ffff:198.51.100.7 a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.\"}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"header for hash not found\"}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"header for hash not found\"}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-publicnode",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"number\":\"0x90f51a\",\"hash\":\"0x5b352adee0829e2de206e8a27be7767c0aa585a57a1464b111cb37febd9f5c05\",\"parentHash\":\"0x4604ac2f86e6e4f5d94bdf56c5be295ed5ceac3e663beecd9a5d225f1dda8f1f\",\"timestamp\":\"0x6adefeeb\",\"baseFeePerGas\":\"0x3b9aca00\",\"transactions\":[]}}",
+     "pad": 0
+    },
+    {
+     "providerId": "sepolia-1rpc",
+     "status": 200,
+     "text": "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"number\":\"0x90f51a\",\"hash\":\"0x5b352adee0829e2de206e8a27be7767c0aa585a57a1464b111cb37febd9f5c05\",\"parentHash\":\"0x4604ac2f86e6e4f5d94bdf56c5be295ed5ceac3e663beecd9a5d225f1dda8f1f\",\"timestamp\":\"0x6adefeeb\",\"baseFeePerGas\":\"0x3b9aca00\",\"transactions\":[]}}",
+     "pad": 0
+    }
+   ],
+   "evidence": {
+    "format": "rnnet.provider-compat-evidence.v1",
+    "observedAt": 1793000000,
+    "requestCount": 22,
+    "sentPerProvider": {
+     "xrpl-testnet-ripple": 2,
+     "xrpl-testnet-xrpl-labs": 2,
+     "sepolia-publicnode": 9,
+     "sepolia-1rpc": 9
+    },
+    "exchanges": [
+     {
+      "seq": 1,
+      "id": "X01",
+      "providerId": "xrpl-testnet-ripple",
+      "method": "server_info",
+      "request": "{\"method\":\"server_info\",\"params\":[{\"api_version\":2}]}",
+      "requestSha256": "sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:ec89c3536384617a4b6da87da9b835c6d8fac45e487a604cc4f2560202561850",
+      "responseBytes": 340,
+      "rpcError": null,
+      "observed": {
+       "networkId": 1,
+       "buildVersion": "3.4.1",
+       "serverState": "full",
+       "completeLedgers": "21900000-21950000",
+       "validatedSeq": 21950000,
+       "validatedHash": "6CBA1D9AE62B98C8785B64132A5F441DCBFE3EAFE588BBBA1B42C8EC3AC1F525",
+       "validatedAge": 2
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 2,
+      "id": "X02",
+      "providerId": "xrpl-testnet-xrpl-labs",
+      "method": "server_info",
+      "request": "{\"method\":\"server_info\",\"params\":[{\"api_version\":2}]}",
+      "requestSha256": "sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:c227d46e243ddeef1dc1e03173b7882e7ecd67c8719f06ab2829e248d4a59786",
+      "responseBytes": 340,
+      "rpcError": null,
+      "observed": {
+       "networkId": 1,
+       "buildVersion": "3.4.1",
+       "serverState": "full",
+       "completeLedgers": "21000000-21950001",
+       "validatedSeq": 21950001,
+       "validatedHash": "B5135F22DFE9DC5DF64BD8BEA0E1814D51729008C8FF4413CEE2563EA725BAFB",
+       "validatedAge": 1
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 3,
+      "id": "X03",
+      "providerId": "xrpl-testnet-ripple",
+      "method": "tx",
+      "request": "{\"method\":\"tx\",\"params\":[{\"api_version\":2,\"binary\":false,\"max_ledger\":21950000,\"min_ledger\":21949001,\"transaction\":\"B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45\"}]}",
+      "requestSha256": "sha256:8df5ca20184a519544dd09799f58369c7cfcfaaba4c69a89d178f4b88f75a817",
+      "outcome": "RPC_ERROR",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:48df780796399451cf410395f2290388678a1a1775d85d382cf9603a7cc92e05",
+      "responseBytes": 296,
+      "rpcError": {
+       "error": "txnNotFound",
+       "code": 29,
+       "searchedAll": true,
+       "message": "Transaction not found."
+      },
+      "observed": null,
+      "notSentReason": null
+     },
+     {
+      "seq": 4,
+      "id": "X04",
+      "providerId": "xrpl-testnet-xrpl-labs",
+      "method": "tx",
+      "request": "{\"method\":\"tx\",\"params\":[{\"api_version\":2,\"binary\":false,\"max_ledger\":21950001,\"min_ledger\":21949002,\"transaction\":\"B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45\"}]}",
+      "requestSha256": "sha256:c06972056c0b4bda4eae0d4616d1d32a38e7c0264e1f9054414323e228a5c5e9",
+      "outcome": "RPC_ERROR",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:e1efcec4294075606bb19a51ff65c04bbb06569ce2c47c92b5be3c61e0c1d762",
+      "responseBytes": 296,
+      "rpcError": {
+       "error": "txnNotFound",
+       "code": 29,
+       "searchedAll": true,
+       "message": "Transaction not found."
+      },
+      "observed": null,
+      "notSentReason": null
+     },
+     {
+      "seq": 5,
+      "id": "S01",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_chainId",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[]}",
+      "requestSha256": "sha256:7cd718c15e7d48ea187956a752c86b96515cded0520142627ba5da9729233bee",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:87736a36920a1f2877bb0104fa79f9b3e6edf758c45fb517d71f55f9899ea119",
+      "responseBytes": 44,
+      "rpcError": null,
+      "observed": {
+       "chainId": "0xaa36a7"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 6,
+      "id": "S02",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_chainId",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"params\":[]}",
+      "requestSha256": "sha256:7cd718c15e7d48ea187956a752c86b96515cded0520142627ba5da9729233bee",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:87736a36920a1f2877bb0104fa79f9b3e6edf758c45fb517d71f55f9899ea119",
+      "responseBytes": 44,
+      "rpcError": null,
+      "observed": {
+       "chainId": "0xaa36a7"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 7,
+      "id": "S03",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getBlockByNumber",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"latest\",false]}",
+      "requestSha256": "sha256:7a460c150b103a7959af7a56affe138ac9e57b251ebdf8a4de849f4cde2f1abc",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:1ec22f6ff9231b33f17ec27b8cf5094de162b837b4b83f4fb01fb696050a67f0",
+      "responseBytes": 285,
+      "rpcError": null,
+      "observed": {
+       "block": {
+        "number": "0x90f560",
+        "hash": "0xe89e086ea38167d3f00853c257f103496c4db7895c2181c7e08a58df3951caa7",
+        "timestamp": "0x6adf0233",
+        "baseFeePerGas": "0x3b9aca00"
+       }
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 8,
+      "id": "S04",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getBlockByNumber",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"latest\",false]}",
+      "requestSha256": "sha256:7a460c150b103a7959af7a56affe138ac9e57b251ebdf8a4de849f4cde2f1abc",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:dfedf88d9b9eefa5e8ef36a3dbef19092d648e5d590a0ee59fcec1753404b976",
+      "responseBytes": 285,
+      "rpcError": null,
+      "observed": {
+       "block": {
+        "number": "0x90f561",
+        "hash": "0x436695f6b4ba37b4aed543a42734e010e1e1432820138f9f50b782c4abf6ac8a",
+        "timestamp": "0x6adf023f",
+        "baseFeePerGas": "0x3b9aca00"
+       }
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 9,
+      "id": "S05",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getBlockByNumber",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"0x90f55e\",false]}",
+      "requestSha256": "sha256:54dc29ca2e21de288d4ddeaaef5bdecd01676e331a971a42b025c26fd013274b",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:7805204cea0d7074ab80b32e3dd416e442a0b1913f05b3001323909f6748a81c",
+      "responseBytes": 285,
+      "rpcError": null,
+      "observed": {
+       "block": {
+        "number": "0x90f55e",
+        "hash": "0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d",
+        "timestamp": "0x6adf021b",
+        "baseFeePerGas": "0x3b9aca00"
+       }
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 10,
+      "id": "S06",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getBlockByNumber",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"0x90f55e\",false]}",
+      "requestSha256": "sha256:54dc29ca2e21de288d4ddeaaef5bdecd01676e331a971a42b025c26fd013274b",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:7805204cea0d7074ab80b32e3dd416e442a0b1913f05b3001323909f6748a81c",
+      "responseBytes": 285,
+      "rpcError": null,
+      "observed": {
+       "block": {
+        "number": "0x90f55e",
+        "hash": "0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d",
+        "timestamp": "0x6adf021b",
+        "baseFeePerGas": "0x3b9aca00"
+       }
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 11,
+      "id": "S07",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getTransactionCount",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:5c1d31db7c463317b4de0800a0cc746c863f4ecf005e06a0255194bf76a256af",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:b0b17a2167550f78381234d8284565462e60c99813ae88d7dc4f310662d3f65c",
+      "responseBytes": 39,
+      "rpcError": null,
+      "observed": {
+       "value": "0x0"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 12,
+      "id": "S08",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getBalance",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:492335a8078e0948e503ba4422a98831b84f48a0f5a1b2e31accbc96266e6c55",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:b0b17a2167550f78381234d8284565462e60c99813ae88d7dc4f310662d3f65c",
+      "responseBytes": 39,
+      "rpcError": null,
+      "observed": {
+       "value": "0x0"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 13,
+      "id": "S09",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getCode",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getCode\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:ab76a9aeff639381c3d7329e0484a4996176dbd26de8865f7e260f9ce4e384e9",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:693e8930e72658ce36bc3e1df09149339c713fea3a1175042642cd57d690de71",
+      "responseBytes": 38,
+      "rpcError": null,
+      "observed": {
+       "value": "0x"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 14,
+      "id": "S10",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_estimateGas",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_estimateGas\",\"params\":[{\"data\":\"0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"from\":\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",\"to\":\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",\"value\":\"0x0\"},{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:d15899c0451d6149be1918c61e9fe915608845172d2793ee124950c788cdabcc",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:6aebf9a21604d2ae313ac72524638e2ccc87892dc15585bbf1f594eaae4000ea",
+      "responseBytes": 42,
+      "rpcError": null,
+      "observed": {
+       "value": "0x5898"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 15,
+      "id": "S11",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getTransactionCount",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:5c1d31db7c463317b4de0800a0cc746c863f4ecf005e06a0255194bf76a256af",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:b0b17a2167550f78381234d8284565462e60c99813ae88d7dc4f310662d3f65c",
+      "responseBytes": 39,
+      "rpcError": null,
+      "observed": {
+       "value": "0x0"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 16,
+      "id": "S12",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getBalance",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:492335a8078e0948e503ba4422a98831b84f48a0f5a1b2e31accbc96266e6c55",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:b0b17a2167550f78381234d8284565462e60c99813ae88d7dc4f310662d3f65c",
+      "responseBytes": 39,
+      "rpcError": null,
+      "observed": {
+       "value": "0x0"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 17,
+      "id": "S13",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getCode",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getCode\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:ab76a9aeff639381c3d7329e0484a4996176dbd26de8865f7e260f9ce4e384e9",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:693e8930e72658ce36bc3e1df09149339c713fea3a1175042642cd57d690de71",
+      "responseBytes": 38,
+      "rpcError": null,
+      "observed": {
+       "value": "0x"
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 18,
+      "id": "S14",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_estimateGas",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_estimateGas\",\"params\":[{\"data\":\"0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7\",\"from\":\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",\"to\":\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",\"value\":\"0x0\"},{\"blockHash\":\"0xaa204526c9b0221ba8feb8a27099a223cbae4c03337fd6fdb8d2b6184d8fa69d\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:d15899c0451d6149be1918c61e9fe915608845172d2793ee124950c788cdabcc",
+      "outcome": "RPC_ERROR",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:05e947dd0daaeec0c1b8ae11602c046db5a12594a1684844c49bfcd680233dd9",
+      "responseBytes": 10086,
+      "rpcError": {
+       "error": null,
+       "code": -32000,
+       "searchedAll": null,
+       "message": "from <ip><ip> "
+      },
+      "observed": null,
+      "notSentReason": null
+     },
+     {
+      "seq": 19,
+      "id": "S15",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getBalance",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0x469f97ee2e9af87fc41e1d328ae1eca78d4cbad0f36c70df267a1b6c05e15251\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:ca0d15a8c85070ec59105c8f0d89e7265c38ed61d56d373ab49b26d0d9bff0a4",
+      "outcome": "RPC_ERROR",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:82807561f5777fb9b1edb522d764b6645aa5ad0487acaac537dc289ace015409",
+      "responseBytes": 86,
+      "rpcError": {
+       "error": null,
+       "code": -32000,
+       "searchedAll": null,
+       "message": "header for hash not found"
+      },
+      "observed": null,
+      "notSentReason": null
+     },
+     {
+      "seq": 20,
+      "id": "S16",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getBalance",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x57db031993583fe0cbbf42dbfcf6489e0fb70b86\",{\"blockHash\":\"0x469f97ee2e9af87fc41e1d328ae1eca78d4cbad0f36c70df267a1b6c05e15251\",\"requireCanonical\":true}]}",
+      "requestSha256": "sha256:ca0d15a8c85070ec59105c8f0d89e7265c38ed61d56d373ab49b26d0d9bff0a4",
+      "outcome": "RPC_ERROR",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:82807561f5777fb9b1edb522d764b6645aa5ad0487acaac537dc289ace015409",
+      "responseBytes": 86,
+      "rpcError": {
+       "error": null,
+       "code": -32000,
+       "searchedAll": null,
+       "message": "header for hash not found"
+      },
+      "observed": null,
+      "notSentReason": null
+     },
+     {
+      "seq": 21,
+      "id": "S17",
+      "providerId": "sepolia-publicnode",
+      "method": "eth_getBlockByNumber",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"finalized\",false]}",
+      "requestSha256": "sha256:1b1529f7594d853300cbdaa5f35809d510658615527b735970e7a7ee464dbeba",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:a4b901dc479bfc2b94fc1520de4393eb411a32bd0a87ce97697da6dfd2f36f48",
+      "responseBytes": 285,
+      "rpcError": null,
+      "observed": {
+       "block": {
+        "number": "0x90f51a",
+        "hash": "0x5b352adee0829e2de206e8a27be7767c0aa585a57a1464b111cb37febd9f5c05",
+        "timestamp": "0x6adefeeb",
+        "baseFeePerGas": "0x3b9aca00"
+       }
+      },
+      "notSentReason": null
+     },
+     {
+      "seq": 22,
+      "id": "S18",
+      "providerId": "sepolia-1rpc",
+      "method": "eth_getBlockByNumber",
+      "request": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"eth_getBlockByNumber\",\"params\":[\"finalized\",false]}",
+      "requestSha256": "sha256:1b1529f7594d853300cbdaa5f35809d510658615527b735970e7a7ee464dbeba",
+      "outcome": "OK",
+      "transportCode": null,
+      "httpStatus": 200,
+      "responseSha256": "sha256:a4b901dc479bfc2b94fc1520de4393eb411a32bd0a87ce97697da6dfd2f36f48",
+      "responseBytes": 285,
+      "rpcError": null,
+      "observed": {
+       "block": {
+        "number": "0x90f51a",
+        "hash": "0x5b352adee0829e2de206e8a27be7767c0aa585a57a1464b111cb37febd9f5c05",
+        "timestamp": "0x6adefeeb",
+        "baseFeePerGas": "0x3b9aca00"
+       }
+      },
+      "notSentReason": null
+     }
+    ],
+    "checks": [
+     {
+      "id": "xrpl.identity.xrpl-testnet-ripple",
+      "status": "PASS",
+      "detail": "network_id 1"
+     },
+     {
+      "id": "xrpl.build_version.xrpl-testnet-ripple",
+      "status": "PASS",
+      "detail": "3.4.1, the release whose fail_hard was read"
+     },
+     {
+      "id": "xrpl.validated.xrpl-testnet-ripple",
+      "status": "PASS",
+      "detail": "seq 21950000, age 2 s, full"
+     },
+     {
+      "id": "xrpl.history.xrpl-testnet-ripple",
+      "status": "PASS",
+      "detail": "covers 21949001-21950000"
+     },
+     {
+      "id": "xrpl.tx_lookup.xrpl-testnet-ripple",
+      "status": "PASS",
+      "detail": "txnNotFound, searched_all true"
+     },
+     {
+      "id": "xrpl.identity.xrpl-testnet-xrpl-labs",
+      "status": "PASS",
+      "detail": "network_id 1"
+     },
+     {
+      "id": "xrpl.build_version.xrpl-testnet-xrpl-labs",
+      "status": "PASS",
+      "detail": "3.4.1, the release whose fail_hard was read"
+     },
+     {
+      "id": "xrpl.validated.xrpl-testnet-xrpl-labs",
+      "status": "PASS",
+      "detail": "seq 21950001, age 1 s, full"
+     },
+     {
+      "id": "xrpl.history.xrpl-testnet-xrpl-labs",
+      "status": "PASS",
+      "detail": "covers 21949002-21950001"
+     },
+     {
+      "id": "xrpl.tx_lookup.xrpl-testnet-xrpl-labs",
+      "status": "PASS",
+      "detail": "txnNotFound, searched_all true"
+     },
+     {
+      "id": "xrpl.agreement",
+      "status": "PASS",
+      "detail": "skew 1 ledgers"
+     },
+     {
+      "id": "sepolia.identity.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "chain id 0xaa36a7"
+     },
+     {
+      "id": "sepolia.head.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "block 9500000, age 13 s"
+     },
+     {
+      "id": "sepolia.identity.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "chain id 0xaa36a7"
+     },
+     {
+      "id": "sepolia.head.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "block 9500001, age 1 s"
+     },
+     {
+      "id": "sepolia.head_agreement",
+      "status": "PASS",
+      "detail": "skew 1 blocks"
+     },
+     {
+      "id": "sepolia.pin_agreement",
+      "status": "PASS",
+      "detail": "block 9499998, one hash, age 37 s"
+     },
+     {
+      "id": "sepolia.eip1898.nonce.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "result 0x0"
+     },
+     {
+      "id": "sepolia.eip1898.balance.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "result 0x0"
+     },
+     {
+      "id": "sepolia.eip1898.code.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "result 0x"
+     },
+     {
+      "id": "sepolia.estimate_gas.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "estimate 22680 (intrinsic 22680, limit 30000)"
+     },
+     {
+      "id": "sepolia.unknown_hash.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "refused: JSON-RPC error -32000: header for hash not found"
+     },
+     {
+      "id": "sepolia.finalized.sepolia-publicnode",
+      "status": "PASS",
+      "detail": "finalized 9499930, 70 blocks behind its head"
+     },
+     {
+      "id": "sepolia.eip1898.nonce.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "result 0x0"
+     },
+     {
+      "id": "sepolia.eip1898.balance.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "result 0x0"
+     },
+     {
+      "id": "sepolia.eip1898.code.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "result 0x"
+     },
+     {
+      "id": "sepolia.estimate_gas.sepolia-1rpc",
+      "status": "BLOCKED",
+      "detail": "JSON-RPC error -32000: from <ip><ip> "
+     },
+     {
+      "id": "sepolia.unknown_hash.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "refused: JSON-RPC error -32000: header for hash not found"
+     },
+     {
+      "id": "sepolia.finalized.sepolia-1rpc",
+      "status": "PASS",
+      "detail": "finalized 9499930, 71 blocks behind its head"
+     },
+     {
+      "id": "sepolia.finality_window",
+      "status": "PASS",
+      "detail": "finalized heads 0 blocks apart; joint walk window 256 blocks (about 51 min)"
+     }
+    ],
+    "verdict": {
+     "xrpl": "PASS",
+     "sepolia": "BLOCKED"
+    },
+    "sepoliaBranches": [
+     "B"
+    ],
+    "compatibilityCandidate": {
+     "sepolia-publicnode": {
+      "eip1898AccountReads": true,
+      "estimateGasBlockHash": true
+     },
+     "sepolia-1rpc": {
+      "eip1898AccountReads": true,
+      "estimateGasBlockHash": false
+     }
+    },
+    "finality": {
+     "finalizedApartBlocks": 0,
+     "jointWindowBlocks": 256,
+     "jointWindowSeconds": 3072
+    }
+   }
+  },
+  {
    "name": "xrpl-wrong-network-labs",
    "models": "XRPL BLOCKED",
    "now": 1793000000,

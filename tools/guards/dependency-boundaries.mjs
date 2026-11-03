@@ -802,7 +802,6 @@ function checkWriteTransportClosure(files, add, wholeTree) {
   for (const importer of unresolvedImporters) if (!GUARD_TEST_DATA.test(importer)) network.add(importer);
   const isWrite = (p) => p.startsWith('packages/chain-submit/') || p.startsWith(SUBMIT_TOOLS);
   for (const path of edges.keys()) {
-    if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
     const seen = new Set([path]);
     const stack = [path];
     while (stack.length) {
@@ -810,6 +809,10 @@ function checkWriteTransportClosure(files, add, wholeTree) {
       for (const next of edges.get(at) ?? []) if (!seen.has(next)) { seen.add(next); stack.push(next); }
     }
     const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
+    // Checked before the write-joiner exemption below, so no listed file elsewhere can join the C6
+    // tools to the network either (C6 re-check N4).
+    if (!COMPAT_TRANSPORT_JOINERS.includes(path) && path !== TRANSPORT_FILE && [...seen].some((p) => p.startsWith(COMPAT_TOOLS)) && reachesNetwork) add(path, 'compat-transport-join-transitive');
+    if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
     const reachesWrite = [...seen].some(isWrite);
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
     const reachesPrepare = [...seen].some((p) => p.startsWith('packages/tx-prepare/') || p.startsWith(PREPARE_TOOLS));
@@ -825,7 +828,6 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     // Nor may the C6 compatibility manifest and its offline run (RN-NET-03B2-C6-PREP): it is data,
     // a classifier and simulated providers only, and it may not reach the write path, the signer or
     // the key tool either. Enabling a live C6 run is a reviewed change to this rule.
-    if (!COMPAT_TRANSPORT_JOINERS.includes(path) && path !== TRANSPORT_FILE && [...seen].some((p) => p.startsWith(COMPAT_TOOLS)) && reachesNetwork) add(path, 'compat-transport-join-transitive');
     if (path.startsWith(COMPAT_TOOLS) || path === 'tools/compat.test.mjs') {
       if (reachesNetwork) add(path, 'compat-reaches-network');
       if ([...seen].some((p) => isWrite(p) || p.startsWith('signer/') || p.startsWith(KEYTOOL) || p.startsWith('tools/signing/'))) add(path, 'compat-reaches-write-or-key');

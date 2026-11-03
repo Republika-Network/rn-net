@@ -127,11 +127,18 @@ def strict_json(data):
 def sanitize(value):
     if not isinstance(value, str):
         return None
+    # JS cuts its UTF-16 string at 2048 units before mapping; mapped per code point, an astral
+    # character split by that cut is two "?" either way, so cutting the UTF-16 encoding matches.
+    units = value.encode("utf-16-le", "surrogatepass")
+    if len(units) > 4096:
+        value = units[:4096].decode("utf-16-le", "surrogatepass")
     ascii_text = "".join(ch if " " <= ch <= "~" else "?" for ch in value)
+    if len(ascii_text) > 512:
+        ascii_text = re.sub(r"\S*$", "", ascii_text[:512])
     ascii_text = re.sub(r"[A-Za-z][A-Za-z0-9+.-]*://\S*", "<url>", ascii_text)
     ascii_text = re.sub(r"\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{1,5}\b", "<host>", ascii_text)
-    ascii_text = re.sub(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}", lambda m: "<ip>" if re.search(r"[0-9A-Fa-f]", m.group(0)) else m.group(0), ascii_text)
     ascii_text = re.sub(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", "<ip>", ascii_text)
+    ascii_text = re.sub(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}", lambda m: "<ip>" if re.search(r"[0-9A-Fa-f]", m.group(0)) else m.group(0), ascii_text)
     ascii_text = re.sub(r"[A-Za-z0-9_+/=-]{32,}", lambda m: m.group(0) if re.fullmatch(r"0x[0-9a-fA-F]+", m.group(0)) else "<token>", ascii_text)
     return ascii_text[:160]
 

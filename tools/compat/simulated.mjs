@@ -151,6 +151,7 @@ export const SCENARIOS = Object.freeze([
   { name: 'code-invalid-json', models: 'UNRESOLVED', override: { S09: { text: '{"jsonrpc":"2.0","id":1,"result":' } } },
   { name: 'response-too-large', models: 'UNRESOLVED', override: { S07: { text: '{"jsonrpc":"2.0","id":1,"result":"0x0"}', pad: 262_145 } } },
   { name: 'error-message-sanitized', models: 'B', override: { S10: { rpcError: { code: -32000, message: 'upstream https://10.0.0.7:8545/x?key=abc failed at 192.168.1.20 \u00e9\u{1F600}\n' + 'x'.repeat(200) } } } },
+  { name: 'error-message-mapped-ipv6-and-long', models: 'B', override: { S14: { rpcError: { code: -32000, message: `from ::ffff:198.51.100.7 ${'a.'.repeat(5000)}` } } } },
   { name: 'xrpl-wrong-network-labs', models: 'XRPL BLOCKED', xrpl: { 'xrpl-testnet-xrpl-labs': { networkId: 0 } } },
   { name: 'xrpl-build-version-differs', models: 'XRPL UNRESOLVED', xrpl: { 'xrpl-testnet-ripple': { build: '3.5.0' } } },
   { name: 'xrpl-searched-all-false', models: 'XRPL BLOCKED', searchedAll: { 'xrpl-testnet-ripple': false } },

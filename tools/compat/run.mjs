@@ -51,12 +51,16 @@ const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('h
  */
 export function sanitizeMessage(value) {
   if (typeof value !== 'string') return null;
-  const ascii = Array.from(value, (ch) => (ch >= ' ' && ch <= '~' ? ch : '?')).join('');
+  // Cut before masking, so the masks run on at most 512 characters (C6 re-check N2), and drop a
+  // trailing run cut in the middle, so no partial address survives the cut.
+  let ascii = Array.from(value.length > 2048 ? value.slice(0, 2048) : value, (ch) => (ch >= ' ' && ch <= '~' ? ch : '?')).join('');
+  if (ascii.length > 512) ascii = ascii.slice(0, 512).replace(/\S*$/, '');
+  // IPv4 before IPv6, so an IPv4-mapped address (::ffff:a.b.c.d) is masked whole (C6 re-check N1).
   return ascii
     .replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S*/g, '<url>')
     .replace(/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{1,5}\b/g, '<host>')
-    .replace(/[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}/g, (m) => (/[0-9A-Fa-f]/.test(m) ? '<ip>' : m))
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, '<ip>')
+    .replace(/[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}/g, (m) => (/[0-9A-Fa-f]/.test(m) ? '<ip>' : m))
     .replace(/[A-Za-z0-9_+\/=-]{32,}/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>'))
     .slice(0, 160);
 }

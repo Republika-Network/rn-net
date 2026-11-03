@@ -122,6 +122,7 @@ const EXPECTED = {
   'code-invalid-json': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
   'response-too-large': ['PASS', 'UNRESOLVED', ['UNRESOLVED']],
   'error-message-sanitized': ['PASS', 'BLOCKED', ['B']],
+  'error-message-mapped-ipv6-and-long': ['PASS', 'BLOCKED', ['B']],
   'xrpl-wrong-network-labs': ['BLOCKED', 'PASS', ['A']],
   'xrpl-build-version-differs': ['UNRESOLVED', 'PASS', ['A']],
   'xrpl-searched-all-false': ['BLOCKED', 'PASS', ['A']],
@@ -239,6 +240,13 @@ test('error messages are sanitized: printable ASCII, URLs and IPv4 masked, at mo
   assert.equal(sanitizeMessage('a\u00e9\u{1F600}b'), 'a??b');
   assert.equal(sanitizeMessage('dial internal-geth-3.prod.svc.cluster.local:8545 from 2001:db8:85a3::8a2e:370:7334 Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCD'), 'dial <host> from <ip> Bearer <token>');
   assert.equal(sanitizeMessage(`hash 0x${'ab'.repeat(32)} unknown`), `hash 0x${'ab'.repeat(32)} unknown`);
+  // C6 re-check N1: an IPv4-mapped IPv6 address is masked whole.
+  assert.equal(sanitizeMessage('ip ::ffff:198.51.100.7 x'), 'ip <ip><ip> x');
+  // C6 re-check N2: a long message is cut before masking (bounded time), with no partial run left.
+  const started = Date.now();
+  for (const s of ['a'.repeat(262_000), 'a.'.repeat(131_000), '1.'.repeat(131_000), `x ${'1.2.3.4'.repeat(100)}`]) assert.ok(sanitizeMessage(s).length <= 160);
+  assert.ok(Date.now() - started < 2000, 'sanitizing is bounded');
+  assert.ok(!/\d/.test(sanitizeMessage(`${'w '.repeat(250)}198.51.100.7`)), 'a cut address does not survive');
   assert.equal(sanitizeMessage(7), null);
 });
 

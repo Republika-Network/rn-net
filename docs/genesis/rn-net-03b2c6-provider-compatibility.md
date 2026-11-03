@@ -168,7 +168,8 @@ fact one run cannot settle.
 limited) or −32603 (internal error) shows nothing about the request's form. Every check treats it
 as UNRESOLVED. It counts neither as an `unknown_hash` PASS nor as an EIP-1898 refusal. Every other
 JSON-RPC error counts as the provider's answer. For an `unknown_hash` PASS, the founder's evidence
-review still reads the recorded code and message.
+review still reads the recorded code and message. A provider that answers the same pinned request
+with −32603 again on a repeat run is reviewed as refusing it: C6 never turns that into a PASS.
 
 A network's verdict is BLOCKED if any of its checks is, PASS if all are, and otherwise UNRESOLVED.
 The run also gives a **compatibility candidate** per Sepolia provider,
@@ -234,7 +235,8 @@ automatically, and no branch weakens the consensus or finality semantics: no unp
   - IPv6 and IPv4 addresses become `<ip>`;
   - opaque tokens of 32 or more characters become `<token>`, except 0x-prefixed hex chain data;
 
-  then cut to 160 characters. The masks err towards hiding: a time such as `12:30:45` is masked
+  then cut to 160 characters. Masking runs on at most the first 512 characters, cut at a space,
+  so its time is bounded and no partial address is left by the cut. The masks err towards hiding: a time such as `12:30:45` is masked
   as an address;
 - `build_version` kept only when it has the form of a release version.
 
@@ -270,7 +272,7 @@ This authorizes no key generation, funding, signing, broadcasting or publication
 
 ## 9. Offline validation
 
-- **Simulated scenarios.** `fixtures/compat-c6/cases.json` holds 57 scenarios, each a transcript
+- **Simulated scenarios.** `fixtures/compat-c6/cases.json` holds 58 scenarios, each a transcript
   of simulated responses and the evidence the run produced. They cover:
   - A;
   - B: one provider, both providers, HTTP 400 with a JSON-RPC error, an estimate out of range,
