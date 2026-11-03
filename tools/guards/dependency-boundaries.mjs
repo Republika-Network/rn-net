@@ -234,6 +234,12 @@ export const PREPARE_TRANSPORT_JOINERS = [];
 // entry point. Adding one is a reviewed change to this list (C6 review 3).
 export const COMPAT_TOOLS = 'tools/compat/';
 export const COMPAT_TRANSPORT_JOINERS = [];
+// The C6 entry point (RN-NET-03B2-C6-LIVE), DISABLED: no file in tools/compat-live/, nor its test,
+// may reach a network file (compat-live-reaches-network), so its command cannot send a request
+// until a reviewed enabling change edits this rule and COMPAT_TRANSPORT_JOINERS together. Nor may it
+// ever reach the write path, the signer, txverify/, the key tool, tools/signing/, tools/broadcast/,
+// preparation (tools/prepare/, packages/tx-prepare/) or the rehearsal (compat-live-reaches-write-or-key).
+export const COMPAT_LIVE_TOOLS = 'tools/compat-live/';
 
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
 // transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
@@ -831,6 +837,11 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     if (path.startsWith(COMPAT_TOOLS) || path === 'tools/compat.test.mjs') {
       if (reachesNetwork) add(path, 'compat-reaches-network');
       if ([...seen].some((p) => isWrite(p) || p.startsWith('signer/') || p.startsWith(KEYTOOL) || p.startsWith('tools/signing/'))) add(path, 'compat-reaches-write-or-key');
+    }
+    if (path.startsWith(COMPAT_LIVE_TOOLS) || path === 'tools/compat-live.test.mjs') {
+      if (reachesNetwork) add(path, 'compat-live-reaches-network');
+      const forbidden = (p) => isWrite(p) || ['signer/', 'txverify/', KEYTOOL, 'tools/signing/', 'tools/broadcast/', PREPARE_TOOLS, 'packages/tx-prepare/', 'tools/rehearsal/'].some((d) => p.startsWith(d));
+      if ([...seen].some(forbidden)) add(path, 'compat-live-reaches-write-or-key');
     }
     // Nor may anything else reach key generation or the key tool through an allowed file (review
     // C4-5): only signer/, the key tool and their listed importers.

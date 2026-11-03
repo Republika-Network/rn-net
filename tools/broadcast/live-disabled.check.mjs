@@ -1,4 +1,4 @@
-// The three live entry points refuse as commands (RN-NET-03B2-C3). Run by tools/ci/offline-checks.sh
+// The live entry points refuse as commands (RN-NET-03B2-C3; the C6 entry point, RN-NET-03B2-C6-LIVE). Run by tools/ci/offline-checks.sh
 // inside the network namespace, without the test preload (which refuses subprocesses).
 //
 // Each entry point is started as a command with plausible arguments naming files that do not exist.
@@ -14,6 +14,7 @@ const COMMANDS = [
   ['prepare/prepare-live.mjs', 'RNPL_LIVE_DISABLED', ['--network', 'xrpl:testnet', '--authorization', `${missing}/a.json`, '--endpoints', `${missing}/e.json`, '--evidence-dir', missing]],
   ['prepare/prepare-live.mjs', 'RNPL_LIVE_DISABLED', ['--network', 'evm:11155111', '--authorization', `${missing}/a.json`, '--endpoints', `${missing}/e.json`, '--evidence-dir', missing]],
   ['submit/submit-anchor.mjs', 'RNSA_LIVE_DISABLED', ['--network', 'xrpl:testnet', '--authorization', `${missing}/a.json`, '--intent', `${missing}/i.json`, '--approved-digest', `sha256:${'0'.repeat(64)}`, '--signed-transaction', `${missing}/s.txt`, '--endpoints', `${missing}/e.json`, '--log-dir', missing, '--evidence-dir', missing]],
+  ['compat-live/compat-live.mjs', 'RNCL_LIVE_DISABLED', ['--authorization', `${missing}/a.json`, '--endpoints', `${missing}/e.json`, '--evidence-dir', missing]],
   ['submit/status-check.mjs', 'RNSA_LIVE_DISABLED', ['--network', 'evm:11155111', '--authorization', `${missing}/a.json`, '--intent', `${missing}/i.json`, '--endpoints', `${missing}/e.json`, '--log-dir', missing, '--evidence-dir', missing]],
 ];
 
