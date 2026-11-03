@@ -9,7 +9,8 @@
 //   - a request whose dependency was not observed is NOT_SENT, never sent in another form;
 //   - once a provider reports the wrong network, nothing more is sent to it;
 //   - every response is reduced to a sanitized observation (no headers, no addresses of the
-//     machine, error messages truncated to printable ASCII with URLs and IPv4 addresses masked);
+//     machine, error messages truncated to printable ASCII with addresses, host names,
+//     credentials and tokens masked, or withheld whole);
 //   - the raw bodies are returned separately, for private storage only.
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -45,24 +46,62 @@ const match = (re, v) => (typeof v === 'string' && re.test(v) ? v : null);
 const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 
 /**
- * An error message as evidence: printable ASCII; URLs, host:port, IPv6 and IPv4 addresses and
- * long opaque tokens masked (a 0x-prefixed hex value is kept: it is chain data); at most 160
- * characters. The order is fixed; tools/reference/rnnet_compat_reference.py applies the same.
+ * The masks of sanitizeMessage, in the order they run. tools/reference/rnnet_compat_reference.py
+ * holds the same patterns in the same order, and vectors/compat-sanitizer.json pins their output
+ * on fixed cases and on a seeded corpus both sides generate (C6-LIVE-ENABLE, N-b and N-c). Each
+ * runs on at most 512 printable ASCII characters, so its time and memory are bounded.
+ */
+export const SANITIZER_MASKS = Object.freeze([
+  // scheme://anything
+  ['url', /[A-Za-z][A-Za-z0-9+.-]*:\/\/\S*/g, '<url>'],
+  // any word holding "@": user:password@host, user@host, an e-mail address
+  ['userinfo-at', /\S*@\S*/g, '<userinfo>'],
+  // any word holding "=": key=value, a query string, base64 padding
+  ['key-value', /\S*=\S*/g, '<kv>'],
+  // two or more dotted numbers (IPv4, and its 2- and 3-part forms), whatever is next to them
+  // except another digit (N-b: no \b)
+  ['ipv4', /(?<![0-9])\d+(?:\.\d+)+/g, '<ip>'],
+  // a bare 8- to 10-digit decimal: an IPv4 address as one integer (2130706433)
+  ['ipv4-integer', /(?<![0-9A-Za-z])\d{8,10}(?![0-9A-Za-z])/g, '<ip>'],
+  // IPv6, including the ::ffff: prefix left of a masked IPv4-mapped address
+  ['ipv6', /[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}/g, (m) => (/[0-9A-Fa-f]/.test(m) ? '<ip>' : m)],
+  // name:port and a.b.c:port; not next to another name or dot character (N-b: no \b)
+  ['host-port', /(?<![A-Za-z0-9.:-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d{1,5}(?![0-9])/g, '<host>'],
+  // a word joined to another by one colon with no space: user:password (scheme-less userinfo)
+  ['userinfo-colon', /[^\s:]+(?::[^\s:]+)+/g, '<userinfo>'],
+  // a bare dotted name (a host name, whatever its labels), and localhost
+  ['hostname', /(?<![A-Za-z0-9.-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+(?![A-Za-z0-9-])|(?<![A-Za-z0-9-])[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt](?![A-Za-z0-9-])/g, '<host>'],
+  // opaque runs of 32 or more characters, except 0x-prefixed hex chain data
+  ['long-token', /[A-Za-z0-9_+\/-]{32,}/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>')],
+  // shorter opaque runs (12 to 31) mixing letters and digits, except 0x-prefixed hex
+  ['short-token', /(?<![A-Za-z0-9_+\/-])(?=[A-Za-z0-9_+\/-]*[0-9])(?=[A-Za-z0-9_+\/-]*[A-Za-z])[A-Za-z0-9_+\/-]{12,31}(?![A-Za-z0-9_+\/-])/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>')],
+  // runs of 16 to 31 holding "_" (sk_live_..., ghp_...), except a JSON-RPC method name (eth_...)
+  ['underscore-token', /(?<![A-Za-z0-9_+\/-])(?=[A-Za-z0-9_+\/-]*_)[A-Za-z0-9_+\/-]{16,31}(?![A-Za-z0-9_+\/-])/g, (m) => (/^(?:eth|net|web3|debug|trace|txpool|engine)_[A-Za-z]+$/.test(m) ? m : '<token>')],
+]);
+/**
+ * What may still be sensitive after masking: the message is then withheld whole (fail closed),
+ * never kept in part.
+ */
+export const SANITIZER_WITHHELD = '<withheld>';
+const SUSPICIOUS = /[@=]|:\/\/|passw|\bpass\b|\bpwd\b|passphrase|secret|bearer|basic\s|api[\s_-]?key|apikey|access[\s_-]?key|private[\s_-]?key|mnemonic|seed|credential|cookie|session|authoriz|\bauth\b|\bjwt\b|\btoken\s*:/i;
+
+/**
+ * An error message as evidence: printable ASCII; URLs, words holding "@" or "=", host:port,
+ * IPv4 (also next to a word character, and IPv4-mapped IPv6), IPv6, user:password, bare host
+ * names and opaque tokens masked (a 0x-prefixed hex value is kept: it is chain data); withheld
+ * whole if anything that may be a credential remains; at most 160 characters. The order is
+ * fixed; tools/reference/rnnet_compat_reference.py applies the same.
  */
 export function sanitizeMessage(value) {
   if (typeof value !== 'string') return null;
-  // Cut before masking, so the masks run on at most 512 characters (C6 re-check N2), and drop a
-  // trailing run cut in the middle, so no partial address survives the cut.
+  // At most 2048 UTF-16 units are read, and the masks run on at most 512 characters (C6
+  // re-check N2); a trailing run cut in the middle is dropped, so no partial address survives.
   let ascii = Array.from(value.length > 2048 ? value.slice(0, 2048) : value, (ch) => (ch >= ' ' && ch <= '~' ? ch : '?')).join('');
   if (ascii.length > 512) ascii = ascii.slice(0, 512).replace(/\S*$/, '');
-  // IPv4 before IPv6, so an IPv4-mapped address (::ffff:a.b.c.d) is masked whole (C6 re-check N1).
-  return ascii
-    .replace(/[A-Za-z][A-Za-z0-9+.-]*:\/\/\S*/g, '<url>')
-    .replace(/\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{1,5}\b/g, '<host>')
-    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}\b/g, '<ip>')
-    .replace(/[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}/g, (m) => (/[0-9A-Fa-f]/.test(m) ? '<ip>' : m))
-    .replace(/[A-Za-z0-9_+\/=-]{32,}/g, (m) => (/^0x[0-9a-fA-F]+$/.test(m) ? m : '<token>'))
-    .slice(0, 160);
+  let text = ascii;
+  for (const [, pattern, replacement] of SANITIZER_MASKS) text = text.replace(pattern, replacement);
+  if (SUSPICIOUS.test(text.replace(/<(?:url|userinfo|kv|host|ip|token)>/g, ' '))) return SANITIZER_WITHHELD;
+  return text.slice(0, 160);
 }
 
 /** The block members the run keeps, or null. */

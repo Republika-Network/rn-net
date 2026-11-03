@@ -1195,20 +1195,51 @@ test('C2 final review: a file that is not a test may not import a test file', ()
   assert.ok(found([['tools/broadcast/z.mjs', "import { g } from './gen.mjs';"]], { wholeTree: true }).includes('tools/broadcast/z.mjs:import-target-missing:tools/broadcast/gen.mjs'));
 });
 
-test('C6-LIVE: the disabled entry point reaches no network file, write path, key, signer, txverify or preparation', () => {
+test('C6-LIVE(-ENABLE): only the command and the narrow C6 transport reach the network, and only through the reviewed transport', () => {
   const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
   const transport = ['tools/live/https-transport.mjs', "import https from 'node:https';\nexport const httpsTransport = https;"];
+  const c6 = ['tools/compat-live/c6-transport.mjs', "import { createHttpsTransport } from '../live/https-transport.mjs';\nexport const createC6Transport = createHttpsTransport;"];
+  const command = ['tools/compat-live/compat-live.mjs', "import { compatLive } from './flow.mjs';\nexport const main = async () => (await import('./c6-transport.mjs')).createC6Transport;\nexport const r = compatLive;"];
+  const flow = ['tools/compat-live/flow.mjs', "import { runCompatibility } from '../compat/run.mjs';\nexport const compatLive = runCompatibility;"];
+  const run = ['tools/compat/run.mjs', 'export const runCompatibility = 1;'];
+  // The reviewed structure: no finding.
+  const clean = found([command, c6, flow, run, transport]);
+  assert.ok(!clean.some((f) => /compat-live-|compat-transport-join/.test(f)), clean.join(' '));
+  // Any other compat-live file that reaches a network file, however indirectly, is refused.
   const entry = "import { x } from './helper.mjs';\nexport const r = x;";
-  for (const helper of ["import { httpsTransport } from '../live/https-transport.mjs';\nexport const x = httpsTransport;", 'export const x = async (u) => fetch(u);', "import https from 'node:https';\nexport const x = https;", "import { spawn } from 'node:child_process';\nexport const x = spawn;"]) {
-    const out = found([['tools/compat-live/compat-live.mjs', entry], ['tools/compat-live/helper.mjs', helper], transport]);
-    assert.ok(out.includes('tools/compat-live/compat-live.mjs:compat-live-reaches-network'), out.join(' '));
+  for (const helper of ["import { httpsTransport } from '../live/https-transport.mjs';\nexport const x = httpsTransport;", "import { createC6Transport } from './c6-transport.mjs';\nexport const x = createC6Transport;", 'export const x = async (u) => fetch(u);', "import https from 'node:https';\nexport const x = https;", "import { spawn } from 'node:child_process';\nexport const x = spawn;"]) {
+    const out = found([['tools/compat-live/flow.mjs', entry], ['tools/compat-live/helper.mjs', helper], c6, transport]);
+    assert.ok(out.includes('tools/compat-live/helper.mjs:compat-live-reaches-network') && out.includes('tools/compat-live/flow.mjs:compat-live-reaches-network'), out.join(' '));
   }
-  // Its test may not reach the network either.
-  const viaTest = found([['tools/compat-live.test.mjs', "import { r } from './compat-live/compat-live.mjs';\nexport const t = r;"], ['tools/compat-live/compat-live.mjs', "import { httpsTransport } from '../live/https-transport.mjs';\nexport const r = httpsTransport;"], transport]);
-  assert.ok(viaTest.includes('tools/compat-live.test.mjs:compat-live-reaches-network'), viaTest.join(' '));
-  // Joining tools/compat/ to the transport from compat-live is still refused: COMPAT_TRANSPORT_JOINERS is empty.
-  const join = found([['tools/compat-live/compat-live.mjs', "import { runCompatibility } from '../compat/run.mjs';\nimport { httpsTransport } from '../live/https-transport.mjs';\nexport const go = [runCompatibility, httpsTransport];"], ['tools/compat/run.mjs', 'export const runCompatibility = 1;'], transport]);
-  assert.ok(join.includes('tools/compat-live/compat-live.mjs:compat-transport-join-transitive'), join.join(' '));
+  // Even the two listed files may reach no network file other than the reviewed transport.
+  for (const [label, files] of [
+    ['the C6 transport imports node:https', [['tools/compat-live/c6-transport.mjs', "import https from 'node:https';\nexport const createC6Transport = https;"], command, flow, run]],
+    ['the C6 transport uses fetch', [['tools/compat-live/c6-transport.mjs', 'export const createC6Transport = (u) => fetch(u);'], command, flow, run]],
+    ['the command imports node:net', [['tools/compat-live/compat-live.mjs', "import net from 'node:net';\nexport const n = net;"], c6, transport]],
+  ]) {
+    const out = found(files);
+    assert.ok(out.some((f) => f.endsWith(':compat-live-reaches-network')), `${label}: ${out.join(' ')}`);
+  }
+  // The command may not import the reviewed transport directly: only through the C6 transport.
+  const direct = found([['tools/compat-live/compat-live.mjs', "import { httpsTransport } from '../live/https-transport.mjs';\nexport const r = httpsTransport;"], transport]);
+  assert.ok(direct.includes('tools/compat-live/compat-live.mjs:compat-live-transport-not-narrowed'), direct.join(' '));
+  // Nor through a relay anywhere (C6-LIVE-ENABLE review N2): every route goes through the C6 transport.
+  for (const [relayPath, relay] of [['tools/live/relay.mjs', "export { httpsTransport } from './https-transport.mjs';"], ['tools/verify-x.mjs', "import { httpsTransport } from './live/https-transport.mjs';\nexport const t = httpsTransport;"]]) {
+    const spec = relayPath === 'tools/live/relay.mjs' ? '../live/relay.mjs' : '../verify-x.mjs';
+    const out = found([['tools/compat-live/compat-live.mjs', `import { ${relayPath.endsWith('relay.mjs') ? 'httpsTransport' : 't'} } from '${spec}';\nexport const r = 1;`], [relayPath, relay], transport, c6]);
+    assert.ok(out.includes('tools/compat-live/compat-live.mjs:compat-live-transport-not-narrowed'), `${relayPath}: ${out.join(' ')}`);
+  }
+  // The C6 transport may not reach tools/compat/: it would be a second, unlisted joiner.
+  const widened = found([['tools/compat-live/c6-transport.mjs', "import { C6_PROVIDERS } from '../compat/manifest.mjs';\nimport { createHttpsTransport } from '../live/https-transport.mjs';\nexport const a = [C6_PROVIDERS, createHttpsTransport];"], ['tools/compat/manifest.mjs', 'export const C6_PROVIDERS = [];'], transport]);
+  assert.ok(widened.includes('tools/compat-live/c6-transport.mjs:compat-transport-join-transitive'), widened.join(' '));
+  // A test (or any file) that imports the command joins the run to the transport: refused.
+  const viaTest = found([['tools/compat-live.test.mjs', "import { main } from './compat-live/compat-live.mjs';\nexport const t = main;"], command, c6, flow, run, transport]);
+  assert.ok(viaTest.includes('tools/compat-live.test.mjs:compat-transport-join-transitive'), viaTest.join(' '));
+  const elsewhere = found([['tools/c6-other.mjs', "import { main } from './compat-live/compat-live.mjs';\nexport const t = main;"], command, c6, flow, run, transport]);
+  assert.ok(elsewhere.includes('tools/c6-other.mjs:compat-transport-join-transitive'), elsewhere.join(' '));
+  // C6-LIVE review N-d: the transport file itself is not exempt from the join rule.
+  const nd = found([['tools/live/https-transport.mjs', "import https from 'node:https';\nimport { runCompatibility } from '../compat/run.mjs';\nexport const a = [https, runCompatibility];"], run]);
+  assert.ok(nd.includes('tools/live/https-transport.mjs:compat-transport-join-transitive'), nd.join(' '));
   for (const [spec, target] of [
     ['../submit/broadcaster.mjs', 'tools/submit/broadcaster.mjs'],
     ['../../packages/chain-submit/src/index.mjs', 'packages/chain-submit/src/index.mjs'],
@@ -1225,6 +1256,6 @@ test('C6-LIVE: the disabled entry point reaches no network file, write path, key
     assert.ok(out.includes('tools/compat-live/entry.mjs:compat-live-reaches-write-or-key'), `${target}: ${out.join(' ')}`);
   }
   // The offline tools it does use are fine.
-  const clean = found([['tools/compat-live/compat-live.mjs', "import { runCompatibility } from '../compat/run.mjs';\nexport const r = runCompatibility;"], ['tools/compat/run.mjs', 'export const runCompatibility = 1;']]);
-  assert.ok(!clean.some((f) => /compat-live-reaches|compat-transport-join/.test(f)), clean.join(' '));
+  const offline = found([['tools/compat-live/compat-live.mjs', "import { runCompatibility } from '../compat/run.mjs';\nexport const r = runCompatibility;"], ['tools/compat/run.mjs', 'export const runCompatibility = 1;']]);
+  assert.ok(!offline.some((f) => /compat-live-reaches|compat-transport-join/.test(f)), offline.join(' '));
 });

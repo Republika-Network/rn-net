@@ -13,14 +13,18 @@ import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { canonicalize } from '../../packages/canonical/src/index.mjs';
 import { runCompatibility } from '../compat/run.mjs';
-import { storedText } from './entry.mjs';
-import { responseFileName, STORAGE_ERROR } from './policy.mjs';
+import { JOURNAL_FILE, JOURNAL_FORMAT, journalRecords, storedText } from './entry.mjs';
+import { responseFileName, STORAGE_ERROR, TRANSPORT_REFUSED } from './policy.mjs';
 
 export const COMPAT_REPORT_FORMAT = 'rnnet.provider-compat-report.v1';
 /** The files of a run directory, besides the response bodies. */
 /** Written by the Python reference with --record; the only other file a run directory may hold. */
 export const PYTHON_RECORD = 'python-reference.txt';
-export const RUN_FILES = Object.freeze({ authorization: 'authorization.json', transcript: 'transcript.json', evidence: 'evidence.json', report: 'report.json' });
+export const RUN_FILES = Object.freeze({ authorization: 'authorization.json', journal: JOURNAL_FILE, transcript: 'transcript.json', evidence: 'evidence.json', report: 'report.json' });
+
+/** The journal a complete run leaves: its header, then the records its transcript implies (N1). */
+export const expectedJournalText = (authorization, digest, transcript) =>
+  [{ authorizationDigest: digest, authorizationId: authorization.authorizationId, format: JOURNAL_FORMAT }, ...journalRecords(transcript)].map((r) => `${canonicalize(r)}\n`).join('');
 
 const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 const textSha = (text) => sha256(Buffer.from(text, 'utf8'));
@@ -30,7 +34,9 @@ export function runViolation(transcript) {
   const policy = transcript.calls.find((c) => c.policy !== null)?.policy;
   if (policy !== undefined) return policy;
   const stored = transcript.calls.find((c) => c.error === STORAGE_ERROR);
-  return stored === undefined ? null : `response storage failed at call ${stored.call}`;
+  if (stored !== undefined) return `response storage failed at call ${stored.call}`;
+  const refused = transcript.calls.find((c) => c.error === TRANSPORT_REFUSED);
+  return refused === undefined ? null : `the C6 transport refused call ${refused.call}`;
 }
 
 /** The overall status of a run. */
@@ -59,7 +65,8 @@ export function buildReport({ authorization: a, digest, authorizationText, trans
     requestCount: evidence.requestCount,
     sentPerProvider: { ...evidence.sentPerProvider },
     // What actually reached the transport: requestCount less the calls the policy refused.
-    forwardedRequests: transcript.calls.filter((c) => c.policy === null).length,
+    // A call the C6 transport refused never reached the network (review B1).
+    forwardedRequests: transcript.calls.filter((c) => c.policy === null && c.error !== TRANSPORT_REFUSED).length,
     policyViolation,
     transcriptSha256: textSha(transcriptText),
     evidenceSha256: textSha(evidenceText),
@@ -115,10 +122,12 @@ export async function reproduceRun({ files, endpoints, readAuthorization }) {
   const transcriptText = text(RUN_FILES.transcript);
   const evidenceText = text(RUN_FILES.evidence);
   const reportText = text(RUN_FILES.report);
-  if ([authorizationText, transcriptText, evidenceText, reportText].includes(null)) return { reproduced: false, problems: ['a run file is missing'], reportSha256: null };
+  const journalText = text(RUN_FILES.journal);
+  if ([authorizationText, journalText, transcriptText, evidenceText, reportText].includes(null)) return { reproduced: false, problems: ['a run file is missing'], reportSha256: null };
   const { authorization, digest } = readAuthorization(authorizationText);
   const transcript = JSON.parse(transcriptText);
   if (storedText(transcript) !== transcriptText) problems.push('transcript.json is not canonical');
+  if (journalText !== expectedJournalText(authorization, digest, transcript)) problems.push('journal.ndjson is not the record the transcript implies');
   const bodies = new Map([...files].filter(([name]) => name.endsWith('.bin')));
   const expectedFiles = new Set([...Object.values(RUN_FILES), ...transcript.calls.filter((c) => c.responseFile !== null).map((c) => c.responseFile)]);
   // The Python reference's own record (--record) may be present beside the run's files (review F8).
