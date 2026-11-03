@@ -7,6 +7,11 @@
   [`tools/compat-live/`](../../tools/compat-live/README.md), with the H3 format
   [rnnet.compat-authorization.v1](../../spec/rnnet.compat-authorization.v1.md). It still sends
   nothing until a separately reviewed enabling change (§8, item 2).
+- C6-LIVE-ENABLE (RN-NET-03B2-C6-LIVE-ENABLE): the pre-live findings N1, F4, N-b and N-c (and
+  N-d, F3, F5, F6, F7) are fixed, and the enabling code is implemented and wired: the narrow C6
+  transport, the terminal approval, durable evidence with a journal. **Live access is still
+  disabled** by two locks (`LIVE_NETWORK_ACCESS = false`, `AGREED_EVIDENCE_DIR = null`), whose
+  change is the founder's (spec §7).
 - Basis: [ADR-RN-018](../adr/ADR-RN-018-transaction-preparation-reads.md) Amendment C1, P4, P5
   and P7; [readiness analysis](rn-net-03b2c-operational-readiness.md) §4 "C6" and "Sepolia
   finality constraints"; [ADR-RN-013](../adr/ADR-RN-013-read-only-rpc-architecture.md) limits.
@@ -233,15 +238,22 @@ automatically, and no branch weakens the consensus or finality semantics: no unp
 
 **Sanitized:**
 - no request or response headers and no address of the machine;
-- error messages reduced to printable ASCII, then masked in a fixed order:
-  - URLs become `<url>`;
-  - `host:port` becomes `<host>`;
-  - IPv6 and IPv4 addresses become `<ip>`;
-  - opaque tokens of 32 or more characters become `<token>`, except 0x-prefixed hex chain data;
+- error messages reduced to printable ASCII, then masked in a fixed order (C6-LIVE-ENABLE, review
+  N-b and N-c; the full list is in [the spec](../../spec/rnnet.compat-authorization.v1.md) §9):
+  - URLs become `<url>`; any word holding `@` or `=` (userinfo, e-mail, key=value) becomes
+    `<userinfo>` or `<kv>`;
+  - IPv4 (also next to a word character, and IPv4-mapped IPv6) and IPv6 addresses become `<ip>`;
+  - `host:port` and bare host names (and `localhost`) become `<host>`; `user:password` becomes
+    `<userinfo>`;
+  - opaque tokens of 32 or more characters, and of 12 to 31 mixing letters and digits, become
+    `<token>`, except 0x-prefixed hex chain data;
+  - if a credential word or shape is still there, the whole message becomes `<withheld>`;
 
   then cut to 160 characters. Masking runs on at most the first 512 characters, cut at a space,
-  so its time is bounded and no partial address is left by the cut. The masks err towards hiding: a time such as `12:30:45` is masked
-  as an address;
+  so its time is bounded and no partial address is left by the cut. The masks err towards
+  hiding: a time such as `12:30:45` is masked as an address, and `hexutil.Uint64` as a host name.
+  The JavaScript and Python sanitizers are pinned to the same output by
+  `vectors/compat/sanitizer.json`;
 - `build_version` kept only when it has the form of a release version.
 
 The raw response bodies are returned separately. They are kept private, in the agreed evidence
@@ -273,11 +285,15 @@ directory outside every repository (H11), and are never published. Publishing an
    - reproduces the report from the stored files, in JavaScript and in the independent Python
      reference (`--run`).
 
-   The separately reviewed **enabling change** must:
-   - set the agreed evidence directory;
-   - import the transport;
-   - list the entry point in `COMPAT_TRANSPORT_JOINERS`;
-   - set `LIVE_NETWORK_ACCESS`.
+   **Enabling code built and reviewed in C6-LIVE-ENABLE, still disabled.** The command imports
+   the narrow C6 transport (`c6-transport.mjs`) in its enabled branch only; the guard lists it
+   as the one member of `COMPAT_TRANSPORT_JOINERS` and narrows `compat-live-reaches-network` to
+   it and the C6 transport. The approval is read from `/dev/tty`. Evidence is journaled before
+   each request and written whole or not at all; a failed write refuses the run with no report.
+
+   The remaining **founder-controlled enabling change** sets, in one reviewed PR:
+   - `AGREED_EVIDENCE_DIR`, the agreed private evidence directory (H11);
+   - `LIVE_NETWORK_ACCESS = true`.
 3. **The H3 read authorization**, written by the founder for one run. It names:
    - exactly 22 requests;
    - the four provider ids and URLs;

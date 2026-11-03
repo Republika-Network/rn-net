@@ -11,6 +11,7 @@ import { GENESIS_COMMITMENT, REVIEWED_PREPARATION_PROVIDERS } from './prepare/en
 import { buildCases, fixtureText, replayTranscript } from './compat/build-c6-fixtures.mjs';
 import { branches, classify, intrinsicGas, parseLedgerRanges } from './compat/classify.mjs';
 import { C6_BUDGET, C6_CALLDATA, C6_COMMITMENT, C6_LIMITS, C6_PROVIDERS, C6_REQUESTS, C6_TEST_ADDRESS, C6_TOTAL_REQUESTS, C6_UNKNOWN_BLOCK_HASH, checkManifest, describeManifest, manifestBytes, WRITE_METHODS } from './compat/manifest.mjs';
+import { corpusDigest, corpusStrings, vectorsText } from './compat/build-sanitizer-vectors.mjs';
 import { runCompatibility, sanitizeMessage } from './compat/run.mjs';
 import { SCENARIOS, SIM_NOW, simulatedTransport } from './compat/simulated.mjs';
 
@@ -238,7 +239,9 @@ test('error messages are sanitized: printable ASCII, URLs and IPv4 masked, at mo
   assert.match(m, /^[ -~]*$/);
   assert.ok(!/https?:|10\.0\.0\.7|192\.168/.test(m), m);
   assert.equal(sanitizeMessage('a\u00e9\u{1F600}b'), 'a??b');
-  assert.equal(sanitizeMessage('dial internal-geth-3.prod.svc.cluster.local:8545 from 2001:db8:85a3::8a2e:370:7334 Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCD'), 'dial <host> from <ip> Bearer <token>');
+  assert.equal(sanitizeMessage('dial internal-geth-3.prod.svc.cluster.local:8545 from 2001:db8:85a3::8a2e:370:7334'), 'dial <host> from <ip>');
+  // A credential word left after masking withholds the whole message (fail closed, N-c).
+  assert.equal(sanitizeMessage('dial x Bearer abcdefghijklmnopqrstuvwxyz0123456789ABCD'), '<withheld>');
   assert.equal(sanitizeMessage(`hash 0x${'ab'.repeat(32)} unknown`), `hash 0x${'ab'.repeat(32)} unknown`);
   // C6 re-check N1: an IPv4-mapped IPv6 address is masked whole.
   assert.equal(sanitizeMessage('ip ::ffff:198.51.100.7 x'), 'ip <ip><ip> x');
@@ -248,6 +251,34 @@ test('error messages are sanitized: printable ASCII, URLs and IPv4 masked, at mo
   assert.ok(Date.now() - started < 2000, 'sanitizing is bounded');
   assert.ok(!/\d/.test(sanitizeMessage(`${'w '.repeat(250)}198.51.100.7`)), 'a cut address does not survive');
   assert.equal(sanitizeMessage(7), null);
+});
+
+test('C6-LIVE-ENABLE N-b and N-c: the sanitizer masks every shape, agrees with the pinned vectors, and is bounded', () => {
+  const v = JSON.parse(readFileSync(new URL('../vectors/compat/sanitizer.json', import.meta.url), 'utf8'));
+  assert.equal(`${JSON.stringify(v, null, 2)}\n`, vectorsText(), 'vectors/compat/sanitizer.json is current (node tools/compat/build-sanitizer-vectors.mjs)');
+  for (const c of v.cases) assert.equal(sanitizeMessage(c.input), c.output, c.input.slice(0, 60));
+  // The same corpus the Python reference generates; its digest is pinned in the vector file.
+  assert.equal(corpusDigest(corpusStrings(v.corpus, v.corpus.fragments)), v.corpus.sha256);
+  // N-b: no IPv4 address survives next to a word character, inside a word, or IPv4-mapped.
+  for (const s of ['ip_10.1.2.3', 'x10.1.2.3y', '_198.51.100.7_', 'a::ffff:10.1.2.3b', '[::ffff:10.1.2.3]', 'v10.1.2.3.4', '10.1.2.3:8545', 'id=10.1.2.3']) {
+    const out = sanitizeMessage(s);
+    assert.ok(!/\d+\.\d+\.\d+\.\d+/.test(out) && !/ffff/i.test(out), `${s} -> ${out}`);
+  }
+  // N-c: key=value, user:password, e-mail, host names and short tokens.
+  for (const [s, gone] of [['k=v failed', 'k=v'], ['api_key=0123abcd', '0123abcd'], ['alice:hunter2 refused', 'hunter2'], ['alice:hunter2@db', 'hunter2'], ['ops@example.org', 'example'], ['geth-1.internal down', 'internal'], ['localhost', 'localhost'], ['id a1b2c3d4e5f6 bad', 'a1b2c3d4e5f6']]) {
+    assert.ok(!sanitizeMessage(s).includes(gone), `${s} -> ${sanitizeMessage(s)}`);
+  }
+  for (const s of ['password hunter2', 'secret 42', 'session abc', 'Authorization: Basic x', 'token: abc', 'your seed phrase', 'cookie x']) assert.equal(sanitizeMessage(s), '<withheld>', s);
+  // Provider messages the classifier depends on stay readable.
+  for (const s of ['header for hash not found', 'invalid block parameter', 'invalid argument 1: hex string without 0x prefix', 'Transaction not found.', 'limit exceeded']) assert.equal(sanitizeMessage(s), s);
+  // Bounded time and memory on hostile input: at most 2048 units read, 512 characters masked.
+  const hostile = ['@'.repeat(300_000), '='.repeat(300_000), 'a:'.repeat(150_000), 'a.'.repeat(150_000), '1.'.repeat(150_000), ':'.repeat(300_000), 'aZ0'.repeat(100_000), `${'a-'.repeat(1000)}.`, `${'0'.repeat(511)}a`, 'x\u{1F600}'.repeat(100_000)];
+  for (const s of hostile) {
+    const started = process.hrtime.bigint();
+    const out = sanitizeMessage(s);
+    assert.ok(Number(process.hrtime.bigint() - started) / 1e6 < 250, `bounded: ${s.slice(0, 8)}`);
+    assert.ok(out.length <= 160 && /^[ -~]*$/.test(out));
+  }
 });
 
 test('refuses a bad time, transport or endpoint file before any request', async () => {

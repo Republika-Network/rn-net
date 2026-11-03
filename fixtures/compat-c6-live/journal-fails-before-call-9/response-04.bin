@@ -1,0 +1,1 @@
+{"result":{"status":"error","error":"txnNotFound","error_code":29,"error_message":"Transaction not found.","request":{"api_version":2,"binary":false,"max_ledger":21950001,"min_ledger":21949002,"transaction":"B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45"},"searched_all":true}}

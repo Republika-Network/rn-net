@@ -1,6 +1,8 @@
 // RN-NET-03B2-C6-LIVE: the controlled read-only C6 entry point, DISABLED for live network access.
 // Every test uses simulated providers (tools/compat/simulated.mjs) or a recording stub: nothing
-// here builds a transport, and the offline preload refuses the network.
+// here builds a transport, and the offline preload refuses the network. The flow is tested through
+// flow.mjs; the command (compat-live.mjs), the only file joined to a transport, is not imported here
+// (guard: compat-transport-join-transitive), and tools/broadcast/live-disabled.check.mjs runs it.
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
@@ -9,15 +11,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { canonicalBytes, canonicalize } from '../packages/canonical/src/index.mjs';
-import { C6_BUDGET, C6_PROVIDERS, C6_REQUESTS, manifestBytes } from './compat/manifest.mjs';
+import { buildParams, C6_BUDGET, C6_PROVIDERS, C6_REQUESTS, entryBytes, manifestBytes } from './compat/manifest.mjs';
 import { SCENARIOS, SIM_NOW, simulatedTransport } from './compat/simulated.mjs';
 import { compatAuthorizationDigest, readCompatAuthorization } from './compat-live/authorization.mjs';
 import { buildRunFixture, FIXTURE_DIR, RUN_FIXTURES } from './compat-live/build-c6-live-fixtures.mjs';
-import { COMPAT_EXIT, compatLive, LIVE_NETWORK_ACCESS, main } from './compat-live/compat-live.mjs';
 import { AGREED_EVIDENCE_DIR, C6_MANIFEST_SHA256, COMPAT_FLAGS, CompatEntryCode, REVIEWED_ENDPOINTS_SHA256 } from './compat-live/entry.mjs';
+import { COMPAT_EXIT, compatLive } from './compat-live/flow.mjs';
 import { createCompatPolicy, responseFileName } from './compat-live/policy.mjs';
 import { reproduceRun } from './compat-live/report.mjs';
-import { COMPAT_LIVE_TOOLS, COMPAT_TRANSPORT_JOINERS } from './guards/dependency-boundaries.mjs';
+import { COMPAT_LIVE_NETWORK_FILES, COMPAT_LIVE_TOOLS, COMPAT_LIVE_TRANSPORT_FILE, COMPAT_TRANSPORT_JOINERS } from './guards/dependency-boundaries.mjs';
 
 const ROOT = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, ROOT), 'utf8');
@@ -53,7 +55,7 @@ function setup(overrides = {}, { mode = 0o600, text = null } = {}) {
   return { base, dir, a: authorizationFor(dir, overrides), mode, text };
 }
 
-async function run(ctx, { transport, approve, now = () => SIM_NOW, argv = null, agreed } = {}) {
+async function run(ctx, { transport, approve, now = () => SIM_NOW, argv = null, agreed, io } = {}) {
   const { base, dir } = ctx;
   const authPath = join(base, `auth-${Math.random().toString(16).slice(2)}.json`);
   const text = ctx.text ?? `${canonicalize(ctx.a)}\n`;
@@ -84,6 +86,8 @@ async function run(ctx, { transport, approve, now = () => SIM_NOW, argv = null, 
         return `c6 ${digest.slice(-16)}`;
       }),
       sleep: () => new Promise(() => {}),
+      minFreeBytes: 1,
+      ...(io === undefined ? {} : { io }),
     },
   });
   return { result, calls, prompts, digest };
@@ -91,25 +95,30 @@ async function run(ctx, { transport, approve, now = () => SIM_NOW, argv = null, 
 
 const cleanup = (ctx) => rmSync(ctx.base, { recursive: true, force: true });
 
-test('C6-LIVE is disabled: the command refuses, the guard keeps it off the network, no joiner is listed', () => {
-  assert.equal(LIVE_NETWORK_ACCESS, false);
+test('C6 live access is still disabled: two locks, one listed joiner, one narrow transport file', () => {
+  // Lock 1: the command refuses before reading anything (tools/broadcast/live-disabled.check.mjs runs it).
+  const command = read('tools/compat-live/compat-live.mjs');
+  assert.match(command, /^export const LIVE_NETWORK_ACCESS = false;$/m);
+  assert.equal((command.match(/^[^/\n]*LIVE_NETWORK_ACCESS = /gm) ?? []).length, 1);
+  assert.match(command, /if \(!LIVE_NETWORK_ACCESS\) \{\n\s+process\.stderr\.write\(`\$\{CompatEntryCode\.LIVE_DISABLED\}: live network access is disabled/);
+  // Lock 2: no evidence directory is agreed, so even an enabled command refuses every run.
   assert.equal(AGREED_EVIDENCE_DIR, null);
-  assert.deepEqual(COMPAT_TRANSPORT_JOINERS, []);
+  // The guard lists the command as the one joiner, and two files that may reach the transport.
+  assert.deepEqual(COMPAT_TRANSPORT_JOINERS, ['tools/compat-live/compat-live.mjs']);
+  assert.deepEqual(COMPAT_LIVE_NETWORK_FILES, ['tools/compat-live/compat-live.mjs', 'tools/compat-live/c6-transport.mjs']);
+  assert.equal(COMPAT_LIVE_TRANSPORT_FILE, 'tools/compat-live/c6-transport.mjs');
   assert.equal(COMPAT_LIVE_TOOLS, 'tools/compat-live/');
-  const writes = [];
-  const original = process.stderr.write;
-  process.stderr.write = (text) => writes.push(text);
-  try {
-    assert.equal(main(), COMPAT_EXIT.LIVE_DISABLED);
-  } finally {
-    process.stderr.write = original;
-  }
-  assert.match(writes.join(''), /^RNCL_LIVE_DISABLED: live network access is disabled/);
   for (const name of readdirSync(new URL('tools/compat-live/', ROOT)).filter((n) => n.endsWith('.mjs'))) {
     const text = read(`tools/compat-live/${name}`);
-    assert.ok(!/https-transport|node:https|node:http\b|node:net|node:tls|node:dns|node:child_process|\bfetch\(/.test(text), name);
-    assert.ok(!/signer\/|txverify\/|keytool|chain-submit|tools\/submit|\.\.\/submit\/|tx-prepare|\.\.\/prepare\//.test(text.replace(/^\/\/.*$/gm, '')), name);
+    const code = text.replace(/^\s*\/\/.*$/gm, '');
+    // Only c6-transport.mjs names the HTTPS transport; only the command names c6-transport.mjs, in
+    // its enabled branch; nothing here names a network module or fetch.
+    if (name !== 'c6-transport.mjs') assert.ok(!/https-transport|httpsTransport|createHttpsTransport/.test(code), name);
+    if (name !== 'compat-live.mjs') assert.ok(!/c6-transport/.test(code), name);
+    assert.ok(!/node:https|node:http\b|node:http2|node:net|node:tls|node:dns|node:dgram|node:child_process|node:worker_threads|\bfetch\(/.test(code), name);
+    assert.ok(!/signer\/|txverify\/|keytool|chain-submit|tools\/submit|\.\.\/submit\/|tx-prepare|\.\.\/prepare\//.test(code), name);
   }
+  assert.match(command, /await import\('\.\/c6-transport\.mjs'\)/);
   assert.deepEqual([...COMPAT_FLAGS], ['authorization', 'endpoints', 'evidence-dir']);
 });
 
@@ -141,7 +150,7 @@ test('one authorized run: 22 requests, private durable evidence, reproduced, PAS
     assert.equal(result.runDirectory, runDir);
     assert.equal(lstatSync(runDir).mode & 0o777, 0o700);
     const names = readdirSync(runDir).sort();
-    assert.deepEqual(names, ['authorization.json', 'evidence.json', 'report.json', ...Array.from({ length: 22 }, (_, i) => responseFileName(i + 1)), 'transcript.json'].sort());
+    assert.deepEqual(names, ['authorization.json', 'evidence.json', 'journal.ndjson', 'report.json', ...Array.from({ length: 22 }, (_, i) => responseFileName(i + 1)), 'transcript.json'].sort());
     for (const n of names) assert.equal(lstatSync(join(runDir, n)).mode & 0o777, 0o600, n);
     const report = JSON.parse(readFileSync(join(runDir, 'report.json'), 'utf8'));
     assert.equal(report.overall, 'PASS');
@@ -277,68 +286,120 @@ test('no automatic retry and no substitute provider: a failure is recorded once 
   }
 });
 
+/** The manifest bytes of entry `id`, with the observed values of `state`. */
+const manifestBody = (id, state = {}) => {
+  const e = C6_REQUESTS.find((x) => x.id === id);
+  return Buffer.from(entryBytes(e, buildParams(e, state)));
+};
+const POLICY_PROVIDERS = C6_PROVIDERS.map((p) => ({ id: p.id, requests: C6_BUDGET[p.id], url: p.url }));
+const preq = (id, extra = {}, state = {}) => {
+  const e = C6_REQUESTS.find((x) => x.id === id);
+  return { providerId: e.providerId, url: C6_PROVIDERS.find((p) => p.id === e.providerId).url, body: manifestBody(id, state), timeoutMs: 10_000, maxResponseBytes: 262_144, ...extra };
+};
+/** A policy over a recording transport and an in-memory evidence store. */
+const makePolicy = ({ clock = () => SIM_NOW, sleep = () => new Promise(() => {}), respond = async () => ({ status: 200, body: Buffer.from('{}') }), evidence } = {}) => {
+  const seen = [];
+  const journal = [];
+  const kept = [];
+  const policy = createCompatPolicy({ providers: POLICY_PROVIDERS, notAfter: NOT_AFTER, clock, sleep, evidence: evidence ?? { journal: (r) => journal.push(r), keep: (n) => kept.push(n) } });
+  return { policy, seen, journal, kept, t: policy.wrap(async (r) => { seen.push(r); return respond(r); }) };
+};
+
 test('the request policy refuses what the manifest does not plan, and nothing passes after a violation', async () => {
-  const providers = C6_PROVIDERS.map((p) => ({ id: p.id, requests: C6_BUDGET[p.id], url: p.url }));
-  const make = (clock = () => SIM_NOW) => {
-    const seen = [];
-    const policy = createCompatPolicy({ providers, notAfter: NOT_AFTER, clock, keep: () => {}, sleep: () => new Promise(() => {}) });
-    return { policy, seen, t: policy.wrap(async (r) => { seen.push(r); return { status: 200, body: Buffer.from('{}') }; }) };
-  };
-  const req = (providerId, body, extra = {}) => ({ providerId, url: providers.find((p) => p.id === providerId)?.url ?? 'https://x.invalid/', body: Buffer.from(JSON.stringify(body)), timeoutMs: 10_000, maxResponseBytes: 262_144, ...extra });
-  const eth = (method, params = []) => ({ id: 1, jsonrpc: '2.0', method, params });
+  const eth = (method, params = []) => Buffer.from(JSON.stringify({ id: 1, jsonrpc: '2.0', method, params }));
   for (const [label, request] of [
-    ['write method', req('sepolia-publicnode', eth('eth_sendRawTransaction', ['0x00']))],
-    ['xrpl submit', req('xrpl-testnet-ripple', { method: 'submit', params: [{}] })],
-    ['unknown provider', req('sepolia-other', eth('eth_chainId'))],
-    ['substituted url', req('sepolia-publicnode', eth('eth_chainId'), { url: 'https://public.1rpc.io/sepolia' })],
-    ['longer deadline', req('sepolia-publicnode', eth('eth_chainId'), { timeoutMs: 60_000 })],
-    ['larger limit', req('sepolia-publicnode', eth('eth_chainId'), { maxResponseBytes: 1 << 24 })],
-    ['not JSON', { ...req('sepolia-publicnode', {}), body: Buffer.from('nope') }],
+    ['write method', { ...preq('S01'), body: eth('eth_sendRawTransaction', ['0x00']) }],
+    ['xrpl submit', { ...preq('X01'), body: Buffer.from(JSON.stringify({ method: 'submit', params: [{}] })) }],
+    ['unknown provider', { ...preq('S01'), providerId: 'sepolia-other' }],
+    ['substituted url', preq('S01', { url: 'https://public.1rpc.io/sepolia' })],
+    ['longer deadline', preq('S01', { timeoutMs: 60_000 })],
+    ['larger limit', preq('S01', { maxResponseBytes: 1 << 24 })],
+    ['not JSON', { ...preq('S01'), body: Buffer.from('nope') }],
   ]) {
-    const { policy, seen, t } = make();
+    const { policy, seen, journal, t } = makePolicy();
     await assert.rejects(t(request), (e) => e.code === 'RNCL_REQUEST_POLICY', label);
     assert.equal(seen.length, 0, label);
     assert.notEqual(policy.violation, null, label);
-    // Sticky: a valid request afterwards is refused too.
-    await assert.rejects(t(req('sepolia-publicnode', eth('eth_chainId'))), (e) => e.code === 'RNCL_REQUEST_POLICY');
+    // Sticky: a valid request afterwards is refused too, and neither was journaled as sent.
+    await assert.rejects(t(preq('S01')), (e) => e.code === 'RNCL_REQUEST_POLICY');
     assert.equal(seen.length, 0, label);
+    assert.deepEqual(journal.map((r) => r.event), ['refused', 'refused'], label);
   }
   // Manifest order: a provider may skip ahead (a request whose dependency was not observed is
   // NOT_SENT), never go back.
-  const ordered = make();
-  await ordered.t(req('sepolia-publicnode', eth('eth_getCode', ['0x0', 'latest'])));
-  await assert.rejects(ordered.t(req('sepolia-publicnode', eth('eth_chainId'))), (e) => e.code === 'RNCL_REQUEST_POLICY');
+  const ordered = makePolicy();
+  await ordered.t(preq('S15'));
+  await assert.rejects(ordered.t(preq('S01')), (e) => e.code === 'RNCL_REQUEST_POLICY');
   assert.equal(ordered.seen.length, 1);
   // A provider's budget: XRPL Labs has 2 (server_info, tx); a third is refused.
-  const { seen, t } = make();
-  await t(req('xrpl-testnet-xrpl-labs', { method: 'server_info', params: [{}] }));
-  await t(req('xrpl-testnet-xrpl-labs', { method: 'tx', params: [{}] }));
-  await assert.rejects(t(req('xrpl-testnet-xrpl-labs', { method: 'server_info', params: [{}] })), (e) => e.code === 'RNCL_REQUEST_POLICY');
-  assert.equal(seen.length, 2);
+  const budget = makePolicy();
+  await budget.t(preq('X02'));
+  await budget.t(preq('X04', {}, { validatedSeq: { 'xrpl-testnet-xrpl-labs': 5_000_000 } }));
+  await assert.rejects(budget.t(preq('X02')), (e) => e.code === 'RNCL_REQUEST_POLICY');
+  assert.equal(budget.seen.length, 2);
   // Expiry is checked before every request.
   let now = SIM_NOW;
-  const timed = make(() => now);
-  await timed.t(req('sepolia-publicnode', eth('eth_chainId')));
+  const timed = makePolicy({ clock: () => now });
+  await timed.t(preq('S01'));
   now = NOT_AFTER + 1;
-  await assert.rejects(timed.t(req('sepolia-1rpc', eth('eth_chainId'))), (e) => e.code === 'RNCL_REQUEST_POLICY');
+  await assert.rejects(timed.t(preq('S02')), (e) => e.code === 'RNCL_REQUEST_POLICY');
   assert.equal(timed.seen.length, 1);
   assert.match(timed.policy.violation, /expired/);
 });
 
+test('review F3: every request is the manifest request byte for byte; only observed values vary, each of its form', async () => {
+  const hash = `0x${'ab'.repeat(32)}`;
+  const cases = [
+    ['an extra key', () => ({ ...preq('S01'), body: Buffer.from('{"id":1,"jsonrpc":"2.0","method":"eth_chainId","params":[],"x":1}') })],
+    ['a duplicate key', () => ({ ...preq('S01'), body: Buffer.from('{"id":1,"jsonrpc":"2.0","method":"eth_chainId","method":"eth_chainId","params":[]}') })],
+    ['another key order', () => ({ ...preq('S01'), body: Buffer.from('{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}') })],
+    ['whitespace', () => ({ ...preq('S01'), body: Buffer.from('{"id":1, "jsonrpc":"2.0","method":"eth_chainId","params":[]}') })],
+    ['another id', () => ({ ...preq('S01'), body: Buffer.from('{"id":2,"jsonrpc":"2.0","method":"eth_chainId","params":[]}') })],
+    ['a head with full transactions', () => ({ ...preq('S03'), body: Buffer.from('{"id":1,"jsonrpc":"2.0","method":"eth_getBlockByNumber","params":["latest",true]}') })],
+    ['another address', () => ({ ...preq('S08', {}, { pinHash: { 'sepolia-publicnode': hash } }), body: Buffer.from(manifestBody('S08', { pinHash: { 'sepolia-publicnode': hash } }).toString('utf8').replace('0x57db', '0x57dc')) })],
+    ['a block tag instead of a hash', () => ({ ...preq('S08'), body: Buffer.from(manifestBody('S08', { pinHash: { 'sepolia-publicnode': hash } }).toString('utf8').replace(hash, 'latest')) })],
+    ['a short hash', () => preq('S08', {}, { pinHash: { 'sepolia-publicnode': '0xab' } })],
+    ['a ledger range below 999', () => preq('X03', {}, { validatedSeq: { 'xrpl-testnet-ripple': 998 } })],
+    ['a pin that is not a QUANTITY', () => preq('S05', {}, { pinNumber: '0x01' })],
+  ];
+  for (const [label, make] of cases) {
+    const { seen, t } = makePolicy();
+    await assert.rejects(t(make()), (e) => e.code === 'RNCL_REQUEST_POLICY', label);
+    assert.equal(seen.length, 0, label);
+  }
+  // Skipping ahead to a later entry of the same method (S08 NOT_SENT, then S15) is allowed.
+  const skip = makePolicy();
+  await skip.t(preq('S15'));
+  assert.equal(skip.seen.length, 1);
+  // The pin is the same block number on both providers.
+  const pin = makePolicy();
+  await pin.t(preq('S03'));
+  await pin.t(preq('S05', {}, { pinNumber: '0x10' }));
+  await assert.rejects(pin.t(preq('S06', {}, { pinNumber: '0x11' })), (e) => e.code === 'RNCL_REQUEST_POLICY');
+  const same = makePolicy();
+  await same.t(preq('S05', {}, { pinNumber: '0x10' }));
+  await same.t(preq('S04'));
+  await same.t(preq('S06', {}, { pinNumber: '0x10' }));
+  assert.equal(same.seen.length, 3);
+  // The transport sees a fresh copy of exactly the checked request.
+  const fresh = makePolicy();
+  const r = preq('S01');
+  await fresh.t(r);
+  assert.ok(Object.isFrozen(fresh.seen[0]) && fresh.seen[0].body !== r.body && Buffer.from(fresh.seen[0].body).equals(r.body));
+  assert.deepEqual(Object.keys(fresh.seen[0]).sort(), ['body', 'maxResponseBytes', 'providerId', 'timeoutMs', 'url']);
+});
+
 test('the policy deadline and response limit hold whatever the transport does', async () => {
-  const providers = C6_PROVIDERS.map((p) => ({ id: p.id, requests: C6_BUDGET[p.id], url: p.url }));
-  const request = { providerId: 'sepolia-publicnode', url: providers[2].url, body: Buffer.from('{"id":1,"jsonrpc":"2.0","method":"eth_chainId","params":[]}'), timeoutMs: 10_000, maxResponseBytes: 262_144 };
   let asked = 0;
-  const kept = [];
   const slept = [];
-  const hang = createCompatPolicy({ providers, notAfter: NOT_AFTER, clock: () => SIM_NOW, keep: (n) => kept.push(n), sleep: (ms) => { slept.push(ms); return Promise.resolve(); } });
-  await assert.rejects(hang.wrap(() => { asked += 1; return new Promise(() => {}); })(request), (e) => e.code === 'RNLO_TIMEOUT');
+  const hang = makePolicy({ sleep: (ms) => { slept.push(ms); return Promise.resolve(); }, respond: () => { asked += 1; return new Promise(() => {}); } });
+  await assert.rejects(hang.t(preq('S01')), (e) => e.code === 'RNLO_TIMEOUT');
   assert.deepEqual(slept, [10_000]);
   assert.equal(asked, 1);
-  const big = createCompatPolicy({ providers, notAfter: NOT_AFTER, clock: () => SIM_NOW, keep: (n) => kept.push(n), sleep: () => new Promise(() => {}) });
-  await assert.rejects(big.wrap(async () => ({ status: 200, body: Buffer.alloc(262_145, 0x20) }))(request), (e) => e.code === 'RNLO_RESPONSE_TOO_LARGE');
-  assert.deepEqual(kept, [], 'an oversized body is not stored');
-  assert.equal(big.transcript().calls[0].error, 'RNLO_RESPONSE_TOO_LARGE');
+  const big = makePolicy({ respond: async () => ({ status: 200, body: Buffer.alloc(262_145, 0x20) }) });
+  await assert.rejects(big.t(preq('S01')), (e) => e.code === 'RNLO_RESPONSE_TOO_LARGE');
+  assert.deepEqual(big.kept, [], 'an oversized body is not stored');
+  assert.equal(big.policy.transcript().calls[0].error, 'RNLO_RESPONSE_TOO_LARGE');
 });
 
 test('the run fixtures are current, and a tampered run directory is not reproduced', async () => {
@@ -349,7 +410,9 @@ test('the run fixtures are current, and a tampered run directory is not reproduc
     assert.deepEqual(readdirSync(dir).sort(), [...built.keys()], f.name);
     for (const [name, bytes] of built) assert.ok(readFileSync(new URL(name, dir)).equals(bytes), `${f.name}/${name} is stale (node tools/compat-live/build-c6-live-fixtures.mjs)`);
     const ok = await reproduceRun({ files: built, endpoints: e, readAuthorization: readCompatAuthorization });
-    assert.ok(ok.reproduced, `${f.name}: ${ok.problems.join('; ')}`);
+    // An incomplete run (N1) is never reproduced: it has no evidence.json and no report.json.
+    if (built.has('report.json')) assert.ok(ok.reproduced, `${f.name}: ${ok.problems.join('; ')}`);
+    else assert.deepEqual([ok.reproduced, built.has('evidence.json'), ok.problems], [false, false, ['a run file is missing']], f.name);
   }
   const files = await buildRunFixture(RUN_FIXTURES[0], e);
   const tamper = async (name, change) => {
@@ -370,14 +433,13 @@ test('the run fixtures are current, and a tampered run directory is not reproduc
   assert.equal((await reproduceRun({ files: extra, endpoints: e, readAuthorization: readCompatAuthorization })).reproduced, false);
 });
 
-test('review F1: a response that cannot be stored stops the run and is never reproduced as a transport error', async () => {
-  const report = JSON.parse(read(`${FIXTURE_DIR}/response-storage-fails/report.json`));
-  assert.equal(report.forwardedRequests, 6, 'nothing is sent after the failure');
-  assert.equal(report.policyViolation, 'response storage failed at call 6 (EIO)');
-  assert.equal(report.overall, 'UNRESOLVED');
+test('review F1: a response that cannot be stored stops the run, and the run carries no report (N1)', async () => {
+  const names = readdirSync(new URL(`${FIXTURE_DIR}/response-storage-fails/`, ROOT));
+  assert.ok(!names.includes('report.json') && !names.includes('evidence.json'), 'an incomplete run has no report');
   const calls = JSON.parse(read(`${FIXTURE_DIR}/response-storage-fails/transcript.json`)).calls;
+  assert.equal(calls.filter((c) => c.policy === null).length, 6, 'nothing is sent after the failure');
   assert.deepEqual([calls[5].error, calls[5].status, calls[5].responseFile], ['RNCL_STORAGE', null, null]);
-  assert.ok(calls.slice(6).every((c) => c.policy !== null));
+  assert.ok(calls.slice(6).every((c) => c.policy === 'evidence could not be stored at call 6 (EIO)'));
   // A file planted where a response goes (the reviewer's case K): the run stops at that call and the
   // run directory is NOT reproduced (the planted file is not a recorded response).
   const ctx = setup();
@@ -391,10 +453,12 @@ test('review F1: a response that cannot be stored stops the run and is never rep
     };
     const { result, calls: sent } = await run(ctx, { transport: planting });
     assert.equal(result.outcome, 'REFUSED', result.message);
-    assert.equal(result.code, CompatEntryCode.NOT_REPRODUCED);
+    assert.equal(result.code, CompatEntryCode.EVIDENCE);
     assert.equal(sent.length, 6);
     const t = JSON.parse(readFileSync(join(runDir, 'transcript.json'), 'utf8')).calls;
     assert.equal(t[5].error, 'RNCL_STORAGE');
+    assert.equal(readFileSync(join(runDir, 'response-06.bin'), 'utf8'), 'planted', 'the planted file is not overwritten');
+    assert.ok(!readdirSync(runDir).includes('report.json'));
   } finally {
     cleanup(ctx);
   }
@@ -413,9 +477,11 @@ test('review F1: a response that cannot be stored stops the run and is never rep
   assert.equal((await reproduceRun({ files: recorded, endpoints: e, readAuthorization: readCompatAuthorization })).reproduced, true);
 });
 
-test('the fixture runs cover PASS, BLOCKED and UNRESOLVED, a policy stop and the deadline', () => {
+test('the fixture runs cover PASS, BLOCKED and UNRESOLVED, a policy stop, the deadline and incomplete runs', () => {
   const report = (name) => JSON.parse(read(`${FIXTURE_DIR}/${name}/report.json`));
-  const overalls = new Set(RUN_FIXTURES.map((f) => report(f.name).overall));
+  const complete = RUN_FIXTURES.filter((f) => readdirSync(new URL(`${FIXTURE_DIR}/${f.name}/`, ROOT)).includes('report.json'));
+  assert.deepEqual(RUN_FIXTURES.filter((f) => !complete.includes(f)).map((f) => f.name), ['response-storage-fails', 'journal-fails-before-call-9']);
+  const overalls = new Set(complete.map((f) => report(f.name).overall));
   assert.deepEqual([...overalls].sort(), ['BLOCKED', 'PASS', 'UNRESOLVED']);
   const stopped = report('authorization-expires-mid-run');
   assert.equal(stopped.forwardedRequests, 10);

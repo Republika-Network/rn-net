@@ -1,0 +1,17 @@
+{"authorizationDigest":"sha256:e3e1d8ec957c5c44f92d07b3b8372d085134dc444bfe4ba59ab1e22fc9dab8b1","authorizationId":"c6-fixture-json-depth-edges","format":"rnnet.provider-compat-journal.v1"}
+{"call":1,"event":"send","providerId":"xrpl-testnet-ripple","requestSha256":"sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d"}
+{"call":1,"error":null,"event":"outcome","responseBytes":340,"responseFile":"response-01.bin","responseSha256":"sha256:ec89c3536384617a4b6da87da9b835c6d8fac45e487a604cc4f2560202561850","status":200}
+{"call":2,"event":"send","providerId":"xrpl-testnet-xrpl-labs","requestSha256":"sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d"}
+{"call":2,"error":null,"event":"outcome","responseBytes":40046,"responseFile":"response-02.bin","responseSha256":"sha256:54eee5c9f595111c059872cfb3c72bf1b37c80904086c3e69e65a576d788cced","status":200}
+{"call":3,"event":"send","providerId":"xrpl-testnet-ripple","requestSha256":"sha256:8df5ca20184a519544dd09799f58369c7cfcfaaba4c69a89d178f4b88f75a817"}
+{"call":3,"error":null,"event":"outcome","responseBytes":296,"responseFile":"response-03.bin","responseSha256":"sha256:48df780796399451cf410395f2290388678a1a1775d85d382cf9603a7cc92e05","status":200}
+{"call":4,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:7cd718c15e7d48ea187956a752c86b96515cded0520142627ba5da9729233bee"}
+{"call":4,"error":null,"event":"outcome","responseBytes":175,"responseFile":"response-04.bin","responseSha256":"sha256:54e5d18fa15dcca36cf66cb18f3806ddd61512057d6658491a89d51718325b4b","status":200}
+{"call":5,"event":"send","providerId":"sepolia-1rpc","requestSha256":"sha256:7cd718c15e7d48ea187956a752c86b96515cded0520142627ba5da9729233bee"}
+{"call":5,"error":null,"event":"outcome","responseBytes":177,"responseFile":"response-05.bin","responseSha256":"sha256:8c623ce388d7be681c47e3e0104a308ee70e0ce6b19f8facf1402352bb4d88b9","status":200}
+{"call":6,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:7a460c150b103a7959af7a56affe138ac9e57b251ebdf8a4de849f4cde2f1abc"}
+{"call":6,"error":null,"event":"outcome","responseBytes":285,"responseFile":"response-06.bin","responseSha256":"sha256:1ec22f6ff9231b33f17ec27b8cf5094de162b837b4b83f4fb01fb696050a67f0","status":200}
+{"call":7,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:ca0d15a8c85070ec59105c8f0d89e7265c38ed61d56d373ab49b26d0d9bff0a4"}
+{"call":7,"error":null,"event":"outcome","responseBytes":86,"responseFile":"response-07.bin","responseSha256":"sha256:82807561f5777fb9b1edb522d764b6645aa5ad0487acaac537dc289ace015409","status":200}
+{"call":8,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:1b1529f7594d853300cbdaa5f35809d510658615527b735970e7a7ee464dbeba"}
+{"call":8,"error":null,"event":"outcome","responseBytes":285,"responseFile":"response-08.bin","responseSha256":"sha256:a4b901dc479bfc2b94fc1520de4393eb411a32bd0a87ce97697da6dfd2f36f48","status":200}

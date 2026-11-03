@@ -166,6 +166,26 @@ def check_depth(text):
             in_string = True
 
 
+HEX_0X = re.compile(r"0x[0-9a-fA-F]+", re.A)
+HEX_DIGIT = re.compile(r"[0-9A-Fa-f]", re.A)
+# The masks of tools/compat/run.mjs SANITIZER_MASKS, in the same order (C6-LIVE-ENABLE, N-b, N-c).
+SANITIZER_MASKS = [
+    ("url", re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://\S*", re.A), "<url>"),
+    ("userinfo-at", re.compile(r"\S*@\S*", re.A), "<userinfo>"),
+    ("key-value", re.compile(r"\S*=\S*", re.A), "<kv>"),
+    ("ipv4", re.compile(r"(?<![0-9])\d+(?:\.\d+){3,}", re.A), "<ip>"),
+    ("ipv6", re.compile(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}", re.A), lambda m: "<ip>" if HEX_DIGIT.search(m.group(0)) else m.group(0)),
+    ("host-port", re.compile(r"(?<![A-Za-z0-9.:-])[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*:\d{1,5}(?![0-9])", re.A), "<host>"),
+    ("userinfo-colon", re.compile(r"[^\s:]+:[^\s:]+", re.A), "<userinfo>"),
+    ("hostname", re.compile(r"(?<![A-Za-z0-9.-])(?:[A-Za-z0-9-]+\.)+[A-Za-z][A-Za-z0-9-]*(?![A-Za-z0-9-])|(?<![A-Za-z0-9-])[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt](?![A-Za-z0-9-])", re.A), "<host>"),
+    ("long-token", re.compile(r"[A-Za-z0-9_+/-]{32,}", re.A), lambda m: m.group(0) if HEX_0X.fullmatch(m.group(0)) else "<token>"),
+    ("short-token", re.compile(r"(?<![A-Za-z0-9_+/-])(?=[A-Za-z0-9_+/-]*[0-9])(?=[A-Za-z0-9_+/-]*[A-Za-z])[A-Za-z0-9_+/-]{12,31}(?![A-Za-z0-9_+/-])", re.A), lambda m: m.group(0) if HEX_0X.fullmatch(m.group(0)) else "<token>"),
+]
+WITHHELD = "<withheld>"
+SUSPICIOUS = re.compile(r"[@=]|://|passw|passphrase|secret|bearer|basic\s|api[\s_-]?key|apikey|access[\s_-]?key|private[\s_-]?key|mnemonic|seed|credential|cookie|session|authoriz|\bauth\b|\bjwt\b|\btoken\s*:", re.A | re.I)
+PLACEHOLDER = re.compile(r"<(?:url|userinfo|kv|host|ip|token)>", re.A)
+
+
 def sanitize(value):
     if not isinstance(value, str):
         return None
@@ -176,13 +196,43 @@ def sanitize(value):
         value = units[:4096].decode("utf-16-le", "surrogatepass")
     ascii_text = "".join(ch if " " <= ch <= "~" else "?" for ch in value)
     if len(ascii_text) > 512:
-        ascii_text = re.sub(r"\S*$", "", ascii_text[:512])
-    ascii_text = re.sub(r"[A-Za-z][A-Za-z0-9+.-]*://\S*", "<url>", ascii_text)
-    ascii_text = re.sub(r"\b[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+:\d{1,5}\b", "<host>", ascii_text)
-    ascii_text = re.sub(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", "<ip>", ascii_text)
-    ascii_text = re.sub(r"[0-9A-Fa-f]{0,4}(?::[0-9A-Fa-f]{0,4}){2,7}", lambda m: "<ip>" if re.search(r"[0-9A-Fa-f]", m.group(0)) else m.group(0), ascii_text)
-    ascii_text = re.sub(r"[A-Za-z0-9_+/=-]{32,}", lambda m: m.group(0) if re.fullmatch(r"0x[0-9a-fA-F]+", m.group(0)) else "<token>", ascii_text)
+        ascii_text = re.sub(r"\S*$", "", ascii_text[:512], flags=re.A)
+    for _, pattern, replacement in SANITIZER_MASKS:
+        ascii_text = pattern.sub(replacement, ascii_text)
+    if SUSPICIOUS.search(PLACEHOLDER.sub(" ", ascii_text)):
+        return WITHHELD
     return ascii_text[:160]
+
+
+def xorshift32(seed):
+    x = seed & 0xFFFFFFFF
+
+    def nxt():
+        nonlocal x
+        x ^= (x << 13) & 0xFFFFFFFF
+        x ^= x >> 17
+        x ^= (x << 5) & 0xFFFFFFFF
+        return x
+    return nxt
+
+
+def sanitizer_checks(root: Path):
+    """vectors/compat/sanitizer.json: every fixed case, and the digest of the seeded corpus that
+    tools/compat/build-sanitizer-vectors.mjs generates the same way (C6-LIVE-ENABLE, N-b, N-c)."""
+    v = json.loads((root / "vectors/compat/sanitizer.json").read_text("utf-8"))
+    yield "sanitizer vectors: format", v["format"] == "rnnet.compat-sanitizer-vectors.v1"
+    bad = [c["input"][:40] for c in v["cases"] if sanitize(c["input"]) != c["output"]]
+    yield f"sanitizer vectors: all {len(v['cases'])} fixed cases agree with JavaScript" + (f" (not: {bad})" if bad else ""), not bad
+    c = v["corpus"]
+    nxt = xorshift32(c["seed"])
+    frags = c["fragments"]
+    outputs = []
+    for _ in range(c["count"]):
+        n = nxt() % (c["maxFragments"] + 1)
+        outputs.append(sanitize("".join(frags[nxt() % len(frags)] for _ in range(n))))
+    digest = sha("\n".join(outputs).encode("utf-8"))
+    yield f"sanitizer vectors: the seeded corpus of {c['count']} strings sanitizes to the JavaScript digest", digest == c["sha256"]
+    yield "sanitizer vectors: no output is longer than 160 characters or outside printable ASCII", all(len(o) <= 160 and all(" " <= ch <= "~" for ch in o) for o in outputs)
 
 
 def block_of(r):
@@ -228,7 +278,7 @@ def interpret(provider, form, status, body):
         if not is_obj(result) or result.get("status") != "success":
             return {**out, "outcome": "INVALID_RESPONSE"}
         return {**out, "outcome": "OK", "observed": observe(form, result)}
-    well = is_obj(env) and env.get("jsonrpc") == "2.0" and env.get("id") == 1 and not isinstance(env.get("id"), bool)
+    well = is_obj(env) and env.get("jsonrpc") == "2.0" and type(env.get("id")) is int and env.get("id") == 1
     if well and "error" in env:
         e = env["error"] if is_obj(env["error"]) else {}
         return {**out, "outcome": "RPC_ERROR", "rpcError": {"error": None, "code": safe_int(e.get("code")), "searchedAll": None, "message": sanitize(e.get("message"))}}
@@ -548,7 +598,10 @@ def checks_of(root):
 
 AUTH_FIELDS = ["authorizationId", "evidenceDir", "format", "manifestSha256", "notAfter", "providers", "publication", "requestBudget", "scope"]
 AUTH_DOMAIN = b"rnnet:compat-authorization:v1\x00"
-RUN_FILES = {"authorization.json", "transcript.json", "evidence.json", "report.json"}
+RUN_FILES = {"authorization.json", "journal.ndjson", "transcript.json", "evidence.json", "report.json"}
+# An incomplete run (an evidence write failed: C6-LIVE-ENABLE, N1) never has evidence.json or report.json.
+INCOMPLETE_FILES = {"authorization.json", "journal.ndjson"}
+JOURNAL_FORMAT = "rnnet.provider-compat-journal.v1"
 CALL_FIELDS = {"call", "providerId", "requestSha256", "status", "responseFile", "responseSha256", "responseBytes", "error", "policy"}
 UTC = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})Z")
 
@@ -577,13 +630,91 @@ def overall(verdict, violation):
     return "PASS" if verdict == {"xrpl": "PASS", "sepolia": "PASS"} and violation is None else "UNRESOLVED"
 
 
+def journal_expected(a, digest, calls):
+    """The journal records a transcript implies: the header, then per call "send" and "outcome",
+    or "refused" (tools/compat-live/entry.mjs journalRecords)."""
+    out = [{"authorizationDigest": digest, "authorizationId": a["authorizationId"], "format": JOURNAL_FORMAT}]
+    for c in calls:
+        if c["policy"] is not None:
+            out.append({"call": c["call"], "event": "refused", "policy": c["policy"]})
+        else:
+            out.append({"call": c["call"], "event": "send", "providerId": c["providerId"], "requestSha256": c["requestSha256"]})
+            out.append({"call": c["call"], "error": c["error"], "event": "outcome", "responseBytes": c["responseBytes"], "responseFile": c["responseFile"], "responseSha256": c["responseSha256"], "status": c["status"]})
+    return out
+
+
+def journal_lines(text):
+    """The complete, canonical records of a journal, and whether a torn last line was dropped."""
+    lines = text.split("\n")
+    torn = lines[-1] != ""
+    records = []
+    for line in lines[:-1]:
+        value = json.loads(line)
+        assert canon(value) == line, "journal record is not canonical"
+        records.append(value)
+    return records, torn
+
+
+def journal_summary(records):
+    """From the journal alone (N1): calls sent and recorded, sent but not recorded, never sent."""
+    sent, outcome, refused = [], {}, []
+    for r in records[1:]:
+        if r["event"] == "send":
+            sent.append(r["call"])
+        elif r["event"] == "outcome":
+            outcome[r["call"]] = r
+        elif r["event"] == "refused":
+            refused.append(r["call"])
+    recorded = [c for c in sent if c in outcome and outcome[c]["error"] != "RNCL_STORAGE"]
+    unrecorded = [c for c in sent if c not in recorded]
+    return recorded, unrecorded, refused
+
+
+def incomplete_run_checks(run_dir: Path, names, a, digest, private: bool):
+    """A run refused because an evidence write failed (N1): what it holds must be consistent, and it
+    must never carry evidence.json or report.json."""
+    raw = lambda name: (run_dir / name).read_bytes()  # noqa: E731
+    yield "an incomplete run holds no evidence.json and no report.json", not ({"evidence.json", "report.json"} & names)
+    yield "no partially written file is left under a run file's name", not any(n.startswith(".") for n in names)
+    records, torn = journal_lines(raw("journal.ndjson").decode("utf-8"))
+    yield "the journal starts with its header for this authorization", bool(records) and records[0] == {"authorizationDigest": digest, "authorizationId": a["authorizationId"], "format": JOURNAL_FORMAT}
+    recorded, unrecorded, refused = journal_summary(records)
+    calls = None
+    if "transcript.json" in names:
+        transcript_text = raw("transcript.json").decode("utf-8")
+        transcript = json.loads(transcript_text)
+        yield "the transcript is canonical", stored(transcript) == transcript_text and transcript["format"] == "rnnet.provider-compat-transcript.v1"
+        calls = transcript["calls"]
+        expected = journal_expected(a, digest, calls)
+        # The last record may be a "send" whose fsync failed: its request was then refused, not sent.
+        unsent_last = bool(records) and records[-1]["event"] == "send" and any(c["call"] == records[-1]["call"] and c["policy"] is not None for c in calls)
+        prefix = records[:-1] if unsent_last else records
+        yield "the journal is a prefix of the record the transcript implies", prefix == expected[:len(prefix)]
+        # A request reaches the transport only after its "send" record is durable.
+        yield "every call that reached the transport has a durable send record", {c["call"] for c in calls if c["policy"] is None} <= set(recorded) | set(unrecorded)
+        # With the transcript stored, it says which requests reached the transport.
+        reached = {c["call"] for c in calls if c["policy"] is None}
+        recorded = [c for c in recorded if c in reached]
+        unrecorded = [c for c in unrecorded if c in reached]
+        files = {c["responseFile"] for c in calls if c["responseFile"] is not None}
+        yield "every stored response matches its recorded digest and size", all(sha(raw(c["responseFile"])) == c["responseSha256"] and len(raw(c["responseFile"])) == c["responseBytes"] for c in calls if c["responseFile"] is not None)
+        yield "the run directory holds only the run files and the recorded responses", names - {"python-reference.txt"} <= INCOMPLETE_FILES | {"transcript.json"} | files | {f"response-{c['call']:02d}.bin" for c in calls}
+    rng = lambda xs: ",".join(str(x) for x in xs) or "none"  # noqa: E731
+    # Without a transcript the journal alone is read conservatively: a "send" with no outcome was
+    # possibly sent. A call with no "send" record was never sent.
+    unrecorded_label = "SENT BUT NOT RECORDED" if calls is not None else "POSSIBLY SENT, NOT RECORDED (no transcript)"
+    yield (f"run is INCOMPLETE (refused, no report): sent and recorded {rng(recorded)}; {unrecorded_label} {rng(unrecorded)}; "
+           f"refused, never sent {rng(refused if calls is None else [c['call'] for c in calls if c['policy'] is not None])}{'; the last journal line is torn' if torn else ''}"), True
+
+
 def run_checks(run_dir: Path, private: bool):
     """Checks one run directory from its files alone: the authorization's binding, every request
     rebuilt byte for byte, every response's digest, and the evidence and report recomputed here."""
     names = {p.name for p in run_dir.iterdir()}
     raw = lambda name: (run_dir / name).read_bytes()  # noqa: E731
-    yield "the run directory holds the four run files", RUN_FILES <= names
-    if not RUN_FILES <= names:
+    complete = RUN_FILES <= names
+    yield "the run directory holds the five run files, or is an incomplete run (authorization and journal)", complete or INCOMPLETE_FILES <= names
+    if not (complete or INCOMPLETE_FILES <= names):
         return
     if private:
         yield "the run directory is private (0700) and every file in it is 0600", (run_dir.stat().st_mode & 0o777) == 0o700 and all(((run_dir / n).stat().st_mode & 0o777) == 0o600 for n in names)
@@ -592,6 +723,9 @@ def run_checks(run_dir: Path, private: bool):
     yield "the authorization binds the reviewed manifest digest", a["manifestSha256"] == "sha256:" + MANIFEST_SHA256
     yield "the authorization names the four reviewed providers at their URLs with their budget, in manifest order", a["providers"] == [{"id": p, "requests": BUDGET[p], "url": u} for p, _, u in PROVIDERS]
     yield "the authorization budget is exactly 22 requests", a["requestBudget"] == 22 == sum(BUDGET.values())
+    if not complete:
+        yield from incomplete_run_checks(run_dir, names, a, digest, private)
+        return
     transcript_text = raw("transcript.json").decode("utf-8")
     transcript = json.loads(transcript_text)
     yield "the transcript is canonical", stored(transcript) == transcript_text and transcript["format"] == "rnnet.provider-compat-transcript.v1" and set(transcript) == {"format", "calls"}
@@ -599,6 +733,8 @@ def run_checks(run_dir: Path, private: bool):
     yield "the transcript calls are numbered in order, with exactly the recorded fields", [c["call"] for c in calls] == list(range(1, len(calls) + 1)) and all(set(c) == CALL_FIELDS for c in calls)
     files = {c["responseFile"] for c in calls if c["responseFile"] is not None}
     yield "the run directory holds exactly the run files and the recorded responses", names - {"python-reference.txt"} == RUN_FILES | files
+    journal_text = raw("journal.ndjson").decode("utf-8")
+    yield "the journal is exactly the record the transcript implies (each request journaled before it was sent)", journal_text == "".join(canon(r) + "\n" for r in journal_expected(a, digest, calls))
     replayable, bodies_ok = [], True
     for c in calls:
         if c["policy"] is not None or c["error"] is not None:
@@ -650,8 +786,10 @@ def run_main(run_dir: Path, record: bool) -> int:
     except (AssertionError, KeyError, TypeError, ValueError, OSError) as error:
         results.append((f"the run directory could not be checked: {type(error).__name__}", False))
     failed = [name for name, ok in results if not ok]
+    incomplete = any(name.startswith("run is INCOMPLETE") for name, _ in results)
     lines = [("ok   " if ok else "FAIL ") + name for name, ok in results]
-    lines.append(f"compat run reference: {len(results) - len(failed)}/{len(results)} checks agree; {'AGREES' if not failed and results else 'DOES NOT AGREE'}")
+    verdict = "DOES NOT AGREE" if failed or not results else "INCOMPLETE RUN: consistent, but there is no report to accept" if incomplete else "AGREES"
+    lines.append(f"compat run reference: {len(results) - len(failed)}/{len(results)} checks agree; {verdict}")
     text = "\n".join(lines) + "\n"
     sys.stdout.write(text)
     if record:
@@ -662,7 +800,7 @@ def run_main(run_dir: Path, record: bool) -> int:
             os.fsync(fd)
         finally:
             os.close(fd)
-    return 1 if failed or not results else 0
+    return 1 if failed or not results or incomplete else 0
 
 
 def fixture_run_checks(root: Path):
@@ -673,12 +811,14 @@ def fixture_run_checks(root: Path):
         for name, ok in run_checks(d, private=False):
             if name.startswith("report.json is rebuilt"):
                 overalls.add(name.split(": ", 1)[1].split(" ", 1)[0])
+            if name.startswith("run is INCOMPLETE"):
+                overalls.add("INCOMPLETE")
             yield f"compat-c6-live/{d.name}: {name}", ok
-    yield "the C6-LIVE run fixtures cover PASS, BLOCKED and UNRESOLVED", overalls >= {"PASS", "BLOCKED", "UNRESOLVED"}
+    yield "the C6-LIVE run fixtures cover PASS, BLOCKED, UNRESOLVED and an incomplete run", overalls >= {"PASS", "BLOCKED", "UNRESOLVED", "INCOMPLETE"}
 
 
 def main(root: Path) -> int:
-    results = list(checks_of(root)) + list(fixture_run_checks(root))
+    results = list(checks_of(root)) + list(fixture_run_checks(root)) + list(sanitizer_checks(root))
     failed = [name for name, ok in results if not ok]
     for name in failed:
         print("FAIL", name)

@@ -1,0 +1,33 @@
+{"authorizationDigest":"sha256:566c7825eca96de16f255321f09c13b2014e3e6b960307b8897dfdf61c5bbb32","authorizationId":"c6-fixture-authorization-expires-mid-run","format":"rnnet.provider-compat-journal.v1"}
+{"call":1,"event":"send","providerId":"xrpl-testnet-ripple","requestSha256":"sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d"}
+{"call":1,"error":null,"event":"outcome","responseBytes":340,"responseFile":"response-01.bin","responseSha256":"sha256:ec89c3536384617a4b6da87da9b835c6d8fac45e487a604cc4f2560202561850","status":200}
+{"call":2,"event":"send","providerId":"xrpl-testnet-xrpl-labs","requestSha256":"sha256:fe53448217baa5445989cc6e58afb0967c557decb331393689b4d1d80e000d5d"}
+{"call":2,"error":null,"event":"outcome","responseBytes":340,"responseFile":"response-02.bin","responseSha256":"sha256:c227d46e243ddeef1dc1e03173b7882e7ecd67c8719f06ab2829e248d4a59786","status":200}
+{"call":3,"event":"send","providerId":"xrpl-testnet-ripple","requestSha256":"sha256:8df5ca20184a519544dd09799f58369c7cfcfaaba4c69a89d178f4b88f75a817"}
+{"call":3,"error":null,"event":"outcome","responseBytes":296,"responseFile":"response-03.bin","responseSha256":"sha256:48df780796399451cf410395f2290388678a1a1775d85d382cf9603a7cc92e05","status":200}
+{"call":4,"event":"send","providerId":"xrpl-testnet-xrpl-labs","requestSha256":"sha256:c06972056c0b4bda4eae0d4616d1d32a38e7c0264e1f9054414323e228a5c5e9"}
+{"call":4,"error":null,"event":"outcome","responseBytes":296,"responseFile":"response-04.bin","responseSha256":"sha256:e1efcec4294075606bb19a51ff65c04bbb06569ce2c47c92b5be3c61e0c1d762","status":200}
+{"call":5,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:7cd718c15e7d48ea187956a752c86b96515cded0520142627ba5da9729233bee"}
+{"call":5,"error":null,"event":"outcome","responseBytes":44,"responseFile":"response-05.bin","responseSha256":"sha256:87736a36920a1f2877bb0104fa79f9b3e6edf758c45fb517d71f55f9899ea119","status":200}
+{"call":6,"event":"send","providerId":"sepolia-1rpc","requestSha256":"sha256:7cd718c15e7d48ea187956a752c86b96515cded0520142627ba5da9729233bee"}
+{"call":6,"error":null,"event":"outcome","responseBytes":44,"responseFile":"response-06.bin","responseSha256":"sha256:87736a36920a1f2877bb0104fa79f9b3e6edf758c45fb517d71f55f9899ea119","status":200}
+{"call":7,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:7a460c150b103a7959af7a56affe138ac9e57b251ebdf8a4de849f4cde2f1abc"}
+{"call":7,"error":null,"event":"outcome","responseBytes":285,"responseFile":"response-07.bin","responseSha256":"sha256:1ec22f6ff9231b33f17ec27b8cf5094de162b837b4b83f4fb01fb696050a67f0","status":200}
+{"call":8,"event":"send","providerId":"sepolia-1rpc","requestSha256":"sha256:7a460c150b103a7959af7a56affe138ac9e57b251ebdf8a4de849f4cde2f1abc"}
+{"call":8,"error":null,"event":"outcome","responseBytes":285,"responseFile":"response-08.bin","responseSha256":"sha256:dfedf88d9b9eefa5e8ef36a3dbef19092d648e5d590a0ee59fcec1753404b976","status":200}
+{"call":9,"event":"send","providerId":"sepolia-publicnode","requestSha256":"sha256:54dc29ca2e21de288d4ddeaaef5bdecd01676e331a971a42b025c26fd013274b"}
+{"call":9,"error":null,"event":"outcome","responseBytes":285,"responseFile":"response-09.bin","responseSha256":"sha256:7805204cea0d7074ab80b32e3dd416e442a0b1913f05b3001323909f6748a81c","status":200}
+{"call":10,"event":"send","providerId":"sepolia-1rpc","requestSha256":"sha256:54dc29ca2e21de288d4ddeaaef5bdecd01676e331a971a42b025c26fd013274b"}
+{"call":10,"error":null,"event":"outcome","responseBytes":285,"responseFile":"response-10.bin","responseSha256":"sha256:7805204cea0d7074ab80b32e3dd416e442a0b1913f05b3001323909f6748a81c","status":200}
+{"call":11,"event":"refused","policy":"authorization expired before this request"}
+{"call":12,"event":"refused","policy":"authorization expired before this request"}
+{"call":13,"event":"refused","policy":"authorization expired before this request"}
+{"call":14,"event":"refused","policy":"authorization expired before this request"}
+{"call":15,"event":"refused","policy":"authorization expired before this request"}
+{"call":16,"event":"refused","policy":"authorization expired before this request"}
+{"call":17,"event":"refused","policy":"authorization expired before this request"}
+{"call":18,"event":"refused","policy":"authorization expired before this request"}
+{"call":19,"event":"refused","policy":"authorization expired before this request"}
+{"call":20,"event":"refused","policy":"authorization expired before this request"}
+{"call":21,"event":"refused","policy":"authorization expired before this request"}
+{"call":22,"event":"refused","policy":"authorization expired before this request"}

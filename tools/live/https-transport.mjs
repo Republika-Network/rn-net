@@ -7,7 +7,9 @@
 // - TLS certificates are verified;
 // - the destination address comes from a DNS lookup made here, and private, loopback,
 //   link-local, multicast and other non-public addresses are refused, at connection time;
-// - the request has a deadline, and the response is read up to a size limit.
+// - the request has a deadline, and the response is read up to a size limit;
+// - TLS verification is stated in every request (never inherited from the environment), only
+//   identity-encoded bodies are read, and the connected peer address is checked again.
 import { lookup as dnsLookup } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
 import { isIP } from 'node:net';
@@ -66,56 +68,95 @@ export const makeGuardedLookup = (resolve = dnsLookup) => (hostname, options, ca
 };
 export const guardedLookup = makeGuardedLookup();
 
+/** TLS settings every request states explicitly, whatever the environment says (C6-LIVE-ENABLE). */
+export const TLS_OPTIONS = Object.freeze({ rejectUnauthorized: true, minVersion: 'TLSv1.2' });
+
 /**
+ * A transport over `request` (node:https request; tests inject a fake one, since the offline
+ * preload refuses the real one) and `lookup` (the guarded lookup).
  * The transport: (request) => Promise<{ status, body }>, throwing { code } on failure.
- * @param {{ url: string, body: Uint8Array, timeoutMs: number, maxResponseBytes: number }} request
  */
-export function httpsTransport({ url, body, timeoutMs, maxResponseBytes }) {
-  return new Promise((resolve, reject) => {
-    const target = new URL(url);
+export function createHttpsTransport({ request = httpsRequest, lookup = guardedLookup } = {}) {
+  return ({ url, body, timeoutMs, maxResponseBytes }) => new Promise((resolve, reject) => {
+    let target;
+    try {
+      target = new URL(url);
+    } catch {
+      return reject(fail('RNLO_BLOCKED_ADDRESS'));
+    }
     // An address literal would skip the guarded lookup, so only DNS names are accepted.
     const host = target.hostname.replace(/^\[|\]$/g, '');
     if (target.protocol !== 'https:' || target.username || target.password || isIP(host) !== 0) return reject(fail('RNLO_BLOCKED_ADDRESS'));
     let settled = false;
+    let chunks = [];
+    let req;
     const finish = (fn, value) => {
       if (!settled) {
         settled = true;
         clearTimeout(timer);
+        if (fn === reject) chunks = [];
         fn(value);
       }
     };
-    const req = httpsRequest(target, {
-      method: 'POST',
-      lookup: guardedLookup,
-      agent: false,
-      headers: { 'content-type': 'application/json', accept: 'application/json', 'content-length': body.length },
-    }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400) {
-        res.destroy();
-        return finish(reject, fail('RNLO_REDIRECT'));
-      }
-      const declared = Number(res.headers['content-length']);
-      if (Number.isFinite(declared) && declared > maxResponseBytes) {
-        res.destroy();
-        return finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
-      }
-      const chunks = [];
-      let size = 0;
-      res.on('data', (chunk) => {
-        size += chunk.length;
-        if (size > maxResponseBytes) {
+    const abort = (code) => {
+      req?.destroy();
+      finish(reject, fail(code));
+    };
+    const timer = setTimeout(() => abort('RNLO_TIMEOUT'), timeoutMs);
+    try {
+      req = request(target, {
+        method: 'POST',
+        lookup,
+        agent: false,
+        // Stated, not inherited: certificates and the host name are verified, TLS 1.2 at least.
+        ...TLS_OPTIONS,
+        servername: host,
+        insecureHTTPParser: false,
+        maxHeaderSize: 16_384,
+        headers: { 'content-type': 'application/json', accept: 'application/json', 'accept-encoding': 'identity', 'content-length': body.length },
+      }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400) {
           res.destroy();
-          finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
-        } else chunks.push(chunk);
+          return finish(reject, fail('RNLO_REDIRECT'));
+        }
+        // Only identity bodies: a compressed body would expand past the limit after it is read.
+        const encoding = res.headers['content-encoding'];
+        if (encoding !== undefined && String(encoding).toLowerCase() !== 'identity') {
+          res.destroy();
+          return finish(reject, fail('RNLO_CONNECTION'));
+        }
+        const declared = Number(res.headers['content-length']);
+        if (Number.isFinite(declared) && declared > maxResponseBytes) {
+          res.destroy();
+          return finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
+        }
+        let size = 0;
+        res.on('data', (chunk) => {
+          if (settled) return;
+          size += chunk.length;
+          if (size > maxResponseBytes) {
+            res.destroy();
+            finish(reject, fail('RNLO_RESPONSE_TOO_LARGE'));
+          } else chunks.push(chunk);
+        });
+        res.on('end', () => finish(resolve, { status: res.statusCode, body: new Uint8Array(Buffer.concat(chunks)) }));
+        res.on('error', () => finish(reject, fail('RNLO_CONNECTION')));
       });
-      res.on('end', () => finish(resolve, { status: res.statusCode, body: new Uint8Array(Buffer.concat(chunks)) }));
-      res.on('error', () => finish(reject, fail('RNLO_CONNECTION')));
+    } catch {
+      return abort('RNLO_CONNECTION');
+    }
+    // Defense in depth: the address actually connected must be public too.
+    req.on('socket', (socket) => {
+      const checkPeer = () => {
+        if (typeof socket.remoteAddress !== 'string' || isBlockedAddress(socket.remoteAddress)) abort('RNLO_BLOCKED_ADDRESS');
+      };
+      if (typeof socket.remoteAddress === 'string') checkPeer();
+      else socket.once('connect', checkPeer);
     });
-    const timer = setTimeout(() => {
-      req.destroy();
-      finish(reject, fail('RNLO_TIMEOUT'));
-    }, timeoutMs);
     req.on('error', (error) => finish(reject, fail(error?.code === 'RNLO_BLOCKED_ADDRESS' ? 'RNLO_BLOCKED_ADDRESS' : 'RNLO_CONNECTION')));
     req.end(Buffer.from(body));
   });
 }
+
+/** The transport over node:https and the guarded lookup. */
+export const httpsTransport = createHttpsTransport();

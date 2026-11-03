@@ -12,8 +12,8 @@ import { canonicalize } from '../../packages/canonical/src/index.mjs';
 import { C6_BUDGET, C6_PROVIDERS } from '../compat/manifest.mjs';
 import { SCENARIOS, SIM_NOW, simulatedTransport } from '../compat/simulated.mjs';
 import { compatAuthorizationDigest, readCompatAuthorization } from './authorization.mjs';
-import { executeRun } from './compat-live.mjs';
-import { C6_MANIFEST_SHA256, writeNewFile } from './entry.mjs';
+import { C6_MANIFEST_SHA256, NODE_IO, writeNewFile } from './entry.mjs';
+import { executeRun } from './flow.mjs';
 import { RUN_FILES } from './report.mjs';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -58,8 +58,12 @@ export const RUN_FIXTURES = Object.freeze([
   { name: 'deadline-hang-1rpc-head', transport: () => hangOn('sepolia-1rpc', 'eth_getBlockByNumber', simulatedTransport({})), sleep: immediateDeadline },
   // The authorization expires during the run: the policy refuses from that request on; nothing more is sent.
   { name: 'authorization-expires-mid-run', transport: () => simulatedTransport({}), expiresAfterCalls: 10 },
-  // A response that cannot be stored stops the run; it is never read as a transport error (review F1).
+  // A response that cannot be stored stops the run; it is never read as a transport error (review
+  // F1), and the run is refused with RNCL_EVIDENCE: no evidence.json or report.json (N1).
   { name: 'response-storage-fails', transport: () => simulatedTransport({}), storeFailsAtCall: 6 },
+  // The journal cannot record call 9 before it is sent (a full disk): call 9 is never sent, the
+  // transcript keeps calls 1 to 9, and the run is refused with RNCL_EVIDENCE (N1).
+  { name: 'journal-fails-before-call-9', transport: () => simulatedTransport({}), journalFailsAtRecord: 1 + 8 * 2 + 1 },
   // JSON nesting at the limit on both sides (C6-LIVE review N-a): depth 64 is read, 65 is not, and
   // a very deep body is refused, not a crash.
   {
@@ -90,11 +94,33 @@ export async function buildRunFixture(f, endpoints) {
       calls += 1;
       return f.expiresAfterCalls !== undefined && calls > f.expiresAfterCalls ? NOT_AFTER + 1 : SIM_NOW;
     };
-    const store = (dir, name, body) => {
+    const store = (dir, name, body, io) => {
       if (f.storeFailsAtCall !== undefined && name === `response-${String(f.storeFailsAtCall).padStart(2, '0')}.bin`) throw Object.assign(new Error('simulated I/O error'), { code: 'EIO' });
-      return writeNewFile(dir, name, body);
+      return writeNewFile(dir, name, body, io);
     };
-    await executeRun({ authorizationText, authorization, digest, endpoints, transport: f.transport(), now: SIM_NOW, clock, notAfter: NOT_AFTER, runDirectory, sleep: f.sleep ?? neverDeadline, store });
+    // The n-th journal record (1 is the header) fails with ENOSPC, before any byte of it is written.
+    let journalFd = null;
+    let journalWrites = 0;
+    const io = f.journalFailsAtRecord === undefined ? NODE_IO : {
+      ...NODE_IO,
+      openSync: (path, ...rest) => {
+        const fd = NODE_IO.openSync(path, ...rest);
+        if (String(path).endsWith('/journal.ndjson')) journalFd = fd;
+        return fd;
+      },
+      writeSync: (fd, ...rest) => {
+        if (fd === journalFd) {
+          journalWrites += 1;
+          if (journalWrites >= f.journalFailsAtRecord) throw Object.assign(new Error('simulated full disk'), { code: 'ENOSPC' });
+        }
+        return NODE_IO.writeSync(fd, ...rest);
+      },
+      closeSync: (fd) => {
+        if (fd === journalFd) journalFd = null;
+        return NODE_IO.closeSync(fd);
+      },
+    };
+    await executeRun({ authorizationText, authorization, digest, endpoints, transport: f.transport(), now: SIM_NOW, clock, notAfter: NOT_AFTER, runDirectory, sleep: f.sleep ?? neverDeadline, store, io });
     return new Map(readdirSync(runDirectory).sort().map((name) => [name, readFileSync(join(runDirectory, name))]));
   } finally {
     rmSync(base, { recursive: true, force: true });

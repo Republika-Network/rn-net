@@ -9,7 +9,7 @@
 // (guard: compat-live-reaches-write-or-key).
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, writeSync } from 'node:fs';
+import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, statfsSync, unlinkSync, writeSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { canonicalBytes, canonicalize } from '../../packages/canonical/src/index.mjs';
 import { C6_BUDGET, C6_PROVIDERS, C6_TOTAL_REQUESTS, manifestBytes } from '../compat/manifest.mjs';
@@ -157,23 +157,54 @@ export async function requireApproval(approve, { digest, lines }) {
 }
 
 // --- Private, durable, write-once evidence ------------------------------------------------------
+//
+// C6-LIVE-ENABLE, review N1. Every evidence file is written whole or not at all: its bytes go to a
+// new private temporary file, which is fsynced and then linked to its final name (which must not
+// exist), so a full disk or an I/O error never leaves a truncated file under a run file's name. The
+// journal records each request durably BEFORE it is sent and its outcome after, so after any
+// failure the run directory still says which requests were sent and which never were. Any
+// evidence write that fails refuses the run with RNCL_EVIDENCE: no evidence.json or report.json is
+// then written, so an incomplete run never carries a complete-looking report.
+
+/** The file system calls the evidence store uses; tests replace them to model a failing disk. */
+export const NODE_IO = Object.freeze({ openSync, writeSync, fsyncSync, closeSync, linkSync, unlinkSync, statfsSync, lstatSync, fstatSync, mkdirSync });
+export const JOURNAL_FORMAT = 'rnnet.provider-compat-journal.v1';
+export const JOURNAL_FILE = 'journal.ndjson';
+/** The lock one C6 run holds in the evidence directory: no two runs at once, whatever their authorization. */
+export const RUN_LOCK = 'c6-run.lock';
+/**
+ * Free space the evidence directory must have before a run: 22 responses of at most 256 KiB, the
+ * journal, transcript, evidence and report, with a wide margin.
+ */
+export const MIN_FREE_BYTES = 64 * 1024 * 1024;
+const EVIDENCE_NAME = /^[a-z0-9-]{1,40}\.(?:json|bin|ndjson)$/;
 
 const evidenceError = (detail) => new CompatEntryError(CompatEntryCode.EVIDENCE, detail);
+const codeOf = (error) => (typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(error.code) ? ` (${error.code})` : '');
 
-function fsyncDirectory(dir) {
-  const fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY);
+function fsyncDirectory(dir, io = NODE_IO) {
+  const fd = io.openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY);
   try {
-    fsyncSync(fd);
+    io.fsyncSync(fd);
   } finally {
-    closeSync(fd);
+    io.closeSync(fd);
+  }
+}
+
+function writeAll(fd, bytes, io) {
+  let written = 0;
+  while (written < bytes.length) {
+    const n = io.writeSync(fd, bytes, written, bytes.length - written);
+    if (!Number.isSafeInteger(n) || n <= 0) throw Object.assign(new Error('short write'), { code: 'EIO' });
+    written += n;
   }
 }
 
 /** Refuses unless `dir` is a private directory of this user (mode 0700, not a symbolic link). */
-export function checkEvidenceDirectory(dir, uid) {
+export function checkEvidenceDirectory(dir, uid, io = NODE_IO) {
   let stat;
   try {
-    stat = lstatSync(dir);
+    stat = io.lstatSync(dir);
   } catch {
     throw evidenceError(`${dir} does not exist`);
   }
@@ -182,35 +213,197 @@ export function checkEvidenceDirectory(dir, uid) {
   if (uid !== null && uid !== undefined && stat.uid !== uid) throw evidenceError(`${dir}: not owned by this user`);
 }
 
+/**
+ * Refuses unless the evidence directory can hold a whole run durably (N1): at least MIN_FREE_BYTES
+ * free for this user, and a probe file can be created, written, fsynced, linked and removed there.
+ * Nothing is sent if this fails.
+ */
+export function checkDurability(dir, { io = NODE_IO, minFreeBytes = MIN_FREE_BYTES } = {}) {
+  let fs;
+  try {
+    fs = io.statfsSync(dir, { bigint: true });
+  } catch (error) {
+    throw evidenceError(`${dir}: free space cannot be read${codeOf(error)}`);
+  }
+  const free = BigInt(fs.bavail) * BigInt(fs.bsize);
+  if (free < BigInt(minFreeBytes)) throw evidenceError(`${dir}: ${free} bytes free, at least ${minFreeBytes} are required`);
+  const probe = join(dir, '.c6-durability-probe');
+  const linked = join(dir, '.c6-durability-probe-linked');
+  let fd = null;
+  try {
+    fd = io.openSync(probe, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+    writeAll(fd, Buffer.alloc(4096, 0x63), io);
+    io.fsyncSync(fd);
+    io.closeSync(fd);
+    fd = null;
+    io.linkSync(probe, linked);
+    fsyncDirectory(dir, io);
+  } catch (error) {
+    throw evidenceError(`${dir}: a probe file cannot be written durably${codeOf(error)}`);
+  } finally {
+    if (fd !== null) {
+      try {
+        io.closeSync(fd);
+      } catch {
+        // already failing
+      }
+    }
+    for (const path of [linked, probe]) {
+      try {
+        io.unlinkSync(path);
+      } catch {
+        // not created
+      }
+    }
+  }
+}
+
+/**
+ * Takes the evidence directory's run lock (O_EXCL); returns release(). RNCL_EVIDENCE if another
+ * run holds it. A lock left by a run that was killed stays until the founder removes it, after
+ * checking that no run is active: a stale lock blocks, it never lets two runs through.
+ */
+export function acquireRunLock(evidenceDir, authorizationId, io = NODE_IO) {
+  const path = join(evidenceDir, RUN_LOCK);
+  let fd;
+  try {
+    fd = io.openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+  } catch (error) {
+    if (error?.code === 'EEXIST') throw evidenceError(`another C6 run holds ${path}; remove it only after checking that no run is active`);
+    throw evidenceError(`${path} cannot be created${codeOf(error)}`);
+  }
+  try {
+    try {
+      writeAll(fd, Buffer.from(`${authorizationId}\n`, 'utf8'), io);
+      io.fsyncSync(fd);
+    } finally {
+      io.closeSync(fd);
+    }
+    fsyncDirectory(evidenceDir, io);
+  } catch (error) {
+    // Not taken: removed if possible; if not, it stays and blocks (fail closed).
+    try {
+      io.unlinkSync(path);
+    } catch {
+      // stays
+    }
+    throw evidenceError(`${path} cannot be written durably${codeOf(error)}`);
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    io.unlinkSync(path);
+    fsyncDirectory(evidenceDir, io);
+  };
+}
+
 /** Creates <evidenceDir>/<authorizationId>/ (0700); RNCL_AUTHORIZATION_USED if it exists. */
-export function createRunDirectory(evidenceDir, authorizationId) {
+export function createRunDirectory(evidenceDir, authorizationId, io = NODE_IO) {
   if (!/^[a-z0-9-]{1,64}$/.test(authorizationId)) throw new TypeError('authorization id');
   const path = join(evidenceDir, authorizationId);
   try {
-    mkdirSync(path, { mode: 0o700 });
+    io.mkdirSync(path, { mode: 0o700 });
   } catch (error) {
     if (error?.code === 'EEXIST') refuse(CompatEntryCode.AUTHORIZATION_USED, `${authorizationId} already has a run in the evidence directory`);
-    throw error;
+    throw evidenceError(`the run directory cannot be created${codeOf(error)}`);
   }
-  fsyncDirectory(evidenceDir);
-  if ((lstatSync(path).mode & 0o777) !== 0o700) throw evidenceError('run directory mode is not 0700');
+  // The run directory exists from here on: whatever fails next, this authorization is used.
+  try {
+    fsyncDirectory(evidenceDir, io);
+  } catch (error) {
+    throw evidenceError(`the run directory cannot be made durable${codeOf(error)}; nothing was sent`);
+  }
+  if ((io.lstatSync(path).mode & 0o777) !== 0o700) throw evidenceError('run directory mode is not 0700');
   return path;
 }
 
-/** Writes `content` (text, or exact bytes) to the new file `name` in `dir`: exclusive, mode 0600, fsync of file and directory. */
-export function writeNewFile(dir, name, content) {
-  if (!/^[a-z0-9-]{1,40}\.(?:json|bin)$/.test(name)) throw new TypeError('evidence file name');
-  const fd = openSync(join(dir, name), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+/**
+ * Writes `content` (text, or exact bytes) to the new file `name` in `dir`, whole or not at all:
+ * a new 0600 temporary file is written and fsynced, then linked to `name` (which must not exist)
+ * and removed, and the directory is fsynced. On any failure the temporary file is removed, and
+ * so is `name` if it was linked: a write that throws leaves no file under `name`.
+ */
+export function writeNewFile(dir, name, content, io = NODE_IO) {
+  if (!EVIDENCE_NAME.test(name)) throw new TypeError('evidence file name');
+  const bytes = content instanceof Uint8Array ? Buffer.from(content) : Buffer.from(content, 'utf8');
+  const temporary = join(dir, `.${name}.partial`);
+  const fd = io.openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try {
-    const bytes = content instanceof Uint8Array ? Buffer.from(content) : Buffer.from(content, 'utf8');
-    let written = 0;
-    while (written < bytes.length) written += writeSync(fd, bytes, written, bytes.length - written);
-    if ((fstatSync(fd).mode & 0o777) !== 0o600) throw evidenceError(`${name}: file mode is not 0600`);
-    fsyncSync(fd);
+    try {
+      writeAll(fd, bytes, io);
+      if ((io.fstatSync(fd).mode & 0o777) !== 0o600) throw evidenceError(`${name}: file mode is not 0600`);
+      io.fsyncSync(fd);
+    } finally {
+      io.closeSync(fd);
+    }
+    io.linkSync(temporary, join(dir, name));
   } finally {
-    closeSync(fd);
+    try {
+      io.unlinkSync(temporary);
+    } catch {
+      // nothing more can be done; the reproduction refuses a directory holding it
+    }
   }
-  fsyncDirectory(dir);
+  try {
+    fsyncDirectory(dir, io);
+  } catch (error) {
+    // Not durable: the name is removed too, so a refused write never leaves the file behind.
+    try {
+      io.unlinkSync(join(dir, name));
+    } catch {
+      // the reproduction refuses a directory holding a file its transcript does not name
+    }
+    throw error;
+  }
+}
+
+/**
+ * Opens the run's journal (journal.ndjson: one canonical JSON record per line, appended and
+ * fsynced one at a time) and writes its first record. Returns { append(record) }; append throws if
+ * the record is not durably stored, and after one failure every later append throws too.
+ */
+export function openJournal(dir, header, io = NODE_IO) {
+  const fd = io.openSync(join(dir, JOURNAL_FILE), constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW | constants.O_APPEND, 0o600);
+  let failed = null;
+  const append = (record) => {
+    if (failed !== null) throw failed;
+    try {
+      writeAll(fd, Buffer.from(`${canonicalize(record)}\n`, 'utf8'), io);
+      io.fsyncSync(fd);
+    } catch (error) {
+      failed = error;
+      throw error;
+    }
+  };
+  try {
+    if ((io.fstatSync(fd).mode & 0o777) !== 0o600) throw evidenceError(`${JOURNAL_FILE}: file mode is not 0600`);
+    append({ format: JOURNAL_FORMAT, ...header });
+    fsyncDirectory(dir, io);
+  } catch (error) {
+    io.closeSync(fd);
+    throw error;
+  }
+  return Object.freeze({
+    append,
+    close: () => io.closeSync(fd),
+  });
+}
+
+/**
+ * The journal records a transcript implies, after the header, in order: per call, "send" then
+ * "outcome" if it reached the transport, or "refused" if the policy stopped it.
+ */
+export function journalRecords(transcript) {
+  const records = [];
+  for (const c of transcript.calls) {
+    if (c.policy !== null) records.push({ call: c.call, event: 'refused', policy: c.policy });
+    else {
+      records.push({ call: c.call, event: 'send', providerId: c.providerId, requestSha256: c.requestSha256 });
+      records.push({ call: c.call, event: 'outcome', error: c.error, responseBytes: c.responseBytes, responseFile: c.responseFile, responseSha256: c.responseSha256, status: c.status });
+    }
+  }
+  return records;
 }
 
 /** The canonical text of a stored document, with one final newline. */

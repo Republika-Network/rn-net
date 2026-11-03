@@ -230,16 +230,25 @@ export const PREPARE_TRANSPORT_JOINERS = [];
 // The C6 provider compatibility manifest and offline run (RN-NET-03B2-C6-PREP): no file in it may
 // reach a network file, the write path, the signer or the key tool (compat-reaches-network,
 // compat-reaches-write-or-key), and no file anywhere may join it to a network file
-// (compat-transport-join-transitive) unless listed below. None is listed: there is no live C6
-// entry point. Adding one is a reviewed change to this list (C6 review 3).
+// (compat-transport-join-transitive) unless listed below. RN-NET-03B2-C6-LIVE-ENABLE lists exactly
+// one file, after its implementation review: the C6 command, whose network access stays disabled
+// (LIVE_NETWORK_ACCESS false, AGREED_EVIDENCE_DIR null) until a founder-controlled change. Adding
+// any other file is a reviewed change to this list (C6 review 3).
 export const COMPAT_TOOLS = 'tools/compat/';
-export const COMPAT_TRANSPORT_JOINERS = [];
+export const COMPAT_TRANSPORT_JOINERS = ['tools/compat-live/compat-live.mjs'];
 // The C6 entry point (RN-NET-03B2-C6-LIVE), DISABLED: no file in tools/compat-live/, nor its test,
 // may reach a network file (compat-live-reaches-network), so its command cannot send a request
 // until a reviewed enabling change edits this rule and COMPAT_TRANSPORT_JOINERS together. Nor may it
 // ever reach the write path, the signer, txverify/, the key tool, tools/signing/, tools/broadcast/,
 // preparation (tools/prepare/, packages/tx-prepare/) or the rehearsal (compat-live-reaches-write-or-key).
 export const COMPAT_LIVE_TOOLS = 'tools/compat-live/';
+// RN-NET-03B2-C6-LIVE-ENABLE narrows compat-live-reaches-network to two files: the narrow C6
+// transport, the only file here that may import the reviewed transport (and nothing else that can
+// reach the network), and the command, which may reach it only through that file. Neither may
+// reach any network file other than TRANSPORT_FILE (compat-live-reaches-network), and no other
+// file in tools/compat-live/ may import TRANSPORT_FILE directly (compat-live-transport-not-narrowed).
+export const COMPAT_LIVE_TRANSPORT_FILE = 'tools/compat-live/c6-transport.mjs';
+export const COMPAT_LIVE_NETWORK_FILES = ['tools/compat-live/compat-live.mjs', COMPAT_LIVE_TRANSPORT_FILE];
 
 // Files that may join packages/chain-submit to tools/live/https-transport.mjs, the only network
 // transport. None in RN-NET-03B2-B3 or C2: enabling a live entry point needs gate E and its own
@@ -817,7 +826,9 @@ function checkWriteTransportClosure(files, add, wholeTree) {
     const reachesNetwork = [...seen].some((p) => p === TRANSPORT_FILE || network.has(p));
     // Checked before the write-joiner exemption below, so no listed file elsewhere can join the C6
     // tools to the network either (C6 re-check N4).
-    if (!COMPAT_TRANSPORT_JOINERS.includes(path) && path !== TRANSPORT_FILE && [...seen].some((p) => p.startsWith(COMPAT_TOOLS)) && reachesNetwork) add(path, 'compat-transport-join-transitive');
+    // The transport file itself is not exempt (C6-LIVE review N-d): if it ever reached tools/compat/,
+    // it would be a joiner too.
+    if (!COMPAT_TRANSPORT_JOINERS.includes(path) && [...seen].some((p) => p.startsWith(COMPAT_TOOLS)) && reachesNetwork) add(path, 'compat-transport-join-transitive');
     if (WRITE_TRANSPORT_JOINERS.includes(path)) continue;
     const reachesWrite = [...seen].some(isWrite);
     if (isWrite(path) ? reachesNetwork : reachesWrite && reachesNetwork && path !== TRANSPORT_FILE) add(path, 'write-transport-join-transitive');
@@ -839,7 +850,10 @@ function checkWriteTransportClosure(files, add, wholeTree) {
       if ([...seen].some((p) => isWrite(p) || p.startsWith('signer/') || p.startsWith(KEYTOOL) || p.startsWith('tools/signing/'))) add(path, 'compat-reaches-write-or-key');
     }
     if (path.startsWith(COMPAT_LIVE_TOOLS) || path === 'tools/compat-live.test.mjs') {
-      if (reachesNetwork) add(path, 'compat-live-reaches-network');
+      // Only the two listed files may reach the network, and only the reviewed transport file.
+      const networkReached = [...seen].filter((p) => p === TRANSPORT_FILE || network.has(p));
+      if (reachesNetwork && (!COMPAT_LIVE_NETWORK_FILES.includes(path) || networkReached.some((p) => p !== TRANSPORT_FILE))) add(path, 'compat-live-reaches-network');
+      if ((edges.get(path) ?? []).includes(TRANSPORT_FILE) && path !== COMPAT_LIVE_TRANSPORT_FILE) add(path, 'compat-live-transport-not-narrowed');
       const forbidden = (p) => isWrite(p) || ['signer/', 'txverify/', KEYTOOL, 'tools/signing/', 'tools/broadcast/', PREPARE_TOOLS, 'packages/tx-prepare/', 'tools/rehearsal/'].some((d) => p.startsWith(d));
       if ([...seen].some(forbidden)) add(path, 'compat-live-reaches-write-or-key');
     }
