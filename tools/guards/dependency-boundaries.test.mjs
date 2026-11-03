@@ -976,6 +976,23 @@ test('the offline rehearsal (C3) may never reach the network, however indirectly
   assert.ok(!found([['tools/rehearsal/rehearse.mjs', rehearsal], ['tools/rehearsal/helper.mjs', 'export const x = 1;']]).some((f) => f.endsWith(':rehearsal-reaches-network')));
 });
 
+test('C6-PREP: the compatibility tools reach no network file, write path, signer or key tool', () => {
+  const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
+  const run = "import { x } from './helper.mjs';\nexport const r = x;";
+  for (const helper of ["import { httpsTransport } from '../live/https-transport.mjs';\nexport const x = httpsTransport;", 'export const x = async (u) => fetch(u);', "import https from 'node:https';\nexport const x = https;"]) {
+    const out = found([['tools/compat/run.mjs', run], ['tools/compat/helper.mjs', helper], ['tools/live/https-transport.mjs', "import https from 'node:https';\nexport const httpsTransport = https;"]]);
+    assert.ok(out.includes('tools/compat/run.mjs:compat-reaches-network'), out.join(' '));
+  }
+  const viaTest = found([['tools/compat.test.mjs', "import { r } from './compat/run.mjs';\nexport const t = r;"], ['tools/compat/run.mjs', "import https from 'node:https';\nexport const r = https;"]]);
+  assert.ok(viaTest.includes('tools/compat.test.mjs:compat-reaches-network'), viaTest.join(' '));
+  for (const [target, content] of [['tools/submit/store.mjs', 'export const x = 1;'], ['tools/keytool/log.mjs', 'export const x = 1;'], ['tools/signing/build.mjs', 'export const x = 1;']]) {
+    const spec = `../${target.slice('tools/'.length)}`;
+    const out = found([['tools/compat/run.mjs', `import { x } from '${spec}';\nexport const r = x;`], [target, content]]);
+    assert.ok(out.includes('tools/compat/run.mjs:compat-reaches-write-or-key'), `${target}: ${out.join(' ')}`);
+  }
+  assert.ok(!found([['tools/compat/run.mjs', run], ['tools/compat/helper.mjs', 'export const x = 1;']]).some((f) => /:compat-reaches/.test(f)));
+});
+
 test('C2 N1 residual: hand-written network code anywhere in tools/ counts as network in the graph', () => {
   const found = (files) => check(files.map(([path, content]) => ({ path, content, symlink: false }))).map((f) => `${f.path}:${f.rule}`);
   const entry = "#!/usr/bin/env node\nimport { runBroadcast } from '../submit/broadcaster.mjs';\nimport { t } from '../net.mjs';\nawait runBroadcast({ argv: process.argv, t });";

@@ -1,0 +1,444 @@
+{
+ "format": "rnnet.provider-compat-manifest.v1",
+ "totalRequests": 22,
+ "budget": {
+  "xrpl-testnet-ripple": 2,
+  "xrpl-testnet-xrpl-labs": 2,
+  "sepolia-publicnode": 9,
+  "sepolia-1rpc": 9
+ },
+ "limits": {
+  "attempts": 1,
+  "timeoutMs": 10000,
+  "maxResponseBytes": 262144
+ },
+ "retry": false,
+ "fallback": false,
+ "testAddress": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+ "calldata": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+ "absentXrplTransaction": "B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45",
+ "unknownBlockHash": "0x469f97ee2e9af87fc41e1d328ae1eca78d4cbad0f36c70df267a1b6c05e15251",
+ "pinDepth": 2,
+ "providers": [
+  {
+   "id": "xrpl-testnet-ripple",
+   "network": "xrpl:testnet",
+   "url": "https://s.altnet.rippletest.net:51234/",
+   "operator": "Ripple"
+  },
+  {
+   "id": "xrpl-testnet-xrpl-labs",
+   "network": "xrpl:testnet",
+   "url": "https://testnet.xrpl-labs.com/",
+   "operator": "XRPL Labs"
+  },
+  {
+   "id": "sepolia-publicnode",
+   "network": "evm:11155111",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "operator": "PublicNode"
+  },
+  {
+   "id": "sepolia-1rpc",
+   "network": "evm:11155111",
+   "url": "https://public.1rpc.io/sepolia",
+   "operator": "Automata 1RPC"
+  }
+ ],
+ "requests": [
+  {
+   "seq": 1,
+   "id": "X01",
+   "providerId": "xrpl-testnet-ripple",
+   "url": "https://s.altnet.rippletest.net:51234/",
+   "method": "server_info",
+   "form": "server_info",
+   "params": {
+    "api_version": 2
+   },
+   "needs": [],
+   "expect": "xrpl server_info: network_id 1, build_version, complete_ledgers, validated_ledger {seq, hash, age}"
+  },
+  {
+   "seq": 2,
+   "id": "X02",
+   "providerId": "xrpl-testnet-xrpl-labs",
+   "url": "https://testnet.xrpl-labs.com/",
+   "method": "server_info",
+   "form": "server_info",
+   "params": {
+    "api_version": 2
+   },
+   "needs": [],
+   "expect": "as X01"
+  },
+  {
+   "seq": 3,
+   "id": "X03",
+   "providerId": "xrpl-testnet-ripple",
+   "url": "https://s.altnet.rippletest.net:51234/",
+   "method": "tx",
+   "form": "tx_absent_range",
+   "params": {
+    "api_version": 2,
+    "binary": false,
+    "max_ledger": "<validated seq of this provider>",
+    "min_ledger": "<validated seq - 999>",
+    "transaction": "B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45"
+   },
+   "needs": [
+    "identity",
+    "validated"
+   ],
+   "expect": "error txnNotFound with searched_all: true"
+  },
+  {
+   "seq": 4,
+   "id": "X04",
+   "providerId": "xrpl-testnet-xrpl-labs",
+   "url": "https://testnet.xrpl-labs.com/",
+   "method": "tx",
+   "form": "tx_absent_range",
+   "params": {
+    "api_version": 2,
+    "binary": false,
+    "max_ledger": "<validated seq of this provider>",
+    "min_ledger": "<validated seq - 999>",
+    "transaction": "B552D9334994C821546FDD06DEAA50BE3C8F1BAB2B81B001FAF4789C2995DD45"
+   },
+   "needs": [
+    "identity",
+    "validated"
+   ],
+   "expect": "as X03"
+  },
+  {
+   "seq": 5,
+   "id": "S01",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_chainId",
+   "form": "chain_id",
+   "params": [],
+   "needs": [],
+   "expect": "result \"0xaa36a7\""
+  },
+  {
+   "seq": 6,
+   "id": "S02",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_chainId",
+   "form": "chain_id",
+   "params": [],
+   "needs": [],
+   "expect": "as S01"
+  },
+  {
+   "seq": 7,
+   "id": "S03",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getBlockByNumber",
+   "form": "head",
+   "params": [
+    "latest",
+    false
+   ],
+   "needs": [
+    "identity"
+   ],
+   "expect": "block {number, hash, timestamp, baseFeePerGas}"
+  },
+  {
+   "seq": 8,
+   "id": "S04",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getBlockByNumber",
+   "form": "head",
+   "params": [
+    "latest",
+    false
+   ],
+   "needs": [
+    "identity"
+   ],
+   "expect": "as S03"
+  },
+  {
+   "seq": 9,
+   "id": "S05",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getBlockByNumber",
+   "form": "pin",
+   "params": [
+    "<P>",
+    false
+   ],
+   "needs": [
+    "identity",
+    "both_heads"
+   ],
+   "expect": "block at P = lowest head - 2; the same hash on both providers"
+  },
+  {
+   "seq": 10,
+   "id": "S06",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getBlockByNumber",
+   "form": "pin",
+   "params": [
+    "<P>",
+    false
+   ],
+   "needs": [
+    "identity",
+    "both_heads"
+   ],
+   "expect": "as S05"
+  },
+  {
+   "seq": 11,
+   "id": "S07",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getTransactionCount",
+   "form": "nonce_at_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "<H:sepolia-publicnode>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "QUANTITY"
+  },
+  {
+   "seq": 12,
+   "id": "S08",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getBalance",
+   "form": "balance_at_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "<H:sepolia-publicnode>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "QUANTITY"
+  },
+  {
+   "seq": 13,
+   "id": "S09",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getCode",
+   "form": "code_at_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "<H:sepolia-publicnode>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "DATA (\"0x\" for the unfunded test address)"
+  },
+  {
+   "seq": 14,
+   "id": "S10",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_estimateGas",
+   "form": "estimate_at_hash",
+   "params": [
+    {
+     "data": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+     "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+     "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+     "value": "0x0"
+    },
+    {
+     "blockHash": "<H:sepolia-publicnode>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "QUANTITY from the intrinsic gas to 30,000"
+  },
+  {
+   "seq": 15,
+   "id": "S11",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getTransactionCount",
+   "form": "nonce_at_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "<H:sepolia-1rpc>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "as S07"
+  },
+  {
+   "seq": 16,
+   "id": "S12",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getBalance",
+   "form": "balance_at_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "<H:sepolia-1rpc>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "as S08"
+  },
+  {
+   "seq": 17,
+   "id": "S13",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getCode",
+   "form": "code_at_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "<H:sepolia-1rpc>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "as S09"
+  },
+  {
+   "seq": 18,
+   "id": "S14",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_estimateGas",
+   "form": "estimate_at_hash",
+   "params": [
+    {
+     "data": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+     "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+     "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+     "value": "0x0"
+    },
+    {
+     "blockHash": "<H:sepolia-1rpc>",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity",
+    "own_pin"
+   ],
+   "expect": "as S10"
+  },
+  {
+   "seq": 19,
+   "id": "S15",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getBalance",
+   "form": "balance_unknown_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "0x469f97ee2e9af87fc41e1d328ae1eca78d4cbad0f36c70df267a1b6c05e15251",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity"
+   ],
+   "expect": "a JSON-RPC error (an unknown hash is never served)"
+  },
+  {
+   "seq": 20,
+   "id": "S16",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getBalance",
+   "form": "balance_unknown_hash",
+   "params": [
+    "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+    {
+     "blockHash": "0x469f97ee2e9af87fc41e1d328ae1eca78d4cbad0f36c70df267a1b6c05e15251",
+     "requireCanonical": true
+    }
+   ],
+   "needs": [
+    "identity"
+   ],
+   "expect": "as S15"
+  },
+  {
+   "seq": 21,
+   "id": "S17",
+   "providerId": "sepolia-publicnode",
+   "url": "https://ethereum-sepolia-rpc.publicnode.com/",
+   "method": "eth_getBlockByNumber",
+   "form": "finalized",
+   "params": [
+    "finalized",
+    false
+   ],
+   "needs": [
+    "identity"
+   ],
+   "expect": "block {number, hash}; compared with the other provider"
+  },
+  {
+   "seq": 22,
+   "id": "S18",
+   "providerId": "sepolia-1rpc",
+   "url": "https://public.1rpc.io/sepolia",
+   "method": "eth_getBlockByNumber",
+   "form": "finalized",
+   "params": [
+    "finalized",
+    false
+   ],
+   "needs": [
+    "identity"
+   ],
+   "expect": "as S17"
+  }
+ ]
+}
