@@ -2,7 +2,7 @@
 
 - Status: Accepted (founder approval of PR #10 as implemented, RN-NET-03B2-A acceptance)
 - Date: 2026-11-01
-- Amendment C1: **Proposed** (RN-NET-03B2-C1), not accepted. Until it is accepted, the Decision below applies unchanged.
+- Amendment C1: **Accepted for the reviewed offline implementation only** (recorded when the founder merges this documentation change; the implementation is RN-NET-03B2-C3, PR #26, squash-merged as main `1723439`, whose tree `a91fc55` equals the reviewed head `578a4db`). It accepts the `+ 80` expiry as the binding rule of the reviewed offline preparation code. It authorizes no live RPC, no key generation, funding, signing or broadcasting, and no publication.
 - Builds on: [ADR-RN-009](ADR-RN-009-anchor-payload-encoding.md), [ADR-RN-010](ADR-RN-010-xrpl-testnet-memo-anchoring.md), [ADR-RN-011](ADR-RN-011-sepolia-transaction-data-anchoring.md), [ADR-RN-012](ADR-RN-012-cross-chain-trust-boundaries.md)
 - Design: [Genesis Proof 01 preflight](../genesis/genesis-proof-01-preflight.md), [authorization](../genesis/genesis-proof-01-authorization.md)
 
@@ -93,14 +93,18 @@ are.
   in the data reported for both networks. They say nothing about whether the synthetic evidence is
   true. `CHAIN_PROVEN` is still never produced.
 
-## Amendment C1 (Proposed): XRPL expiry offset and submission margin
+## Amendment C1 (Accepted, offline implementation only): XRPL expiry offset and submission margin
 
-- Status: **Proposed** (RN-NET-03B2-C1). It is not accepted, and accepting it would authorize
-  none of gates B to F.
-  - **It stays Proposed until C3 implements it.** That means the offset constant, the Python
+- Status: **Accepted for the reviewed offline implementation only** (RN-NET-03B2-C6-PREP
+  governance closure; the implementation is RN-NET-03B2-C3, PR #26, squash-merged as main
+  `1723439`, whose tree `a91fc55` equals the reviewed head `578a4db`). It authorizes none of
+  gates B to F. See *What this acceptance covers* at the end of this amendment.
+- The sequence it required is complete:
+  - **It stayed Proposed until C3 implemented it.** That meant the offset constant, the Python
     preparation reference, the specification text and the regenerated B2 fixtures and digests,
-    with tests showing `+ 80` binding and the refusal when 4 or fewer remain.
-  - **Then it needs an independent review.** Only after that review may the founder accept it.
+    with tests showing `+ 80` binding and the refusal when 4 or fewer remain (PR #26).
+  - **Then it needed an independent review.** PR #26's review was PASS WITH NON-BLOCKING
+    FOLLOW-UPS; all four follow-ups were fixed and a focused re-check closed them before merge.
 - Founder decision behind it (2026-11-02): draft a proposal raising the offset from 20 to 80
   validated ledgers, and keep the broadcaster's refusal when four or fewer ledgers remain. This
   is a testnet execution proposal. It does not authorize signing or broadcasting.
@@ -174,8 +178,8 @@ first transaction as absent (ADR-RN-019 §8), and a new gate D follows.
 
 ### C3 implementation record (RN-NET-03B2-C3)
 
-This amendment stays **Proposed**. RN-NET-03B2-C3 implements it offline and records what was built.
-It accepts nothing and authorizes nothing. The code binds `+ 80` from this merge on, as the
+At C3 this amendment stayed **Proposed**. RN-NET-03B2-C3 implemented it offline and recorded what
+was built; that record accepted nothing and authorized nothing. The code binds `+ 80` from this merge on, as the
 amendment's own sequence requires (implementation, then review, then acceptance). No run can bind
 it live: every live entry point is disabled, and gate D still needs this amendment accepted.
 - **The offset.** `XRPL.lastLedgerOffset` is 80 (`packages/tx-intent/src/genesis.mjs`), and the
@@ -198,3 +202,29 @@ it live: every live entry point is disabled, and gate D still needs this amendme
 
   The run then submits with exactly 5 ledgers left; one second more leaves 4, and the broadcaster
   refuses before any write.
+
+### What this acceptance covers, and what it does not
+
+| Decision | Status | What it allows |
+|---|---|---|
+| **Acceptance of the offline implementation** (this amendment) | **Accepted**, for the code reviewed in PR #26 as merged | `LastLedgerSequence` = the lowest provider's validated ledger + 80, as bound by `XRPL.lastLedgerOffset` in `packages/tx-intent`, the Python preparation reference, `spec/rnnet.tx-preparation.v1.md` §5, the preflight template and the regenerated B2 fixtures; the unchanged submission margin (refusal once 4 or fewer ledgers remain); the offline rehearsal timings in `fixtures/rehearsal-c3` |
+| **Any live use of the `+ 80` rule** | **Not authorized** | A live XRPL preparation run (gate D's reads, H6), signing it (D-XRPL) and submitting it (E-XRPL), each by its own founder decision |
+
+- **Scope.** The acceptance covers the behaviour as implemented and reviewed: the offset value,
+  the margin and the code, documents and fixtures listed above. It does not cover a different
+  offset, a different margin or any later change to them, which need a new amendment.
+- **The live entry points stay disabled.** `tools/prepare/prepare-live.mjs` and
+  `tools/submit/submit-anchor.mjs` refuse as commands; enabling either is a separately reviewed
+  change, not this acceptance.
+- **Still separately authorized, and not authorized by this acceptance.** Each needs its own
+  written founder decision, as the readiness analysis §8 and §9 list:
+  - **live RPC**: any request to a provider, including the C6 compatibility run (H3) and every
+    preparation run (H6), each with its own read authorization and exact budget;
+  - **operational key generation** (gate B, H4);
+  - **funding** (gate C, H5);
+  - **operational signing** (gate D, H7);
+  - **broadcasting** (gate E, H8 and H9);
+  - **public evidence publication** (gate F, H10).
+- **Unchanged:** `fixtures/genesis-proof-01` (its preflight keeps the recorded offset 20), the
+  fee, the memo, the payload and the Genesis commitment.
+- **Not covered:** ADR-RN-019 Amendment C1 (live entry points) stays **Proposed**.

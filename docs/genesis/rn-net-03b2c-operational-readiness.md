@@ -157,7 +157,10 @@ These block **gate D on both networks**.
 **Status (RN-NET-03B2-C3):**
 - Items 1 to 4 are implemented offline, with live network access disabled, together with the
   rehearsal harness (§3, item 9).
-- The amendments stay Proposed. See the C3 implementation records in ADR-RN-016, ADR-RN-018 and
+- After the C3 review, ADR-RN-016 and ADR-RN-018 Amendments C1 are accepted for the reviewed
+  offline implementation only (RN-NET-03B2-C6-PREP); live use of either still needs its own
+  authorization. ADR-RN-019 Amendment C1 stays Proposed. Before that acceptance, the amendments
+  stayed Proposed. See the C3 implementation records in ADR-RN-016, ADR-RN-018 and
   ADR-RN-019.
 - Sepolia preparation stays `BLOCKED` until C6 records block-hash support on both providers.
 
