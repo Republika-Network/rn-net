@@ -98,7 +98,14 @@ the limit is refused without being stored (`RNLO_RESPONSE_TOO_LARGE`). After the
 nothing more reaches the transport: every later call is refused, and the report records the
 violation.
 
-Each response body is stored as soon as it arrives (`response-NN.bin`, NN = call number).
+Each response body is stored as soon as it arrives (`response-NN.bin`, NN = call number). If a
+body cannot be stored, the run stops there:
+- the call is recorded with `error` `RNCL_STORAGE`, never as a transport error;
+- the report's `policyViolation` names the failure;
+- nothing more reaches the transport.
+
+A partly written file left behind is not a recorded response, so neither checker reproduces that
+run directory.
 
 ## 5. The run directory
 
@@ -109,7 +116,7 @@ and of the directory:
 |---|---|
 | `authorization.json` | the founder's authorization, byte for byte |
 | `response-NN.bin` | the raw body of call NN, exactly as received. **Private: never published** |
-| `transcript.json` | `rnnet.provider-compat-transcript.v1`: per call `call`, `providerId`, `requestSha256`, `status`, `responseFile`, `responseSha256`, `responseBytes`, `error` (a fixed transport code or `TRANSPORT_ERROR`), `policy` (the violation or `null`) |
+| `transcript.json` | `rnnet.provider-compat-transcript.v1`: per call `call`, `providerId`, `requestSha256`, `status`, `responseFile`, `responseSha256`, `responseBytes`, `error` (a fixed transport code, `TRANSPORT_ERROR`, or `RNCL_STORAGE`), `policy` (the violation or `null`) |
 | `evidence.json` | `rnnet.provider-compat-evidence.v1` (the C6 document §8), plus `authorizationId`, `authorizationDigest` and `manifestSha256` |
 | `report.json` | `rnnet.provider-compat-report.v1` (§6) |
 | `python-reference.txt` | written by the Python reference with `--record` (§6) |
@@ -134,7 +141,8 @@ and of the directory:
 
 The report is a pure function of the run directory. Two programs rebuild it, independently:
 
-- `compat-live.mjs` replays it, step 10 above;
+- `compat-live.mjs` replays it, step 10 above. Any mismatch between the replay and the transcript
+  is fatal, and the replay must use every transcript call;
 - `python3 -I -B tools/reference/rnnet_compat_reference.py --run <run directory> [--record]` uses
   no JavaScript. It:
   - checks the authorization's binding;

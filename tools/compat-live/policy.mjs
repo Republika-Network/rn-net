@@ -20,6 +20,8 @@ import { READ_ONLY_METHODS, TRANSPORT_CODES } from '../../packages/chain-readonl
 import { C6_LIMITS, C6_PROVIDERS, C6_REQUESTS, C6_TOTAL_REQUESTS, WRITE_METHODS } from '../compat/manifest.mjs';
 
 export const COMPAT_TRANSCRIPT_FORMAT = 'rnnet.provider-compat-transcript.v1';
+/** The transcript `error` of a call whose response could not be stored; the run stops there. */
+export const STORAGE_ERROR = 'RNCL_STORAGE';
 /** A request body is a few hundred bytes; anything larger is not a manifest request. */
 export const MAX_REQUEST_BYTES = 4096;
 
@@ -107,11 +109,19 @@ export function createCompatPolicy({ providers, notAfter, clock, keep, sleep = d
       throw coded('RNLO_RESPONSE_TOO_LARGE', 'response too large');
     }
     const body = Uint8Array.from(response.body);
+    try {
+      keep(responseFileName(call), body);
+    } catch (error) {
+      // A response that cannot be stored stops the run (C6-LIVE review F1): it is recorded as a
+      // storage failure, never as a transport error, and nothing more reaches the transport.
+      entry.error = STORAGE_ERROR;
+      violation = `response storage failed at call ${call}${typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,31}$/.test(error.code) ? ` (${error.code})` : ''}`;
+      throw coded('RNCL_REQUEST_POLICY', violation);
+    }
     entry.status = response.status;
     entry.responseFile = responseFileName(call);
     entry.responseSha256 = sha256(body);
     entry.responseBytes = body.length;
-    keep(entry.responseFile, body);
     return { status: response.status, body };
   };
 

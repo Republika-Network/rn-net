@@ -598,7 +598,7 @@ def run_checks(run_dir: Path, private: bool):
     calls = transcript["calls"]
     yield "the transcript calls are numbered in order, with exactly the recorded fields", [c["call"] for c in calls] == list(range(1, len(calls) + 1)) and all(set(c) == CALL_FIELDS for c in calls)
     files = {c["responseFile"] for c in calls if c["responseFile"] is not None}
-    yield "the run directory holds exactly the run files and the recorded responses", names == RUN_FILES | files
+    yield "the run directory holds exactly the run files and the recorded responses", names - {"python-reference.txt"} == RUN_FILES | files
     replayable, bodies_ok = [], True
     for c in calls:
         if c["policy"] is not None or c["error"] is not None:
@@ -625,6 +625,9 @@ def run_checks(run_dir: Path, private: bool):
         and ev["compatibilityCandidate"] == candidate and ev["finality"] == finality
         and (ev["authorizationId"], ev["authorizationDigest"], ev["manifestSha256"]) == (a["authorizationId"], digest, a["manifestSha256"]))
     violation = next((c["policy"] for c in calls if c["policy"] is not None), None)
+    if violation is None:
+        # A response that could not be stored stops the run (C6-LIVE review F1).
+        violation = next((f"response storage failed at call {c['call']}" for c in calls if c["error"] == "RNCL_STORAGE"), None)
     report = {
         "format": "rnnet.provider-compat-report.v1", "authorizationId": a["authorizationId"], "authorizationDigest": digest,
         "authorizationFileSha256": sha(auth_text.encode("utf-8")), "manifestSha256": a["manifestSha256"],

@@ -370,6 +370,49 @@ test('the run fixtures are current, and a tampered run directory is not reproduc
   assert.equal((await reproduceRun({ files: extra, endpoints: e, readAuthorization: readCompatAuthorization })).reproduced, false);
 });
 
+test('review F1: a response that cannot be stored stops the run and is never reproduced as a transport error', async () => {
+  const report = JSON.parse(read(`${FIXTURE_DIR}/response-storage-fails/report.json`));
+  assert.equal(report.forwardedRequests, 6, 'nothing is sent after the failure');
+  assert.equal(report.policyViolation, 'response storage failed at call 6 (EIO)');
+  assert.equal(report.overall, 'UNRESOLVED');
+  const calls = JSON.parse(read(`${FIXTURE_DIR}/response-storage-fails/transcript.json`)).calls;
+  assert.deepEqual([calls[5].error, calls[5].status, calls[5].responseFile], ['RNCL_STORAGE', null, null]);
+  assert.ok(calls.slice(6).every((c) => c.policy !== null));
+  // A file planted where a response goes (the reviewer's case K): the run stops at that call and the
+  // run directory is NOT reproduced (the planted file is not a recorded response).
+  const ctx = setup();
+  try {
+    const runDir = join(ctx.dir, 'c6-test-run');
+    let n = 0;
+    const planting = async (request) => {
+      n += 1;
+      if (n === 6) writeFileSync(join(runDir, 'response-06.bin'), 'planted', { mode: 0o600 });
+      return simulatedTransport(scenario('all-compatible'))(request);
+    };
+    const { result, calls: sent } = await run(ctx, { transport: planting });
+    assert.equal(result.outcome, 'REFUSED', result.message);
+    assert.equal(result.code, CompatEntryCode.NOT_REPRODUCED);
+    assert.equal(sent.length, 6);
+    const t = JSON.parse(readFileSync(join(runDir, 'transcript.json'), 'utf8')).calls;
+    assert.equal(t[5].error, 'RNCL_STORAGE');
+  } finally {
+    cleanup(ctx);
+  }
+  // A transcript with an unused call, or a failed call that claims a response, is not reproduced (review F2).
+  const e = endpoints();
+  const files = await buildRunFixture(RUN_FIXTURES[0], e);
+  const extend = new Map(files);
+  const tr = JSON.parse(Buffer.from(files.get('transcript.json')).toString('utf8'));
+  tr.calls.push({ ...tr.calls[21], call: 23, responseFile: 'response-23.bin' });
+  extend.set('transcript.json', Buffer.from(`${canonicalize(tr)}\n`));
+  extend.set('response-23.bin', files.get('response-22.bin'));
+  assert.equal((await reproduceRun({ files: extend, endpoints: e, readAuthorization: readCompatAuthorization })).reproduced, false);
+  // The Python reference's own record does not make a run directory unverifiable (review F8).
+  const recorded = new Map(files);
+  recorded.set('python-reference.txt', Buffer.from('compat run reference: 15/15 checks agree; AGREES\n'));
+  assert.equal((await reproduceRun({ files: recorded, endpoints: e, readAuthorization: readCompatAuthorization })).reproduced, true);
+});
+
 test('the fixture runs cover PASS, BLOCKED and UNRESOLVED, a policy stop and the deadline', () => {
   const report = (name) => JSON.parse(read(`${FIXTURE_DIR}/${name}/report.json`));
   const overalls = new Set(RUN_FIXTURES.map((f) => report(f.name).overall));

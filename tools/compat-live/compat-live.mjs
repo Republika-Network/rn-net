@@ -137,9 +137,10 @@ export async function compatLive({ argv, deps }) {
  * Steps 9 to 11 into an existing, empty-but-for-the-authorization run directory. Exported for the
  * fixture builder, which runs it over simulated providers with a fixed authorization.
  */
-export async function executeRun({ authorizationText, authorization: a, digest, endpoints, transport, now, clock, notAfter, runDirectory, sleep }) {
+export async function executeRun({ authorizationText, authorization: a, digest, endpoints, transport, now, clock, notAfter, runDirectory, sleep, store = writeNewFile }) {
   if (typeof transport !== 'function') throw new TypeError('transport');
-  const policy = createCompatPolicy({ providers: a.providers, notAfter, clock, keep: (name, body) => writeNewFile(runDirectory, name, body), sleep });
+  // `store` is writeNewFile; the fixture builder replaces it to model a failing disk (review F1).
+  const policy = createCompatPolicy({ providers: a.providers, notAfter, clock, keep: (name, body) => store(runDirectory, name, body), sleep });
   let run;
   let unexpected = null;
   try {

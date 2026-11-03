@@ -58,6 +58,8 @@ export const RUN_FIXTURES = Object.freeze([
   { name: 'deadline-hang-1rpc-head', transport: () => hangOn('sepolia-1rpc', 'eth_getBlockByNumber', simulatedTransport({})), sleep: immediateDeadline },
   // The authorization expires during the run: the policy refuses from that request on; nothing more is sent.
   { name: 'authorization-expires-mid-run', transport: () => simulatedTransport({}), expiresAfterCalls: 10 },
+  // A response that cannot be stored stops the run; it is never read as a transport error (review F1).
+  { name: 'response-storage-fails', transport: () => simulatedTransport({}), storeFailsAtCall: 6 },
   // JSON nesting at the limit on both sides (C6-LIVE review N-a): depth 64 is read, 65 is not, and
   // a very deep body is refused, not a crash.
   {
@@ -88,7 +90,11 @@ export async function buildRunFixture(f, endpoints) {
       calls += 1;
       return f.expiresAfterCalls !== undefined && calls > f.expiresAfterCalls ? NOT_AFTER + 1 : SIM_NOW;
     };
-    await executeRun({ authorizationText, authorization, digest, endpoints, transport: f.transport(), now: SIM_NOW, clock, notAfter: NOT_AFTER, runDirectory, sleep: f.sleep ?? neverDeadline });
+    const store = (dir, name, body) => {
+      if (f.storeFailsAtCall !== undefined && name === `response-${String(f.storeFailsAtCall).padStart(2, '0')}.bin`) throw Object.assign(new Error('simulated I/O error'), { code: 'EIO' });
+      return writeNewFile(dir, name, body);
+    };
+    await executeRun({ authorizationText, authorization, digest, endpoints, transport: f.transport(), now: SIM_NOW, clock, notAfter: NOT_AFTER, runDirectory, sleep: f.sleep ?? neverDeadline, store });
     return new Map(readdirSync(runDirectory).sort().map((name) => [name, readFileSync(join(runDirectory, name))]));
   } finally {
     rmSync(base, { recursive: true, force: true });
