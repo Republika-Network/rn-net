@@ -374,7 +374,7 @@ test('the command wiring: the environment is checked first, the default evidence
       assert.deepEqual([env, execArgv], [base.env, []]);
       return async (r) => { calls.push(r); return allCompatible()(r); };
     };
-    // AGREED_EVIDENCE_DIR is null: refused, nothing sent, nothing approved.
+    // --evidence-dir is not AGREED_EVIDENCE_DIR (null on main, the H3 directory on its branch): refused, nothing sent, nothing approved.
     assert.equal(await runCommand({ ...base, createTransport, approve: async () => { asked += 1; return ''; } }), COMPAT_EXIT.REFUSED);
     assert.equal(asked, 0);
     assert.equal(calls.length, 0);
