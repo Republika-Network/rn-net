@@ -1,7 +1,9 @@
 # rnnet.gate-f-sepolia-verification.v1: the durable gate-F verification of a Sepolia Genesis transaction
 
 - Status: **Proposed** ([ADR-RN-020](../docs/adr/ADR-RN-020-durable-gate-f-verification.md),
-  RN-NET-03B2-WP4-A). **Not implemented.**
+  RN-NET-03B2-WP4-A). Implemented **offline** in `tools/gate-f/` (WP4-B1, B1-SEC-01, WP4-B2).
+  The operational verifier refuses every subject; every gas vector runs through a TEST ONLY
+  stand-in (§7).
   - This specification authorizes no RPC request, no H10 run, no Stage B, no signing,
     submission or publication.
   - Authoritative use is **BLOCKED** on Stage B (ADR-RN-020 D1) and on a recorded rules review
@@ -39,7 +41,7 @@ by its digest.
 | I5 | The submission record of the attempt | `rnnet.submission-record.v1` | submission provenance | yes |
 | I6 | The capture | `rnnet.rpc-capture.v1` | the provider bytes, replayed (§3.3) | yes |
 | I7 | The live report | `rnnet.live-observation-report.v1` | must equal the replayed report | yes |
-| I8 | The verifier's reviewed rules | the reviewed table, the sources and the **review history** (`SEPOLIA_GAS_RULES_REVIEW` and its recorded successors) | integrity (§4.1) and `R_i` (§4.2) | yes; empty refuses every gas step |
+| I8 | The verifier's reviewed rules | the reviewed table, the sources and the **review history** (`SEPOLIA_GAS_RULES_REVIEW` and its recorded successors) | integrity (§4.1) and `R_i` (§4.2) | yes; empty refuses every gas step. **Never caller authority** (WP4-B2): the operational verifier builds the history from the reviewed constant only, and refuses an input whose `reviewHistory` differs from it. Each review is checked under the WP2 rules at its own `reviewedAt` (exact fields, the pinned sources, a horizon after `reviewedAt` and at most 30 days later, none past a known unreviewed activation) |
 | I9 | A preliminary status record | `rnnet.submission-status.v1` | referenced only, never evidence (§3.7) | no |
 | I10 | The superseded record | `rnnet.gate-f-sepolia-verification.v1` | append-only chain (§6.3) | only for a successor record |
 
@@ -171,10 +173,17 @@ difference instead. The rows are checked in order, and the first row that matche
   `FAIL`. That is **evidence**, never `GAS_RULES_UNRESOLVED`.
 
 ### 3.6 The receipt for gas
+Checked whenever inclusion is established (WP4-B2), for every provider that observed it:
 - `receipt.status` must be `0x1` (`RNAE_TRANSACTION_REVERTED` / `RNAE_INVALID_STATUS`, `FAIL`).
-- `receipt.gasUsed` must be a canonical quantity on every observed provider
-  (`RNGF_EVIDENCE_INVALID`), and the same on every provider (`RNGF_EVIDENCE_CONTRADICTORY`). That
-  value is `gasUsed`. Its classification is `CLAIMED`.
+- The receipt names the inclusion block: its `blockHash`, `blockNumber` and `transactionIndex`
+  equal the inclusion's (the anchor record refuses a different block first,
+  `RNAE_CONFLICTING_BLOCK_REFERENCE`; otherwise `RNGF_BINDING_MISMATCH`).
+- `receipt.gasUsed` must be a canonical quantity at most 2^53 − 1 on every observed provider
+  (`RNGF_EVIDENCE_INVALID`, subject the provider), and the same on every provider
+  (`RNGF_EVIDENCE_CONTRADICTORY`, subject `receipt.gasUsed`). Never averaged, never one
+  provider's value over the other's. That value is `gasUsed`. Its classification is `CLAIMED`.
+- **U6 (EIP-7778)** stays open: `receipt.gasUsed` is the only accounting input. The difference of
+  `cumulativeGasUsed` values is not read, and no second method is used.
 
 ### 3.7 Preliminary status (Q5)
 When I9 is given, its digest and `finding` are copied under `preliminaryStatus`.
@@ -183,7 +192,22 @@ When I9 is given, its digest and `finding` are copied under `preliminaryStatus`.
 
 ## 4. Gas (ADR-RN-018 C2 G10)
 
-Steps 4.1 to 4.3 run only when inclusion is established (§3.4) and §3.5–§3.6 passed.
+Steps 4.1 to 4.3 run only when inclusion is established (§3.4), §3.5 **derived** `t_i` and §3.6
+passed.
+- **Gas needs a linked `t_i` (WP4-B2 clarification).** §3.5 links `t_i` to the PublicNode
+  finalized walk, so it exists only when PublicNode is `IN_ANCESTRY`
+  (`PROVIDER_REPORTED_FINALIZED` or `PROVIDER_REPORTED_FINALIZED_SINGLE`). With finality
+  `NOT_ESTABLISHED` there is no `t_i` and no `R_i`, so gas is `NOT_EVALUATED` (§4.4) and the
+  disposition is `UNRESOLVED`.
+  - The earlier N20 vector and the §5 example "`GAS_ACCOUNTED` + finality `NOT_ESTABLISHED`"
+    contradicted §3.5 and §4.4. Both are corrected here.
+  - Taking `t_i` from an unlinked block would weaken §3.5, and needs a founder decision. It is
+    not implemented.
+- **Independence (V8) holds both ways.** Under `PROVIDER_REPORTED_FINALIZED_SINGLE`, gas is
+  evaluated, and the disposition stays `UNRESOLVED`. A gas result never changes `inclusion` or
+  `finality`.
+- **No authority is checked first.** With an empty history the finding is
+  `RNGF_RULES_AUTHORITY_ABSENT` whenever inclusion is established, whatever the finality.
 
 ### 4.1 Integrity of the recorded gas member (first, always)
 **No authority:** if the verifier's review history (I8) is empty, as today (D2), no gas step can
@@ -208,7 +232,28 @@ be checked.
 6. `ruleSetId` and `fork` = `rules(pin.timestamp)` under that review;
 7. the review covered the preparation (`reviewedAt ≤ observedAt < horizon`, and `pin ≤ observedAt`).
 
-**Any difference is `GAS_RECORD_INVALID`,** a **hard failure** (§5).
+**Deterministic order and subjects (WP4-B2).** The first failing check gives one finding
+`{code: GAS_RECORD_INVALID, group: gasRecord, subject}`:
+
+| # | Check | `subject` |
+|---|---|---|
+| 1 | The gas member has exactly `ruleSetId`, `fork`, `reviewDigest`, `review`, `standard`, `floor`, `need`, `gasLimit`, with the v2 types | `gas` |
+| 2 | `observedAt` is a positive safe integer | `observedAt` |
+| 3 | 2–4 provider entries, each with the exact v2 shape; one pinned block on every entry | `providers` |
+| 4 | `ruleSetId` is a reviewed rule set | `gas.ruleSetId` |
+| 5 | `review` is in the history, byte for byte (canonical JSON) | `gas.review` |
+| 6 | `reviewDigest` = the digest of `review` | `gas.reviewDigest` |
+| 7 | `gasLimit` = 30,000 = `tx.gas` | `gas.gasLimit` |
+| 8 | `maxFeePerGas` is the one the pinned base fee implies | `transaction.maxFeePerGas` |
+| 9 | The WP2 engine (`evaluateGenesisGas`) at the pin and `observedAt`, under `review`. A refusal is `RNTX_GAS_RULES_UNREVIEWED` → `gas.review`; `FORK_BOUNDARY` → `gas.fork`; `RULES_UNSUPPORTED` → `gas.ruleSetId`; `PRECONDITION` → `transaction`; `INPUT_INVALID` → `observedAt`; `LIMIT_EXCEEDED` / `OVERFLOW` → `gas.need` | as listed |
+| 10 | `ruleSetId`, `fork`, `reviewDigest`, `standard`, `floor`, `need`, `gasLimit` each equal the recomputation, in that order | `gas.<member>` |
+| 11 | Every recorded estimate is within `[need, 30000]` | `providers` |
+
+A record that is not v2 (format, `source`, `rules`, exact top-level members) never reaches
+§4.1: it is not eligible (§3.1 step 3).
+
+**Any difference is `GAS_RECORD_INVALID`,** a **hard failure** (§5). `gas.recorded` is `null`
+then: it holds verified values only.
 - §4.2–§4.3 do not run.
 - A matching receipt never repairs it.
 - A valid intent digest is no evidence that the gas values are correct.
@@ -219,6 +264,15 @@ whose horizon is **after** `t_i` and which lists no known unreviewed activation 
 `t_i`.
 - `R_i` is never taken from the recorded `ruleSetId`, a provider label or a header field.
 - If no such review exists, or the table does not cover `t_i`, `R_i` is **unknown**.
+- **No clock (WP4-B2).**
+  - A review covers `t_i` when it is valid at its own `reviewedAt` (I8) and `t_i` < `horizon`.
+    Its horizon is not past a known unreviewed activation, so neither is `t_i`.
+  - A review made after `t_i` may cover it: it reviews the table, not the moment.
+  - The table is inclusive at an activation: `A` gives the new rule set, `A − 1` the old one. The
+    horizon is exclusive: `H` is unknown.
+- **Findings:** `GAS_RULES_CROSSED` (group `gasRules`, subject `null`); `GAS_RULES_UNRESOLVED`
+  (`gasRules`, `inclusion.timestamp`); `GAS_ACCOUNTING_MISMATCH` (`gasAccounting`,
+  `receipt.gasUsed`). `SAME` and `GAS_ACCOUNTED` are states, not findings.
 
 ### 4.3 Accounting
 | Case | Findings | Expected value | Recorded |
@@ -266,7 +320,7 @@ The finding groups are recorded separately and can coexist:
 |---|---|---|
 | 1 | §3.1–§3.3 failed, a finality `CONFLICT`, §3.5–§3.6 evidence failed, or `GAS_RECORD_INVALID` | `FAIL` |
 | 2 | Inclusion or finality not established; `PROVIDER_REPORTED_FINALIZED_SINGLE` (until U1); `RNGF_RULES_AUTHORITY_ABSENT`; `GAS_RULES_UNRESOLVED`; `GAS_ACCOUNTING_MISMATCH`; or `RNGF_EXECUTION_OBSERVED` | `UNRESOLVED` |
-| 3 | Otherwise: subject, binding and evidence valid; `PROVIDER_REPORTED_FINALIZED`; `gasRecord` `VALID`; `GAS_ACCOUNTED`, with or without `GAS_RULES_CROSSED` | `ELIGIBLE_FOR_FOUNDER_REVIEW` |
+| 3 | Otherwise: subject, binding and evidence valid; `PROVIDER_REPORTED_FINALIZED`; `gasRecord` `VALID`; `GAS_ACCOUNTED`, with or without `GAS_RULES_CROSSED`; no other finding | `ELIGIBLE_FOR_FOUNDER_REVIEW` |
 
 - **A mismatch is `UNRESOLVED`, not `FAIL`:** inclusion stands (I2). It must be explained in
   founder review before any publication.
@@ -276,7 +330,8 @@ The finding groups are recorded separately and can coexist:
 **Examples of coexistence:**
 - `GAS_RULES_CROSSED` + `GAS_ACCOUNTED` + `PROVIDER_REPORTED_FINALIZED` →
   `ELIGIBLE_FOR_FOUNDER_REVIEW`;
-- `GAS_ACCOUNTED` + finality `NOT_ESTABLISHED` → `UNRESOLVED`;
+- `GAS_ACCOUNTED` + finality `PROVIDER_REPORTED_FINALIZED_SINGLE` → `UNRESOLVED` (with finality
+  `NOT_ESTABLISHED`, gas is `NOT_EVALUATED`: §4);
 - `GAS_RULES_UNRESOLVED` + `PROVIDER_REPORTED_FINALIZED` → `UNRESOLVED`;
 - `GAS_RECORD_INVALID` + a valid receipt → `FAIL`.
 
@@ -338,6 +393,16 @@ The finding groups are recorded separately and can coexist:
   - `gas.expected` = `gas.recorded.need` when `rules` is `SAME`, `gas.atInclusion.need` when
     `GAS_RULES_CROSSED`, and `null` otherwise;
   - `gas.atInclusion` is non-null **only** when `GAS_RULES_CROSSED`.
+- **Gas states (WP4-B2, made explicit from §4):**
+  - `gas.recorded` is set exactly when `gas.record` is `VALID`;
+  - `gas.record` other than `NOT_EVALUATED` needs `inclusion.timestamp` and finality
+    `PROVIDER_REPORTED_FINALIZED` or `…_SINGLE`;
+  - `gas.gasUsed` is set exactly when gas was evaluated;
+  - `gas.rules` is evaluated exactly when `gas.record` is `VALID`;
+  - `GAS_RULES_UNRESOLVED` exactly with accounting `UNRESOLVED`;
+  - for `SAME` or `GAS_RULES_CROSSED`, accounting is `GAS_ACCOUNTED` exactly when `gasUsed` =
+    `expected`, otherwise `GAS_ACCOUNTING_MISMATCH`;
+  - `ELIGIBLE_FOR_FOUNDER_REVIEW` admits no finding other than `GAS_RULES_CROSSED`.
 - **No clock and no verifier identity.** Time appears only in the capture
   (`retrieval`), so JavaScript and Python produce identical bytes.
 - **Nothing private:** no raw response bodies, URLs, local paths or authorization contents. All of
@@ -361,7 +426,14 @@ The finding groups are recorded separately and can coexist:
 ## 7. Conformance test plan (for WP4-B; synthetic and offline only)
 
 All Stage B subjects below are **hypothetical synthetic** fixtures, labelled `TEST ONLY` and made
-through an unexported test seam, until Stage B is authorized. The expected values are computed
+through an unexported test seam, until Stage B is authorized.
+- **How (WP4-B2).** S1 refuses every v2 intent, so no Stage B intent can be built. The TEST ONLY
+  stand-in pairs the B1 synthetic subject (a `synthetic` preparation intent, which passes S1 and
+  txverify) with the v2 preparation the hypothetical Stage B intent would carry.
+- **Authority.** Its review history is TEST ONLY: every reviewer starts with `TEST ONLY`.
+- **Vectors.** `fixtures/gate-f-b2/cases.json`.
+- **Containment.** The operational verifier refuses the same subject at §3.1, and refuses the TEST
+  history. The guard pins every importer of the stand-in. The expected values are computed
 independently: Prague 22,680 (21,672 / 22,680) and Amsterdam 14,688 (12,672 / 14,688) for the
 Genesis payload, with gas 30,000.
 
@@ -401,7 +473,7 @@ Genesis payload, with gas 30,000.
 | N17c | PublicNode `IN_ANCESTRY`, 1RPC `CONFLICT` | `perProvider[1].result: CONFLICT`, `finality.disposition: CONFLICT`, gas `NOT_EVALUATED`, **`FAIL`**; never `PROVIDER_REPORTED_FINALIZED_SINGLE` |
 | N18 | `gasUsed` = expected − 1 | `GAS_ACCOUNTING_MISMATCH`, `UNRESOLVED` |
 | N19 | `gasUsed` = expected + 1 | `GAS_ACCOUNTING_MISMATCH`, `UNRESOLVED` |
-| N20 | `gasUsed` correct, finality `NOT_ESTABLISHED` | `GAS_ACCOUNTED` + `UNRESOLVED` |
+| N20 | `gasUsed` correct, finality `NOT_ESTABLISHED` (WP4-B2: no linked `t_i`) | gas `NOT_EVALUATED`, `UNRESOLVED`; with `PROVIDER_REPORTED_FINALIZED_SINGLE`: `GAS_ACCOUNTED` + `UNRESOLVED` |
 | N21 | Crossed, `gasUsed` = recorded `need` (22,680), not `need_Ri` | `GAS_RULES_CROSSED` + `GAS_ACCOUNTING_MISMATCH` |
 | N22 | `receipt.logs` not empty (a code-state symptom) | `RNGF_EXECUTION_OBSERVED`; inclusion kept; `UNRESOLVED` |
 | N23 | A successor that rewrites `subject`, or two successors of one record | `RNGF_CHAIN_INVALID` |

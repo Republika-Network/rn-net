@@ -43,7 +43,7 @@ test('the gas-rules module names no clock, environment, randomness or network ca
   }
 });
 
-test('the engine reaches only tx-prepare\'s v2 path (WP3); WP2 itself wired it into nothing else', () => {
+test('the engine reaches only tx-prepare\'s v2 path (WP3) and the offline gate-F gas verifier (WP4-B2); nothing operational', () => {
   const NAMES = /\b(evaluateGenesisGas|selectSepoliaGasRules|calldataGas|calldataGasForInput|checkForkBoundary|validateReviewedRulesHorizon|validateGenesisGasPreconditions|SEPOLIA_GAS_RULES_REVIEW|gas-rules\.mjs)\b/;
   const files = walk('./');
   assert.ok(files.length > 100);
@@ -59,6 +59,12 @@ test('the engine reaches only tx-prepare\'s v2 path (WP3); WP2 itself wired it i
     ['packages', 'tx-prepare', 'test', 'tx-prepare-v2.test.mjs'].join('/'),
     'tools/gas-rules.test.mjs',
     'tools/gas-rules/build-gas-rules-vectors.mjs',
+    // RN-NET-03B2-WP4-B2: the offline gate-F gas verifier and its test. gas.mjs takes the review
+    // history from core.mjs only (the reviewed constant operationally); core.mjs names the constant
+    // in its comments; the guard pins gas.mjs's importers (GATE_F_RESTRICTED).
+    'tools/gate-f-gas.test.mjs',
+    'tools/gate-f/core.mjs',
+    'tools/gate-f/gas.mjs',
     'tools/preparation-v2.test.mjs',
   ]);
 });

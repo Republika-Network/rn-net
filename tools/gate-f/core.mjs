@@ -7,8 +7,10 @@
 //   - the inclusion timestamp from the linked block;
 //   - the canonical record.
 //
-// What B1 does not cover: gas. Every gas state is NOT_EVALUATED, so no B1 record is ever
-// ELIGIBLE_FOR_FOUNDER_REVIEW. Gas-record integrity, inclusion rules and accounting are WP4-B2.
+// WP4-B2 adds the receipt gas evidence (§3.6) and gas (§4, in gas.mjs): the integrity of the
+// recorded gas member, the inclusion rule set from the linked t_i, and the accounting. Gas runs
+// only when inclusion is established with a linked t_i (PublicNode IN_ANCESTRY, §3.5); otherwise
+// it is NOT_EVALUATED (spec §4, as clarified in WP4-B2).
 //
 // Pure and offline:
 //   - the capture is replayed with replayTransport, which never opens a connection;
@@ -22,7 +24,18 @@
 //     (ADR-RN-020 D1). verify.mjs is its only caller;
 //   - evaluateGateFTestStandIn: TEST ONLY. It accepts an approved intent with a SYNTHETIC
 //     preparation as a stand-in for a hypothetical Stage B subject, and nothing else (not v1
-//     rpc-read, not a candidate). The test seam beside verify.mjs is its only caller.
+//     rpc-read, not a candidate). The test seam beside verify.mjs is its only caller. It is the B1
+//     stand-in, unchanged: it carries no gas member, so gas is not evaluated, and the B1
+//     conformance records stay byte-identical;
+//   - evaluateGateFTestStandInStageB (WP4-B2): TEST ONLY. The same fixed subject rule, plus the
+//     v2 preparation that hypothetical Stage B intent would carry (S1 refuses every real v2
+//     intent, so none can be built), and a TEST ONLY review history whose every reviewer says so.
+//     It may produce ELIGIBLE_FOR_FOUNDER_REVIEW for a synthetic vector; the operational evaluator
+//     never can.
+// Authority (WP4-B2 R-G7): the operational evaluator takes the review history ONLY from the
+// reviewed constant SEPOLIA_GAS_RULES_REVIEW (gas.mjs verifierReviewHistory, empty today), and
+// refuses an input whose reviewHistory is anything else. No input, argument, clock or provider
+// answer becomes authority.
 // JavaScript cannot hide an export from a file that imports this one, so the boundary is enforced
 // by the repository guard (dependency-boundaries GATE_F_RESTRICTED: the core, seam and builder
 // importer rules), which CI runs on every change, and pinned by tests.
@@ -32,6 +45,7 @@ import { canonicalBytes, canonicalize, parse } from '../../packages/canonical/sr
 import { checkCapture, LIMITS, Network, parseRpcJson, readEvm, ReadError, replayTransport, verifyLiveAnchor } from '../../packages/chain-readonly/src/index.mjs';
 import { approvedIntent, decodeEip1559Signed, isPlainData } from '../../packages/tx-intent/src/index.mjs';
 import { verifySignedTransaction } from '../../txverify/src/index.mjs';
+import { checkReviewHistory, evaluateRecordedGas, isPreparationV2, verifierReviewHistory } from './gas.mjs';
 import { checkGateFRecord, GATE_F_PROVIDERS, GATE_F_RECORD_FORMAT, GATE_F_RULES, gateFRecordDigest, GateFError, SUPERSESSION_REASONS } from './record.mjs';
 
 /** The exact members of the input set (spec §2, I1–I10). */
@@ -87,22 +101,55 @@ function readInputs(inputs) {
   return frozen;
 }
 
-/** Operational: no subject is eligible until a Stage B acceptance policy is separately authorized (ADR-RN-020 V4, D1). */
+const syntheticSubject = (intent) => intent.preparation !== null && typeof intent.preparation === 'object' && intent.preparation.source === 'synthetic' && !Object.hasOwn(intent.preparation, 'format');
+const refuseInputs = (detail) => {
+  throw new GateFError('RNGF_EVIDENCE_INVALID', `inputs: ${detail}`);
+};
+
+/**
+ * Operational: no subject is eligible until a Stage B acceptance policy is separately authorized
+ * (ADR-RN-020 V4, D1). The review history is the verifier's own (I8); a supplied reviewHistory
+ * must be exactly that history, and is never used as authority.
+ */
 export function evaluateGateFOperational(inputs) {
-  return evaluate(inputs, () => false);
+  return evaluate(inputs, (v) => {
+    const history = verifierReviewHistory();
+    if (!same(v.reviewHistory, history)) refuseInputs("reviewHistory must be the verifier's reviewed history (SEPOLIA_GAS_RULES_REVIEW); it is never supplied authority");
+    return { eligible: () => false, gasMember: (intent) => intent.preparation, history, mayBeEligible: false };
+  });
 }
 
-/** TEST ONLY (see the header): an approved intent with a synthetic preparation stands in for a Stage B subject. */
+/** TEST ONLY, B1 (see the header): a synthetic-preparation intent stands in for a Stage B subject; no gas member. */
 export function evaluateGateFTestStandIn(inputs) {
-  return evaluate(inputs, (intent) => intent.preparation !== null && typeof intent.preparation === 'object' && intent.preparation.source === 'synthetic' && !Object.hasOwn(intent.preparation, 'format'));
+  return evaluate(inputs, (v) => ({ eligible: syntheticSubject, gasMember: null, history: v.reviewHistory, mayBeEligible: false }));
+}
+
+/** TEST ONLY, B2 (see the header): the B1 stand-in subject with the v2 preparation a Stage B intent would carry. */
+export async function evaluateGateFTestStandInStageB(inputs, stageBPreparation) {
+  let preparation;
+  try {
+    preparation = deepFreeze(copy(stageBPreparation));
+  } catch (error) {
+    refuseInputs(`the stand-in preparation is not canonical JSON data (${error.code ?? error.message})`);
+  }
+  return evaluate(inputs, (v) => {
+    try {
+      checkReviewHistory(v.reviewHistory, { testOnly: true });
+    } catch (error) {
+      refuseInputs(error.message);
+    }
+    return { eligible: syntheticSubject, gasMember: () => preparation, history: v.reviewHistory, mayBeEligible: true };
+  });
 }
 
 /**
- * Evaluates one gate-F verification with a fixed subject rule (not exported). Returns
+ * Evaluates one gate-F verification with a fixed profile (not exported): the subject rule, where
+ * the gas member comes from, the review history, and whether rule 3 of §5 may be reached. Returns
  * { record, digest }, or throws GateFError for an unusable input set or an invalid predecessor.
  */
-async function evaluate(inputs, eligible) {
+async function evaluate(inputs, profileOf) {
   const v = readInputs(inputs);
+  const { eligible, gasMember, history, mayBeEligible } = profileOf(v);
   const findings = [];
   const note = (code, group, subject = null) => findings.push({ code, group, subject });
 
@@ -139,6 +186,14 @@ async function evaluate(inputs, eligible) {
     subject.commitment = intent.commitment;
     if (intent.network !== Network.SEPOLIA || intent.purpose !== 'genesis-proof-01' || !eligible(intent)) {
       note('RNGF_SUBJECT_NOT_ELIGIBLE', 'subject', 'intent');
+      failed = true;
+      break run;
+    }
+    // §3.1 step 3: the preparation is a v2 record (format, source, rules, exact members). A v1,
+    // synthetic, candidate or unknown-version preparation is not eligible; nothing falls back.
+    const preparation = gasMember === null ? null : gasMember(intent);
+    if (gasMember !== null && !isPreparationV2(preparation)) {
+      note('RNGF_SUBJECT_NOT_ELIGIBLE', 'subject', 'preparation');
       failed = true;
       break run;
     }
@@ -287,11 +342,52 @@ async function evaluate(inputs, eligible) {
       inclusion = { ...inclusion, timestamp: times[0] };
     }
 
-    // §4 Gas: WP4-B2. B1 evaluates no gas state; an empty review history is still reported (§4.1).
-    if (inclusion.status === 'ESTABLISHED' && v.reviewHistory.length === 0) note('RNGF_RULES_AUTHORITY_ABSENT', 'gasRecord', null);
+    // §3.6 The receipt for gas: every included provider's receipt names the inclusion block and
+    // index, and its gasUsed is a canonical quantity in the safe range, the same on every provider.
+    // It is evidence (FAIL), never a rule problem. The status (0x1) is the anchor record's check (§3.3).
+    let gasUsed = null;
+    if (inclusion.status === 'ESTABLISHED') {
+      const used = [];
+      for (const o of included) {
+        const r = o.receipt;
+        if (r.blockHash !== inclusion.blockHash || r.blockNumber !== inclusion.blockNumber || r.transactionIndex !== inclusion.transactionIndex) {
+          note('RNGF_BINDING_MISMATCH', 'binding', o.id);
+          failed = true;
+          break run;
+        }
+        if (typeof r.gasUsed !== 'string' || !QUANTITY.test(r.gasUsed) || BigInt(r.gasUsed) > BigInt(Number.MAX_SAFE_INTEGER)) {
+          note('RNGF_EVIDENCE_INVALID', 'evidence', o.id);
+          failed = true;
+          break run;
+        }
+        used.push(Number(BigInt(r.gasUsed)));
+      }
+      if (new Set(used).size !== 1) {
+        note('RNGF_EVIDENCE_CONTRADICTORY', 'evidence', 'receipt.gasUsed');
+        failed = true;
+        break run;
+      }
+      gasUsed = used[0];
+    }
+
+    // §4 Gas. An empty review history refuses every gas step (RNGF_RULES_AUTHORITY_ABSENT; the
+    // record is not blamed). Otherwise gas runs only with a linked t_i: without PublicNode
+    // IN_ANCESTRY there is none (§3.5), so gas stays NOT_EVALUATED and finality governs.
+    if (inclusion.status === 'ESTABLISHED') {
+      if (history.length === 0) note('RNGF_RULES_AUTHORITY_ABSENT', 'gasRecord', null);
+      else if (preparation !== null && inclusion.timestamp !== null) {
+        const result = evaluateRecordedGas({ transaction: intent.transaction, commitment: intent.commitment, preparation, history, inclusionTimestamp: inclusion.timestamp, gasUsed });
+        Object.assign(gas, result.gas);
+        for (const f of result.findings) note(f.code, f.group, f.subject);
+        if (gas.record === 'GAS_RECORD_INVALID') failed = true;
+      }
+    }
   }
 
-  // §5. B1 never reaches rule 3 (no gas is evaluated), so the disposition is FAIL or UNRESOLVED.
+  // §5 precedence. Rule 3 needs every condition, and no finding that rule 2 names (only
+  // GAS_RULES_CROSSED may coexist with it).
+  const rule3 = !failed && inclusion.status === 'ESTABLISHED' && finality.disposition === 'PROVIDER_REPORTED_FINALIZED' && gas.record === 'VALID' && gas.accounting === 'GAS_ACCOUNTED'
+    && findings.every((f) => f.code === 'GAS_RULES_CROSSED');
   const record = {
     format: GATE_F_RECORD_FORMAT,
     rules: GATE_F_RULES,
@@ -302,7 +398,7 @@ async function evaluate(inputs, eligible) {
     finality,
     gas,
     findings,
-    disposition: failed ? 'FAIL' : 'UNRESOLVED',
+    disposition: failed ? 'FAIL' : rule3 ? 'ELIGIBLE_FOR_FOUNDER_REVIEW' : 'UNRESOLVED',
     preliminaryStatus,
     supersedes: null,
   };
@@ -313,7 +409,9 @@ async function evaluate(inputs, eligible) {
     record.supersedes = { recordDigest: supersedes.digest, reason: supersedes.reason };
   }
   const checked = deepFreeze(copy(checkGateFRecord(record)));
-  if (checked.disposition === 'ELIGIBLE_FOR_FOUNDER_REVIEW') throw new Error('B1 must never produce ELIGIBLE_FOR_FOUNDER_REVIEW');
+  // Only the TEST ONLY Stage B stand-in may reach rule 3. The operational evaluator and the B1
+  // stand-in never return ELIGIBLE_FOR_FOUNDER_REVIEW (Stage B is not authorized).
+  if (checked.disposition === 'ELIGIBLE_FOR_FOUNDER_REVIEW' && !mayBeEligible) throw new Error('ELIGIBLE_FOR_FOUNDER_REVIEW outside the test stand-in');
   return Object.freeze({ record: checked, digest: gateFRecordDigest(checked) });
 }
 

@@ -109,10 +109,21 @@ export function checkGateFRecord(record) {
   const expected = g.rules === 'SAME' ? g.recorded?.need ?? null : g.rules === 'GAS_RULES_CROSSED' ? g.atInclusion.need : null;
   if (g.expected !== expected) bad('gas.expected');
   if (g.record !== 'VALID' && (g.rules !== 'NOT_EVALUATED' || g.accounting !== 'NOT_EVALUATED')) bad('no gas rules or accounting without a valid gas record');
-  // §4.1 checks the recorded gas member, so VALID names one (implied by §4.1; clarification proposed for §6.1).
-  if (g.record === 'VALID' && g.recorded === null) bad('a VALID gas record names the recorded gas member');
+  // §4.1 checks the recorded gas member: `recorded` holds the verified values, so it is set exactly
+  // when the record is VALID (an invalid member's values are not evidence; WP4-B2 §6.1 clarification).
+  if ((g.record === 'VALID') !== (g.recorded !== null)) bad('gas.recorded is set exactly when the gas record is VALID');
   if (inc.status !== 'ESTABLISHED' && (g.record !== 'NOT_EVALUATED' || g.recorded !== null || g.gasUsed !== null)) bad('gas is NOT_EVALUATED without an established inclusion');
   if (f.disposition === 'CONFLICT' && g.record !== 'NOT_EVALUATED') bad('gas is NOT_EVALUATED after a CONFLICT');
+  // WP4-B2 state rules (spec §4 and §6.1, as clarified): gas runs only with a linked t_i, which
+  // needs PublicNode IN_ANCESTRY (§3.5); gasUsed is the §3.6 value, present exactly when gas ran;
+  // a VALID record always reaches a rule state; the accounting follows the §4.3 table.
+  const gasRan = g.record !== 'NOT_EVALUATED';
+  if (gasRan && (inc.timestamp === null || !['PROVIDER_REPORTED_FINALIZED', 'PROVIDER_REPORTED_FINALIZED_SINGLE'].includes(f.disposition))) bad('gas is evaluated only with a linked inclusion timestamp');
+  if (gasRan !== (g.gasUsed !== null)) bad('gas.gasUsed is set exactly when gas was evaluated');
+  if ((g.record === 'VALID') !== (g.rules !== 'NOT_EVALUATED')) bad('a VALID gas record has a rule state, and only a VALID one');
+  if (g.rules === 'GAS_RULES_UNRESOLVED' && g.accounting !== 'UNRESOLVED') bad('unknown inclusion rules leave the accounting UNRESOLVED');
+  if (g.accounting === 'UNRESOLVED' && g.rules !== 'GAS_RULES_UNRESOLVED') bad('UNRESOLVED accounting only for unknown inclusion rules');
+  if (['SAME', 'GAS_RULES_CROSSED'].includes(g.rules) && g.accounting !== (g.gasUsed === g.expected ? 'GAS_ACCOUNTED' : 'GAS_ACCOUNTING_MISMATCH')) bad('the accounting compares gasUsed with the expected value');
 
   if (!Array.isArray(record.findings)) bad('findings');
   for (const x of record.findings) {
@@ -121,6 +132,8 @@ export function checkGateFRecord(record) {
   if (!ENUM.disposition.includes(record.disposition)) bad('disposition');
   if ((f.disposition === 'CONFLICT' || g.record === 'GAS_RECORD_INVALID') && record.disposition !== 'FAIL') bad('CONFLICT and GAS_RECORD_INVALID are FAIL');
   if (record.disposition === 'ELIGIBLE_FOR_FOUNDER_REVIEW' && !(inc.status === 'ESTABLISHED' && f.disposition === 'PROVIDER_REPORTED_FINALIZED' && g.record === 'VALID' && g.accounting === 'GAS_ACCOUNTED')) bad('eligibility needs every condition of spec §5 rule 3');
+  // Rule 2 comes before rule 3: no finding it names may coexist with eligibility (only GAS_RULES_CROSSED may).
+  if (record.disposition === 'ELIGIBLE_FOR_FOUNDER_REVIEW' && !record.findings.every((x) => x.code === 'GAS_RULES_CROSSED')) bad('eligibility admits no other finding than GAS_RULES_CROSSED');
 
   const p = record.preliminaryStatus;
   if (p !== null && !(keysAre(p, ['statusRecordDigest', 'finding']) && isDigest(p.statusRecordDigest) && (p.finding === null || typeof p.finding === 'string'))) bad('preliminaryStatus');
