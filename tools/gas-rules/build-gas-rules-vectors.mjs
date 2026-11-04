@@ -180,6 +180,11 @@ function cases() {
   add('horizon: known unreviewed activation at the horizon', 'horizon', { review: testReview(A_NOW - 86400, { knownUnreviewedActivations: [h] }), pinTimestamp: A_PIN, now: A_NOW });
   add('horizon: "unreviewed" activation already reviewed', 'horizon', { review: { ...A_REVIEW, knownUnreviewedActivations: [AMSTERDAM] }, pinTimestamp: A_PIN, now: A_NOW });
   add('horizon: string now', 'horizon', { review: A_REVIEW, pinTimestamp: A_PIN, now: String(A_NOW) });
+  // Review R2: reviewedAt ≤ now.
+  add('R2 horizon: reviewedAt = now', 'horizon', { review: testReview(A_NOW), pinTimestamp: A_PIN, now: A_NOW });
+  add('R2 horizon: reviewedAt = now + 1', 'horizon', { review: testReview(A_NOW + 1), pinTimestamp: A_PIN, now: A_NOW });
+  add('R2 horizon: reviewedAt < now', 'horizon', { review: testReview(A_NOW - 1), pinTimestamp: A_PIN, now: A_NOW });
+  add('R2 horizon: future review cannot extend the window', 'horizon', { review: testReview(A_NOW + 10 * 86400), pinTimestamp: A_PIN, now: A_NOW });
 
   // Fork boundary (Q2): pin and now fixed under Amsterdam rules; one extra known activation.
   const pin = A_PIN;
@@ -242,6 +247,18 @@ function cases() {
   add('evaluate: delegation', 'evaluate', { input: evalInput({ codeEvidence: code(`0xef0100${'ab'.repeat(20)}`) }) });
   add('evaluate: extra input field (estimate)', 'evaluate', { input: { ...evalInput(), estimateGas: '0x5208' } });
   add('evaluate: extra input field (header)', 'evaluate', { input: { ...evalInput(), blockAccessListHash: `0x${'00'.repeat(32)}` } });
+  // Review R1: pinTimestamp ≤ now (before any gas computation).
+  add('R1 evaluate: pin = now', 'evaluate', { input: evalInput({ pinTimestamp: A_NOW }) });
+  add('R1 evaluate: pin = now + 1', 'evaluate', { input: evalInput({ pinTimestamp: A_NOW + 1 }) });
+  add('R1 evaluate: pin < now', 'evaluate', { input: evalInput({ pinTimestamp: A_NOW - 1 }) });
+  add('R1 evaluate: malformed pin', 'evaluate', { input: evalInput({ pinTimestamp: String(A_PIN) }) });
+  add('R1 evaluate: malformed now', 'evaluate', { input: evalInput({ now: A_NOW + 0.5 }) });
+  add('R1 evaluate: missing pin', 'evaluate', { input: evalInput({ pinTimestamp: null }) });
+  add('R1 evaluate: pin after now, also past the horizon (R1 first)', 'evaluate', { input: evalInput({ pinTimestamp: A_REVIEW.horizon + 5, now: A_REVIEW.horizon + 4 }) });
+  // Review R2 through the evaluator.
+  add('R2 evaluate: reviewedAt = now', 'evaluate', { input: evalInput({ review: testReview(A_NOW) }) });
+  add('R2 evaluate: reviewedAt = now + 1', 'evaluate', { input: evalInput({ review: testReview(A_NOW + 1) }) });
+  add('R2 evaluate: reviewedAt < now', 'evaluate', { input: evalInput({ review: testReview(A_NOW - 1) }) });
   add('evaluate: pre-Prague', 'evaluate', { input: evalInput({ pinTimestamp: PRAGUE - 100000, now: PRAGUE - 99976, review: testReview(PRAGUE - 200000) }) });
 
   // Properties: random digests (some with zero bytes) through both rule sets, and random counts.

@@ -119,6 +119,28 @@ test('review horizon (Q1): inclusive refusal at the horizon; 30-day bound; sourc
   refuses(() => validateReviewedRulesHorizon(r, { pinTimestamp: PIN, now: 'now' }), E.GAS_INPUT_INVALID);
 });
 
+test('review R1: the evaluator refuses pinTimestamp > now before any gas computation', () => {
+  assert.equal(evaluateGenesisGas(input({ pinTimestamp: NOW })).need, 14688); // pin = now
+  assert.equal(evaluateGenesisGas(input({ pinTimestamp: NOW - 1 })).need, 14688); // pin < now
+  refuses(() => evaluateGenesisGas(input({ pinTimestamp: NOW + 1 })), E.GAS_INPUT_INVALID);
+  for (const bad of [null, String(PIN), PIN + 0.5, -1, 2 ** 40]) refuses(() => evaluateGenesisGas(input({ pinTimestamp: bad })), E.GAS_INPUT_INVALID);
+  for (const bad of [null, String(NOW), NOW + 0.5]) refuses(() => evaluateGenesisGas(input({ now: bad })), E.GAS_INPUT_INVALID);
+  // R1 comes first: with an invalid transaction as well, the pin/now refusal is the one reported.
+  refuses(() => evaluateGenesisGas(input({ pinTimestamp: NOW + 1, transaction: tx({ value: '0x1' }) })), E.GAS_INPUT_INVALID);
+  // The standalone boundary and horizon checks keep their own contracts.
+  assert.equal(checkForkBoundary(NOW + 1, NOW, []), undefined);
+});
+
+test('review R2: reviewedAt must not be after now, standalone and in the evaluator', () => {
+  const at = (reviewedAt) => validateReviewedRulesHorizon(review(reviewedAt), { pinTimestamp: PIN, now: NOW });
+  assert.equal(at(NOW).horizon, NOW + MAX_REVIEW_AGE_SECONDS); // reviewedAt = now
+  assert.equal(at(NOW - 1).horizon, NOW - 1 + MAX_REVIEW_AGE_SECONDS); // reviewedAt < now
+  refuses(() => at(NOW + 1), E.GAS_RULES_UNREVIEWED); // reviewedAt = now + 1
+  refuses(() => at(NOW + 10 * 86400), E.GAS_RULES_UNREVIEWED); // a future review cannot extend the window
+  assert.equal(evaluateGenesisGas(input({ review: review(NOW) })).need, 14688);
+  refuses(() => evaluateGenesisGas(input({ review: review(NOW + 1) })), E.GAS_RULES_UNREVIEWED);
+});
+
 test('the horizon is not renewed by time passing, and is not fork detection: far-future times refuse instead of defaulting', () => {
   // selectSepoliaGasRules alone knows no later fork; the composed evaluator refuses past the horizon.
   assert.equal(selectSepoliaGasRules(2 ** 40 - 1).ruleSetId, 'amsterdam');

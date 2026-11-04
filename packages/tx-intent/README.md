@@ -28,6 +28,7 @@ This implements [ADR-RN-018 Amendment C2](../../docs/adr/ADR-RN-018-transaction-
 - `reviewedAt < horizon ≤ reviewedAt + 2,592,000`;
 - the horizon is no later than any known unreviewed activation;
 - `pinTimestamp` and `now` are before the horizon. It is inclusive: exactly at the horizon refuses.
+- `reviewedAt ≤ now`: a future-dated review never extends the trusted window.
 
 It limits how long one review is trusted. It does **not** detect unannounced forks.
 
@@ -41,7 +42,7 @@ It limits how long one review is trusted. It does **not** detect unannounced for
 
 It reads nothing itself.
 
-**Evaluator.** `evaluateGenesisGas({ transaction, commitment, providerIds, codeEvidence, pinTimestamp, now, review })` composes these steps in order: review, rule set at the pin, boundary, preconditions, arithmetic, then the limit check (`need ≤ 30000`, never clamped). Any other input field is refused.
+**Evaluator.** `evaluateGenesisGas({ transaction, commitment, providerIds, codeEvidence, pinTimestamp, now, review })` first requires `pinTimestamp ≤ now` (`RNTX_GAS_INPUT_INVALID`), because a pinned block cannot be later than the evaluation. It then composes these steps in order: review, rule set at the pin, boundary, preconditions, arithmetic, then the limit check (`need ≤ 30000`, never clamped). Any other input field is refused.
 
 Its result is frozen and module-local, **not** a protocol format: `ruleSetId`, `fork`, `reviewDigest`, `zeroBytes`, `nonzeroBytes`, `standard`, `floor`, `need`, `gasLimit`, `margin`. The `rnnet.tx-preparation.v2` schema is reviewed in WP3.
 

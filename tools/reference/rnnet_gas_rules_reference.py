@@ -181,6 +181,8 @@ def review_ok(review, pin, now):
     at, who, horizon = review["reviewedAt"], review["reviewer"], review["horizon"]
     if not is_time(at) or at == 0:
         refuse(UNREVIEWED)
+    if now < at:  # a review dated after the evaluation is not a recorded review
+        refuse(UNREVIEWED)
     if not isinstance(who, str) or not who.strip() or len(who) > 200:
         refuse(UNREVIEWED)
     listed = review["sources"]
@@ -268,6 +270,8 @@ def evaluate(arg, **kw):
     if not isinstance(arg, dict) or set(arg) != expected:
         refuse(INPUT)
     pin, now, review = arg["pinTimestamp"], arg["now"], arg["review"]
+    if not (is_time(pin) and is_time(now)) or now - pin < 0:  # the pinned block precedes or equals now
+        refuse(INPUT)
     digest = review_ok(review, pin, now)["reviewDigest"]
     at_pin = rules_at(pin)
     boundary_ok(pin, now, review["knownUnreviewedActivations"])
@@ -332,6 +336,17 @@ def checks(root: Path):
     yield "every accepted Genesis evaluation is within the limit and above both terms", all(
         c["expect"]["ok"]["need"] <= LIMIT and c["expect"]["ok"]["need"] >= max(c["expect"]["ok"]["standard"], c["expect"]["ok"]["floor"])
         for c in cases if c["kind"] == "evaluate" and "ok" in c["expect"])
+
+    r1 = {n: by_name[n]["expect"] for n in by_name if n.startswith("R1 ")}
+    r2 = {n: by_name[n]["expect"] for n in by_name if n.startswith("R2 ")}
+    yield "review R1 vectors: pin = now and pin < now allowed; pin = now + 1 and malformed refused", (
+        "ok" in r1.get("R1 evaluate: pin = now", {}) and "ok" in r1.get("R1 evaluate: pin < now", {})
+        and r1.get("R1 evaluate: pin = now + 1") == {"error": INPUT} and r1.get("R1 evaluate: malformed pin") == {"error": INPUT}
+        and r1.get("R1 evaluate: malformed now") == {"error": INPUT} and r1.get("R1 evaluate: pin after now, also past the horizon (R1 first)") == {"error": INPUT})
+    yield "review R2 vectors: reviewedAt = now and < now allowed; now + 1 and future-extended refused", (
+        "ok" in r2.get("R2 horizon: reviewedAt = now", {}) and "ok" in r2.get("R2 horizon: reviewedAt < now", {})
+        and r2.get("R2 horizon: reviewedAt = now + 1") == {"error": UNREVIEWED} and r2.get("R2 horizon: future review cannot extend the window") == {"error": UNREVIEWED}
+        and "ok" in r2.get("R2 evaluate: reviewedAt = now", {}) and r2.get("R2 evaluate: reviewedAt = now + 1") == {"error": UNREVIEWED})
 
     # The ADR carries every reviewed fact this reference uses.
     adr = (root / "docs/adr/ADR-RN-018-transaction-preparation-reads.md").read_text("utf-8")

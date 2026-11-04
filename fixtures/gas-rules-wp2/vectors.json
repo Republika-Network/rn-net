@@ -1657,6 +1657,228 @@
       }
     },
     {
+      "name": "R2 horizon: reviewedAt = now",
+      "kind": "horizon",
+      "input": {
+        "review": {
+          "reviewedAt": 1794000000,
+          "reviewer": "TEST VECTOR ONLY: not a recorded review",
+          "horizon": 1796592000,
+          "sources": [
+            {
+              "source": "eth-clients/sepolia:metadata/genesis.json",
+              "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+              "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+            },
+            {
+              "source": "ethereum/go-ethereum:params/protocol_params.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+            },
+            {
+              "source": "ethereum/go-ethereum:core/state_transition.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+            },
+            {
+              "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+            },
+            {
+              "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+            }
+          ],
+          "knownUnreviewedActivations": []
+        },
+        "pinTimestamp": 1793999976,
+        "now": 1794000000
+      },
+      "expect": {
+        "ok": {
+          "reviewDigest": "sha256:c304df7468fed01e82f895e05ec5746d8472b7bbd090e9abbfa43df7572b48d9",
+          "horizon": 1796592000
+        }
+      }
+    },
+    {
+      "name": "R2 horizon: reviewedAt = now + 1",
+      "kind": "horizon",
+      "input": {
+        "review": {
+          "reviewedAt": 1794000001,
+          "reviewer": "TEST VECTOR ONLY: not a recorded review",
+          "horizon": 1796592001,
+          "sources": [
+            {
+              "source": "eth-clients/sepolia:metadata/genesis.json",
+              "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+              "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+            },
+            {
+              "source": "ethereum/go-ethereum:params/protocol_params.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+            },
+            {
+              "source": "ethereum/go-ethereum:core/state_transition.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+            },
+            {
+              "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+            },
+            {
+              "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+            }
+          ],
+          "knownUnreviewedActivations": []
+        },
+        "pinTimestamp": 1793999976,
+        "now": 1794000000
+      },
+      "expect": {
+        "error": "RNTX_GAS_RULES_UNREVIEWED"
+      }
+    },
+    {
+      "name": "R2 horizon: reviewedAt < now",
+      "kind": "horizon",
+      "input": {
+        "review": {
+          "reviewedAt": 1793999999,
+          "reviewer": "TEST VECTOR ONLY: not a recorded review",
+          "horizon": 1796591999,
+          "sources": [
+            {
+              "source": "eth-clients/sepolia:metadata/genesis.json",
+              "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+              "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+            },
+            {
+              "source": "ethereum/go-ethereum:params/protocol_params.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+            },
+            {
+              "source": "ethereum/go-ethereum:core/state_transition.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+            },
+            {
+              "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+            },
+            {
+              "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+            }
+          ],
+          "knownUnreviewedActivations": []
+        },
+        "pinTimestamp": 1793999976,
+        "now": 1794000000
+      },
+      "expect": {
+        "ok": {
+          "reviewDigest": "sha256:f706e81f99fcfb45a66b4c20e448c905e333028f91a0f5edd64ce4988dff0c6b",
+          "horizon": 1796591999
+        }
+      }
+    },
+    {
+      "name": "R2 horizon: future review cannot extend the window",
+      "kind": "horizon",
+      "input": {
+        "review": {
+          "reviewedAt": 1794864000,
+          "reviewer": "TEST VECTOR ONLY: not a recorded review",
+          "horizon": 1797456000,
+          "sources": [
+            {
+              "source": "eth-clients/sepolia:metadata/genesis.json",
+              "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+              "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+            },
+            {
+              "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+              "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+              "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+            },
+            {
+              "source": "ethereum/go-ethereum:params/protocol_params.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+            },
+            {
+              "source": "ethereum/go-ethereum:core/state_transition.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+            },
+            {
+              "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+            },
+            {
+              "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+              "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+              "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+            }
+          ],
+          "knownUnreviewedActivations": []
+        },
+        "pinTimestamp": 1793999976,
+        "now": 1794000000
+      },
+      "expect": {
+        "error": "RNTX_GAS_RULES_UNREVIEWED"
+      }
+    },
+    {
       "name": "boundary: A = pin − 3601",
       "kind": "boundary",
       "input": {
@@ -3562,6 +3784,830 @@
       },
       "expect": {
         "error": "RNTX_GAS_INPUT_INVALID"
+      }
+    },
+    {
+      "name": "R1 evaluate: pin = now",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1794000000,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "ruleSetId": "amsterdam",
+          "fork": "amsterdam",
+          "reviewDigest": "sha256:d1bfe85c676322a8c27b901df53310b8ff1b1bbccccd488723f63ddb8739e653",
+          "zeroBytes": 0,
+          "nonzeroBytes": 42,
+          "standard": 12672,
+          "floor": 14688,
+          "need": 14688,
+          "gasLimit": 30000,
+          "margin": 15312
+        }
+      }
+    },
+    {
+      "name": "R1 evaluate: pin = now + 1",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1794000001,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "error": "RNTX_GAS_INPUT_INVALID"
+      }
+    },
+    {
+      "name": "R1 evaluate: pin < now",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1793999999,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "ruleSetId": "amsterdam",
+          "fork": "amsterdam",
+          "reviewDigest": "sha256:d1bfe85c676322a8c27b901df53310b8ff1b1bbccccd488723f63ddb8739e653",
+          "zeroBytes": 0,
+          "nonzeroBytes": 42,
+          "standard": 12672,
+          "floor": 14688,
+          "need": 14688,
+          "gasLimit": 30000,
+          "margin": 15312
+        }
+      }
+    },
+    {
+      "name": "R1 evaluate: malformed pin",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": "1793999976",
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "error": "RNTX_GAS_INPUT_INVALID"
+      }
+    },
+    {
+      "name": "R1 evaluate: malformed now",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1793999976,
+          "now": 1794000000.5,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "error": "RNTX_GAS_INPUT_INVALID"
+      }
+    },
+    {
+      "name": "R1 evaluate: missing pin",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": null,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "error": "RNTX_GAS_INPUT_INVALID"
+      }
+    },
+    {
+      "name": "R1 evaluate: pin after now, also past the horizon (R1 first)",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1796505605,
+          "now": 1796505604,
+          "review": {
+            "reviewedAt": 1793913600,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796505600,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "error": "RNTX_GAS_INPUT_INVALID"
+      }
+    },
+    {
+      "name": "R2 evaluate: reviewedAt = now",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1793999976,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1794000000,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796592000,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "ruleSetId": "amsterdam",
+          "fork": "amsterdam",
+          "reviewDigest": "sha256:c304df7468fed01e82f895e05ec5746d8472b7bbd090e9abbfa43df7572b48d9",
+          "zeroBytes": 0,
+          "nonzeroBytes": 42,
+          "standard": 12672,
+          "floor": 14688,
+          "need": 14688,
+          "gasLimit": 30000,
+          "margin": 15312
+        }
+      }
+    },
+    {
+      "name": "R2 evaluate: reviewedAt = now + 1",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1793999976,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1794000001,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796592001,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "error": "RNTX_GAS_RULES_UNREVIEWED"
+      }
+    },
+    {
+      "name": "R2 evaluate: reviewedAt < now",
+      "kind": "evaluate",
+      "input": {
+        "input": {
+          "transaction": {
+            "type": "0x2",
+            "chainId": "0xaa36a7",
+            "nonce": "0x0",
+            "from": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "to": "0x57db031993583fe0cbbf42dbfcf6489e0fb70b86",
+            "value": "0x0",
+            "input": "0x524e4e4554414e430101a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+            "gas": "0x7530",
+            "maxFeePerGas": "0x77359401",
+            "maxPriorityFeePerGas": "0x3b9aca00",
+            "accessList": []
+          },
+          "commitment": "sha256:a20c2311ec1b1084409446fd3e78a49004328ee0521237647bb9e909b6a06ee7",
+          "providerIds": [
+            "sepolia-publicnode",
+            "sepolia-1rpc"
+          ],
+          "codeEvidence": {
+            "sepolia-publicnode": "0x",
+            "sepolia-1rpc": "0x"
+          },
+          "pinTimestamp": 1793999976,
+          "now": 1794000000,
+          "review": {
+            "reviewedAt": 1793999999,
+            "reviewer": "TEST VECTOR ONLY: not a recorded review",
+            "horizon": 1796591999,
+            "sources": [
+              {
+                "source": "eth-clients/sepolia:metadata/genesis.json",
+                "revision": "7b1b9d9549787b6bbf538f943304c4cf84f7e39e",
+                "sha256": "sha256:d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/vm/gas.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c"
+              },
+              {
+                "source": "ethereum/execution-specs:src/ethereum/forks/amsterdam/transactions.py",
+                "revision": "16898000911c1e3caa57be08509536c10ae92d3e",
+                "sha256": "sha256:846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188"
+              },
+              {
+                "source": "ethereum/go-ethereum:params/protocol_params.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28"
+              },
+              {
+                "source": "ethereum/go-ethereum:core/state_transition.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d"
+              },
+              {
+                "source": "ethereum/go-ethereum:eth/gasestimator/gasestimator.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68"
+              },
+              {
+                "source": "ethereum/go-ethereum:internal/ethapi/api.go",
+                "revision": "3d858f858a458effb2a563788aedf1fe65e1f0d3",
+                "sha256": "sha256:df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990"
+              }
+            ],
+            "knownUnreviewedActivations": []
+          }
+        }
+      },
+      "expect": {
+        "ok": {
+          "ruleSetId": "amsterdam",
+          "fork": "amsterdam",
+          "reviewDigest": "sha256:f706e81f99fcfb45a66b4c20e448c905e333028f91a0f5edd64ce4988dff0c6b",
+          "zeroBytes": 0,
+          "nonzeroBytes": 42,
+          "standard": 12672,
+          "floor": 14688,
+          "need": 14688,
+          "gasLimit": 30000,
+          "margin": 15312
+        }
       }
     },
     {

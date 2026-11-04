@@ -181,6 +181,7 @@ const LAST_REVIEWED_ACTIVATION = SEPOLIA_ACTIVATIONS[SEPOLIA_ACTIVATIONS.length 
  *
  * It refuses (RNTX_GAS_RULES_UNREVIEWED) when:
  *   - the record is missing or malformed, or a source does not match;
+ *   - reviewedAt > now: a future-dated review never extends the trusted window (review R2);
  *   - horizon ≤ reviewedAt, or horizon > reviewedAt + 30 days;
  *   - horizon > any known unreviewed activation;
  *   - pinTimestamp or now is at or after the horizon (inclusive).
@@ -196,6 +197,7 @@ export function validateReviewedRulesHorizon(review, { pinTimestamp, now }) {
   if (!plainObject(review) || !exactKeys(review, REVIEW_KEYS)) bad('the review record has the wrong fields');
   const { reviewedAt, reviewer, horizon, sources, knownUnreviewedActivations: unreviewed } = review;
   if (!isTime(reviewedAt) || reviewedAt === 0) bad('reviewedAt must be a positive timestamp');
+  if (reviewedAt > now) bad('reviewedAt is after now: a future-dated review is not a recorded review');
   if (typeof reviewer !== 'string' || reviewer.trim().length === 0 || reviewer.length > 200) bad('reviewer must be a non-empty name');
   if (!Array.isArray(sources) || sources.length !== REVIEWED_GAS_RULE_SOURCES.length) bad('the review must list exactly the pinned sources');
   REVIEWED_GAS_RULE_SOURCES.forEach((pinned, i) => {
@@ -290,6 +292,8 @@ const EVALUATE_KEYS = ['transaction', 'commitment', 'providerIds', 'codeEvidence
 
 /**
  * The composed evaluator (C2 G1–G7), in order:
+ *   0. pinTimestamp and now are timestamps, and pinTimestamp ≤ now. A pinned block cannot be later
+ *      than the evaluation (review R1; RNTX_GAS_INPUT_INVALID);
  *   1. the review and its horizon (R2);
  *   2. the rule sets at the pin and at `now`;
  *   3. the fork boundary (R3; R2's known unreviewed activations included);
@@ -309,6 +313,9 @@ const EVALUATE_KEYS = ['transaction', 'commitment', 'providerIds', 'codeEvidence
 export function evaluateGenesisGas(input) {
   if (!plainObject(input) || !exactKeys(input, EVALUATE_KEYS)) fail(E.GAS_INPUT_INVALID, `input must have exactly the fields ${EVALUATE_KEYS.join(', ')}`);
   const { transaction, commitment, providerIds, codeEvidence, pinTimestamp, now, review } = input;
+  requireTime(pinTimestamp, 'pinTimestamp');
+  requireTime(now, 'now');
+  if (pinTimestamp > now) fail(E.GAS_INPUT_INVALID, 'pinTimestamp is after now: a pinned block cannot be later than the evaluation');
   const { reviewDigest } = validateReviewedRulesHorizon(review, { pinTimestamp, now });
   const atPin = selectSepoliaGasRules(pinTimestamp);
   checkForkBoundary(pinTimestamp, now, review.knownUnreviewedActivations);
