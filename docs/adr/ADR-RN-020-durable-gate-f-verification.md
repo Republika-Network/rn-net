@@ -5,7 +5,7 @@
     submission or publication, and no Stage B.
   - It changes no accepted ADR. Where it relies on a Proposed text (ADR-RN-018 C2, ADR-RN-019
     C1), that text stays Proposed.
-- Date: 2026-11-05
+- Date: 2026-11-04
 - Specification: [rnnet.gate-f-sepolia-verification.v1](../../spec/rnnet.gate-f-sepolia-verification.v1.md)
   (Proposed).
 - Builds on:

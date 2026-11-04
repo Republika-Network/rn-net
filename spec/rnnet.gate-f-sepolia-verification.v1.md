@@ -91,8 +91,9 @@ that may coexist.
 2. The capture names the two reviewed Sepolia providers (`sepolia-publicnode`, `sepolia-1rpc`)
    and the transaction hash of §3.2.
 3. The I7 outcome and agreement:
-   - `RNLO_PROVIDER_DISAGREEMENT`, `RNLO_FINALITY_CONFLICT` or an `INCONSISTENT` provider is
-     `FAIL`;
+   - `RNLO_PROVIDER_DISAGREEMENT` or an `INCONSISTENT` provider is `FAIL`, here;
+   - `RNLO_FINALITY_CONFLICT` is **not** cut off here. §3.4 records each provider's `CONFLICT`
+     before the `FAIL`, so the record preserves it;
    - `INDETERMINATE` is `UNRESOLVED`.
 
 ### 3.4 Inclusion and finality (ADR-RN-015 §3; ADR-RN-019 §8)
@@ -107,8 +108,15 @@ that may coexist.
   |---|---|---|
   | `IN_ANCESTRY` | `IN_ANCESTRY` | `PROVIDER_REPORTED_FINALIZED` (both) |
   | `IN_ANCESTRY` | other than `CONFLICT` | `PROVIDER_REPORTED_FINALIZED_SINGLE` (labelled single-provider claim; review eligibility is U1) |
-  | any | `CONFLICT`, or PublicNode `CONFLICT` | `FAIL` (`RNLO_FINALITY_CONFLICT`) |
+  | `CONFLICT` | any | `CONFLICT`. Overall **`FAIL`** (`RNLO_FINALITY_CONFLICT`) |
+  | any | `CONFLICT` | `CONFLICT`. Overall **`FAIL`**, even when PublicNode is `IN_ANCESTRY` |
   | not `IN_ANCESTRY` | any non-conflict | `NOT_ESTABLISHED` (`UNRESOLVED`) |
+
+  The rows are checked in order, and **any `CONFLICT` takes precedence**. It is recorded per
+  provider in `perProvider`. A `CONFLICT` is **never** mapped to `UNRESOLVED`,
+  `NOT_ESTABLISHED` or `PROVIDER_REPORTED_FINALIZED_SINGLE`. Like any failure in steps 1–4,
+  verification then ends. `inclusion` and `finality` are recorded as observed, and every gas
+  state is `NOT_EVALUATED`.
 
 ### 3.5 The inclusion timestamp `t_i`
 - **The source:** the captured response to `eth_getBlockByHash(receipt.blockHash, false)`, whose
@@ -206,7 +214,10 @@ The finding groups are recorded separately and can coexist:
 - `gasRules` (`SAME` / `GAS_RULES_CROSSED` / `GAS_RULES_UNRESOLVED` / `NOT_EVALUATED`);
 - `gasAccounting` (`GAS_ACCOUNTED` / `GAS_ACCOUNTING_MISMATCH` / `UNRESOLVED` /
   `NOT_EVALUATED`);
-- `review`.
+- `review`;
+- `chain` (the append-only chain of §6.3).
+
+`findings[].group` is exactly one of these eleven names.
 
 **Precedence of the overall `disposition`** (first match wins):
 
@@ -235,14 +246,14 @@ The finding groups are recorded separately and can coexist:
 { "format": "rnnet.gate-f-sepolia-verification.v1",
   "rules": "ADR-RN-020",
   "network": "evm:11155111",
-  "subject": { "intentDigest", "commitment", "transactionHash", "blobSha256",
-               "txverifyRecordSha256", "submissionRecordDigest" },
+  "subject": { "intentDigest": <digest>, "commitment": <digest|null>, "transactionHash": <hash|null>,
+               "blobSha256": <digest|null>, "txverifyRecordSha256": <digest>, "submissionRecordDigest": <digest> },
   "evidence": { "captureSha256", "liveReportSha256", "providers": [ "sepolia-publicnode", "sepolia-1rpc" ] },
-  "inclusion": { "status": "ESTABLISHED" | "NOT_ESTABLISHED",
+  "inclusion": { "status": "ESTABLISHED" | "NOT_ESTABLISHED" | "NOT_EVALUATED",
                  "blockHash": <hash|null>, "blockNumber": <quantity|null>, "transactionIndex": <quantity|null>,
                  "timestamp": <integer|null> },
-  "finality": { "disposition": "PROVIDER_REPORTED_FINALIZED" | "PROVIDER_REPORTED_FINALIZED_SINGLE" | "NOT_ESTABLISHED",
-                "perProvider": [ { "id", "result": "IN_ANCESTRY" | "NOT_REACHED" | "UNRESOLVED" | "NOT_OBSERVED" } ],
+  "finality": { "disposition": "PROVIDER_REPORTED_FINALIZED" | "PROVIDER_REPORTED_FINALIZED_SINGLE" | "CONFLICT" | "NOT_ESTABLISHED" | "NOT_EVALUATED",
+                "perProvider": [ { "id", "result": "IN_ANCESTRY" | "CONFLICT" | "NOT_REACHED" | "UNRESOLVED" | "NOT_OBSERVED" } ],
                 "classification": "CLAIMED" | "UNRESOLVED", "chainInclusionProof": "UNRESOLVED" },
   "gas": { "record": "VALID" | "GAS_RECORD_INVALID" | "NOT_EVALUATED",
            "recorded": { "ruleSetId", "fork", "reviewDigest", "standard", "floor", "need", "gasLimit" } | null,
@@ -251,7 +262,7 @@ The finding groups are recorded separately and can coexist:
            "expected": <integer|null>, "gasUsed": <integer|null>,
            "accounting": "GAS_ACCOUNTED" | "GAS_ACCOUNTING_MISMATCH" | "UNRESOLVED" | "NOT_EVALUATED",
            "codeStateAtInclusion": "NOT_ESTABLISHED", "codeStateBasis": "G4.3" },
-  "findings": [ { "code", "group", "subject" } ],
+  "findings": [ { "code", "group": <one of the §5 groups>, "subject": <provider id | member name | null> } ],
   "disposition": "FAIL" | "UNRESOLVED" | "ELIGIBLE_FOR_FOUNDER_REVIEW",
   "preliminaryStatus": { "statusRecordDigest", "finding" } | null,
   "supersedes": { "recordDigest", "reason" } | null }
@@ -264,6 +275,22 @@ The finding groups are recorded separately and can coexist:
   JSON-RPC quantity and hash strings exactly as captured. There are no floats.
 - **Order.** `providers` and `perProvider` are in the reviewed order (PublicNode, then 1RPC).
   `findings` are in procedure order (§3–§4), and within a step by provider order.
+- **States.** Every documented outcome has exactly one representation, and no invented value:
+  - **verification ended at §3.1–§3.3:** `inclusion.status` and `finality.disposition` are
+    `NOT_EVALUATED`; `perProvider` is `[]`; every gas state is `NOT_EVALUATED`; the disposition
+    is `FAIL` or `UNRESOLVED` per §5;
+  - **`subject`:** `intentDigest`, `txverifyRecordSha256` and `submissionRecordDigest` are always
+    the digests of the given inputs. `commitment`, `transactionHash` and `blobSha256` are `null`
+    only when the input that carries them is invalid (§3.1–§3.2);
+  - **verification ended at a §3.4 `CONFLICT`:** `inclusion` as observed;
+    `finality.disposition` `CONFLICT`; every gas state `NOT_EVALUATED`; the disposition is
+    `FAIL`;
+  - **`finality.disposition` is `CONFLICT` if and only if** some `perProvider[].result` is
+    `CONFLICT`, and then `disposition` is `FAIL`;
+  - **`perProvider[].result`:** `NOT_OBSERVED` for a provider the replay did not read; otherwise
+    the walk result, unchanged;
+  - **`finality.classification`:** `CLAIMED` when at least one walk result was observed;
+    otherwise `UNRESOLVED`.
 - **Consistency of duplicated data:**
   - `subject.transactionHash` = the hash of every observation;
   - `gas.recorded.gasLimit` = 30,000;
@@ -328,7 +355,9 @@ Genesis payload, with gas 30,000.
 | N14 | finalized `NOT_REACHED` on PublicNode | finality `NOT_ESTABLISHED`, `UNRESOLVED` |
 | N15 | `receipt.transactionHash` of another transaction | `RNAE_RECEIPT_MISMATCH` / `RNGF_BINDING_MISMATCH`, `FAIL` |
 | N16 | The two providers give two block hashes | `RNLO_PROVIDER_DISAGREEMENT`, `FAIL` |
-| N17 | A walk link with the wrong parent, or another block at that height | `RNLO_BLOCK_MISMATCH` / `RNLO_FINALITY_CONFLICT`, `FAIL` |
+| N17 | A walk link with the wrong parent or number | `RNLO_BLOCK_MISMATCH` (§3.3, an `INCONSISTENT` provider), `FAIL`; finality `NOT_EVALUATED` |
+| N17b | PublicNode walk reaches **another block** at the transaction's height | `perProvider[0].result: CONFLICT`, `finality.disposition: CONFLICT`, `RNLO_FINALITY_CONFLICT`, gas `NOT_EVALUATED`, **`FAIL`**; never `UNRESOLVED` |
+| N17c | PublicNode `IN_ANCESTRY`, 1RPC `CONFLICT` | `perProvider[1].result: CONFLICT`, `finality.disposition: CONFLICT`, gas `NOT_EVALUATED`, **`FAIL`**; never `PROVIDER_REPORTED_FINALIZED_SINGLE` |
 | N18 | `gasUsed` = expected − 1 | `GAS_ACCOUNTING_MISMATCH`, `UNRESOLVED` |
 | N19 | `gasUsed` = expected + 1 | `GAS_ACCOUNTING_MISMATCH`, `UNRESOLVED` |
 | N20 | `gasUsed` correct, finality `NOT_ESTABLISHED` | `GAS_ACCOUNTED` + `UNRESOLVED` |
@@ -340,6 +369,8 @@ Genesis payload, with gas 30,000.
 | N26 | `gasUsed` differs between providers under one block hash | `RNGF_EVIDENCE_CONTRADICTORY`, `FAIL` |
 | N27 | A provider transaction object missing `maxFeePerGas` | `RNGF_EVIDENCE_INVALID`, `FAIL` |
 | N28 | A dry-run submission record | `RNGF_BINDING_MISMATCH`, `FAIL` |
+| N29 | N1 (candidate as I1): the whole record | `inclusion.status` and `finality.disposition` `NOT_EVALUATED`, `perProvider: []`, every gas state `NOT_EVALUATED`, `subject.transactionHash: null`, `FAIL` |
+| N30 | A record with `finality.disposition: CONFLICT` and `disposition: UNRESOLVED`, or `CONFLICT` in neither `perProvider` | refused by the §6.1 state rules (schema-invalid) |
 
 ### 7.3 Boundaries (recorded `prague`; reviewed `amsterdam` at A = 1791294816; covering-review horizon H)
 | ID | `t_i` | Expected |
@@ -365,6 +396,8 @@ Genesis payload, with gas 30,000.
 | Requirement | Source | Spec § | Vectors |
 |---|---|---|---|
 | Finality = the provider-reported walk, both providers, no shortcut | ADR-RN-015 §3; ADR-RN-019 §8 | 3.4 | P6, N14, N16, N17 |
+| `CONFLICT` preserved per provider; always `FAIL`; never `UNRESOLVED` | ADR-RN-015 §3 ("a conflict … fails"); ADR-RN-020 V2 | 3.3, 3.4, 6.1 | N17b, N17c, N30 |
+| Every documented outcome is representable, without invented values | ADR-RN-020 V8, V9 | 6.1 | N1, N29, N30 |
 | The authoritative `t_i` from the linked block | ADR-RN-018 G10; ADR-RN-020 V3 | 3.5 | N12, N13, B1–B6 |
 | Integrity of the recorded gas, first and hard | G10 step 1; V6 | 4.1 | N4–N8, N10b |
 | No authority means not evaluated (fail-closed, not blamed on the record) | D2; V6 | 4.1 | N10 |
