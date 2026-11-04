@@ -15,10 +15,17 @@
 #   none    no controlling terminal at all (new session, no terminal opened).
 #   ahead   bytes typed after the probe has started but BEFORE it shows the prompt (type-ahead).
 #   steps   after the prompt: ["send", str] types bytes, ["sleep", s] waits.
-# Output (stdout, one JSON line): {"result": <the probe's record or null>, "blocked": bool, "transcript": str}
+#   after   bytes typed once the probe has exited (a control: they must appear in "pending").
+# Output (stdout, one JSON line):
+#   {"result": <the probe's record or null>, "blocked": bool, "transcript": str, "pending": str | null}
+#   pending  what is left in the terminal's input queue once the probe has exited: exactly what the
+#            shell that started it would read next (and run as a command). The driver keeps its own
+#            descriptor of the terminal (the slave side) open so the queue outlives the probe, and
+#            reads it without blocking. null when there is no terminal or the probe never finished.
+import errno
+import fcntl
 import json
 import os
-import pty
 import select
 import signal
 import sys
@@ -36,9 +43,12 @@ def main():
     timeout = float(scenario.get('timeout', 8))
     if mode == 'none':
         return no_terminal(node, probe, timeout)
-    pid, master = pty.fork()
+    master, slave = os.openpty()
+    pid = os.fork()
     if pid == 0:
         try:
+            os.close(master)
+            os.login_tty(slave)  # new session; the terminal becomes its controlling terminal, fds 0-2
             if mode == 'raw':
                 attrs = termios.tcgetattr(0)
                 attrs[0] &= ~(termios.ICRNL | termios.IXON)
@@ -91,7 +101,27 @@ def main():
     except ProcessLookupError:
         pass
     os.waitpid(pid, 0)
-    report(out, blocked)
+    if not blocked and scenario.get('after'):
+        send(scenario['after'])  # typed once the probe has gone: the control that pending is seen
+        time.sleep(0.1)
+    report(out, blocked, None if blocked else pending_input(slave))
+
+
+def pending_input(slave):
+    """Reads, without blocking, what the terminal still holds for the next reader (the shell)."""
+    fcntl.fcntl(slave, fcntl.F_SETFL, fcntl.fcntl(slave, fcntl.F_GETFL) | os.O_NONBLOCK)
+    left = bytearray()
+    while True:
+        try:
+            data = os.read(slave, 4096)
+        except OSError as error:
+            if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                break
+            raise
+        if not data:
+            break
+        left.extend(data)
+    return left.decode('latin-1')
 
 
 def no_terminal(node, probe, timeout):
@@ -123,16 +153,16 @@ def no_terminal(node, probe, timeout):
     except ProcessLookupError:
         pass
     os.waitpid(pid, 0)
-    report(out, blocked)
+    report(out, blocked, None)
 
 
-def report(out, blocked):
+def report(out, blocked, pending):
     result = None
     at = out.rfind(MARKER)
     if at >= 0:
         line = out[at + len(MARKER):].split(b'\n', 1)[0].strip()
         result = json.loads(line.decode('utf-8'))
-    print(json.dumps({'result': result, 'blocked': blocked, 'transcript': out.decode('utf-8', 'replace')}))
+    print(json.dumps({'result': result, 'blocked': blocked, 'transcript': out.decode('utf-8', 'replace'), 'pending': pending}))
 
 
 if __name__ == '__main__':

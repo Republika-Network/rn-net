@@ -393,6 +393,7 @@ test('the approval is typed on the terminal: never read from standard input, one
   const fakeTty = ({ tty = true, input = 'c6 0123456789abcdef\n', chunk = 1, typedAhead = '' } = {}) => {
     const seen = { opened: [], written: '', closed: 0, discarded: 0 };
     let pos = 0;
+    let prompted = false;
     let ahead = Buffer.from(typedAhead, 'utf8');
     const bytes = Buffer.from(input, 'utf8');
     return {
@@ -401,8 +402,16 @@ test('the approval is typed on the terminal: never read from standard input, one
         // fd 43: the non-blocking read that discards type-ahead; fd 42: the prompt and the answer.
         openSync: (path, flags) => { seen.opened.push(path); return (flags & constants.O_NONBLOCK) ? 43 : 42; },
         isatty: (fd) => (fd === 42 || fd === 43) && tty,
-        writeSync: (fd, b, off, len) => { seen.written += Buffer.from(b).subarray(off, off + len).toString(); return len; },
+        writeSync: (fd, b, off, len) => { prompted = true; seen.written += Buffer.from(b).subarray(off, off + len).toString(); return len; },
         readSync: (fd, buf, off, len) => {
+          // After the prompt, both descriptors read the same queue, as on a real terminal.
+          if (fd === 43 && prompted) {
+            if (pos >= bytes.length) throw Object.assign(new Error('EAGAIN'), { code: 'EAGAIN' });
+            const n = Math.min(len, bytes.length - pos);
+            bytes.copy(buf, off, pos, pos + n);
+            pos += n;
+            return n;
+          }
           if (fd === 43) {
             if (ahead.length === 0) throw Object.assign(new Error('EAGAIN'), { code: 'EAGAIN' });
             const n = Math.min(len, ahead.length);
@@ -418,14 +427,16 @@ test('the approval is typed on the terminal: never read from standard input, one
         },
         closeSync: () => { seen.closed += 1; },
       },
+      left: () => bytes.length - pos,
     };
   };
   const ok = fakeTty();
   assert.equal(await createTtyApproval(ok.io)('PROMPT'), 'c6 0123456789abcdef');
-  assert.deepEqual(ok.seen.opened, [TTY_PATH, TTY_PATH]);
+  // Opened three times: discard type-ahead, prompt and answer, discard what is left after the answer.
+  assert.deepEqual(ok.seen.opened, [TTY_PATH, TTY_PATH, TTY_PATH]);
   assert.equal(TTY_PATH, '/dev/tty');
   assert.match(ok.seen.written, /^PROMPT\n\(press Ctrl-U first to clear anything typed before this prompt\)\n> $/);
-  assert.equal(ok.seen.closed, 2);
+  assert.equal(ok.seen.closed, 3);
   // Typed before the prompt (type-ahead, a stuck key, a paste): discarded, never an answer.
   const ahead = fakeTty({ typedAhead: 'c6 0123456789abcdef\n', input: 'no\n' });
   assert.equal(await createTtyApproval(ahead.io)('P'), 'no');
@@ -438,6 +449,22 @@ test('the approval is typed on the terminal: never read from standard input, one
     await assert.rejects(createTtyApproval(f.io)('P'), Error, label);
     assert.ok(f.seen.closed >= 1, label);
   }
+  // Nothing typed for the prompt is left for the shell: not the rest of an over-long line (with its
+  // Enter), not lines pasted after the answer, whatever the answer was (C6-H3 TTY review).
+  for (const [label, input, chunk, outcome] of [
+    ['over-long line ending in a command', `${'x'.repeat(MAX_ANSWER_BYTES + 1)}; echo INJECTED\n`, 1, /too long/],
+    ['over-long line read in one go', `${'x'.repeat(200)}\nid\n`, 4096, /too long/],
+    ['exactly one byte too long', `${'x'.repeat(MAX_ANSWER_BYTES + 1)}\n`, 1, /too long/],
+    ['right answer, then a pasted line', 'c6 0123456789abcdef\necho INJECTED\n', 1, 'c6 0123456789abcdef'],
+    ['wrong answer, then a pasted line', 'no\necho INJECTED\n', 4096, 'no'],
+  ]) {
+    const f = fakeTty({ input, chunk });
+    if (typeof outcome === 'string') assert.equal(await createTtyApproval(f.io)('P'), outcome, label);
+    else await assert.rejects(createTtyApproval(f.io)('P'), outcome, label);
+    assert.equal(f.left(), 0, `${label}: input left on the terminal`);
+  }
+  // A terminal that keeps sending after the answer is refused, even after a right answer.
+  await assert.rejects(createTtyApproval(fakeTty({ input: `c6 0123456789abcdef\n${'x'.repeat(70_000)}`, chunk: 4096 }).io)('P'), /does not stop/);
   const noTty = { ...fakeTty().io, openSync: () => { throw Object.assign(new Error('x'), { code: 'ENXIO' }); } };
   await assert.rejects(createTtyApproval(noTty)('P'));
   // The module never touches standard input.

@@ -7,7 +7,9 @@
 // with a fake. This check instead runs the production createTtyApproval() and requireApproval()
 // (tools/tty-pty/probe.mjs, with a synthetic digest) on a pseudo-terminal that a Python driver
 // (tools/tty-pty/driver.py) types into as a terminal emulator would, so the kernel's line
-// discipline (canonical mode, echo, Ctrl-U, ICRNL, O_NONBLOCK reads) is the real one.
+// discipline (canonical mode, echo, Ctrl-U, ICRNL, O_NONBLOCK reads) is the real one. After every
+// scenario that finishes on a terminal it also checks what is left in the terminal's input queue,
+// which is what the shell would read (and run) next: nothing.
 //
 // It never starts the C6 command: the only program started is python3 with the driver, which
 // starts only node with the probe; both paths are fixed below and the probe's imports are checked.
@@ -68,6 +70,20 @@ const scenarios = [
   ['garbage typed ahead without Enter, no Ctrl-U, then the answer', { mode: 'cooked', ahead: 'xx', steps: [['send', `${RIGHT}\r`]] }, { approved: false, answer: `xx${RIGHT}`, code: 'RNCL_APPROVAL_REFUSED' }],
   // A terminal left in raw mode: Enter ("\r") ends no line, so nothing is approved (the reader waits).
   ['terminal in raw mode', { mode: 'raw', steps: [['send', `${RIGHT}\r`], ['sleep', 1]], timeout: 4 }, { blocked: true }],
+  // 7. An answer longer than 64 bytes is refused and discarded WHOLE: nothing of it (or of what was
+  // pasted with it) is left on the terminal for the shell to run once the program exits.
+  ['65 bytes then Enter (only the Enter would be left)', { mode: 'cooked', steps: [['send', `${'c'.repeat(65)}\r`]] }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['64 bytes then Enter (the longest answer read; wrong, so refused)', { mode: 'cooked', steps: [['send', `${'c'.repeat(64)}\r`]] }, { approved: false, answer: 'c'.repeat(64), code: 'RNCL_APPROVAL_REFUSED' }],
+  ['over-long line ending in a shell command', { mode: 'cooked', steps: [['send', `${'x'.repeat(65)}; echo RNNET-INJECTED\r`]] }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['the right answer padded past 64 bytes', { mode: 'cooked', steps: [['send', `${RIGHT}${' '.repeat(60)}touch /tmp/RNNET-INJECTED\r`]] }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['a 3000-byte line', { mode: 'cooked', steps: [['send', `${'y'.repeat(3000)}\r`]] }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['over-long line, then more lines in the same paste', { mode: 'cooked', steps: [['send', `${'z'.repeat(80)}\recho RNNET-INJECTED\rid\r`]] }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['over-long line ended by Ctrl-D instead of Enter', { mode: 'cooked', steps: [['send', `${'w'.repeat(70)}echo RNNET-INJECTED\x04`]] }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  // 8. Lines pasted after the answer line never reach the shell (the first line alone is the answer).
+  ['wrong answer, then a pasted command line', { mode: 'cooked', steps: [['send', 'no\recho RNNET-INJECTED\r']] }, { approved: false, answer: 'no', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['right answer, then a pasted command line', { mode: 'cooked', steps: [['send', `${RIGHT}\recho RNNET-INJECTED\r`]] }, { approved: true, answer: RIGHT }],
+  // Control: input typed once the program has exited IS seen as pending, so "nothing pending" above means it.
+  ['control: typed after the program exited is pending', { mode: 'cooked', steps: [['send', `${RIGHT}\r`]], after: 'echo later\r' }, { approved: true, answer: RIGHT, pending: 'echo later\n' }],
 ];
 
 let failures = 0;
@@ -86,6 +102,8 @@ for (const [label, scenario, expected] of scenarios) {
       if (expected.error === true) assert.ok(r.error, `${label}: an error`);
       else if ('error' in expected) assert.equal(r.error, expected.error, `${label}: error`);
       if (!expected.approved) assert.notEqual(r.code, null, `${label}: refused`);
+      // What the shell would read next from this terminal: nothing, unless the scenario typed it later.
+      if (scenario.mode !== 'none') assert.equal(got.pending, expected.pending ?? '', `${label}: input left on the terminal for the shell`);
     }
     process.stdout.write(`ok   ${label}\n`);
   } catch (failure) {
