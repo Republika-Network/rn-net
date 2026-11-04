@@ -774,23 +774,79 @@ remove the only live signal that the provider's rules differ from RN-NET's revie
   - never marks a record final;
   - never settles the gate-F result in either direction.
 
-**The rules of the check:**
-- Let `R_i = rules(inclusion block timestamp)`. If `R_i` ≠ the intent's recorded rule set, report
-  `GAS_RULES_CROSSED`. This is an anomaly in the record, not a failure of inclusion.
-- **Expected:** `gasUsed = max(intrinsic_Ri + runtime + state − refund, floor_Ri)`, with
-  `runtime`, `state` and `refund` each **0** under G4.
-  - Under Amsterdam, EIP-7778 changes only block-level accounting: with no refund, transaction
-    and block gas are equal.
-  - EIP-8037 state gas is part of the transaction's gas used, and is 0 here.
-- **Check:** `receipt.gasUsed == need_Ri` (14,688 under `amsterdam`; 22,680 under `prague`).
-  - A mismatch is reported as `GAS_ACCOUNTING_MISMATCH`, together with the observed value.
-  - It is **never** silently accepted, and it is never "explained" by assuming a non-zero runtime,
-    state or refund term.
-  - Funds at risk are already bounded by `30,000 × maxFeePerGas`.
+**Recorded values (permanent).**
+- The intent's `rnnet.tx-preparation.v2` gas member (G13, Q4) records, at gate D:
+  - the **original reviewed rule-set identity**: the rule-set id, the `RULES_REVIEW` reference and
+    the G2 source digests;
+  - the computed `standard`, `floor` and `need`.
+- It is covered by the intent digest and is **never rewritten**. Nothing below replaces it.
+
+**The rules of the check** (in the durable gate-F verifier; the status check may run the same
+steps preliminarily):
+1. **Integrity of the recorded values.**
+   - The verifier checks the intent digest and the approved intent.
+   - It then recomputes `need` from three things only:
+     - the recorded rule-set id;
+     - the verifier's own reviewed constants for that id;
+     - the payload.
+   - The recomputed value must equal the recorded `need`, and the recorded source digests must
+     equal the reviewed ones.
+   - On any difference, the gas member is **invalid**: `GAS_RECORD_INVALID`, and the gate-F record
+     fails. No later step runs on an invalid record.
+2. **The inclusion rule set, determined independently.**
+   - `R_i = rules(t_i)`, where `t_i` is the timestamp of the inclusion block **as established by
+     the finality evidence** (the block on the verified ancestry walk, P7, ADR-RN-015).
+   - `rules` is the gate-F verifier's own reviewed rule table, with its own `RULES_REVIEW` and
+     horizon (G1, G2, G5 R2). The intent's recorded rule set never stands in for it, and neither
+     does a provider-reported field.
+   - `R_i` is **reviewed** only if `t_i` falls inside a reviewed rule set's interval and before
+     that verifier's `REVIEWED_RULES_HORIZON`.
+3. **Same rule set** (`R_i` = the recorded rule set).
+   - **Expected** = the recorded `need`, already integrity-checked in step 1:
+     `gasUsed = max(intrinsic + runtime + state − refund, floor)`, with `runtime`, `state` and
+     `refund` each **0** under G4.
+     - Under Amsterdam, EIP-7778 changes only block-level accounting: with no refund,
+       transaction and block gas are equal.
+     - EIP-8037 state gas is part of the transaction's gas used, and is 0 here.
+   - **Check:** `receipt.gasUsed == need` (14,688 under `amsterdam`; 22,680 under `prague`).
+   - Equality is `GAS_ACCOUNTED`. Anything else is `GAS_ACCOUNTING_MISMATCH`, with the observed
+     value.
+4. **Different rule set** (`R_i` reviewed, ≠ the recorded rule set).
+   - Report **`GAS_RULES_CROSSED`**. This is an anomaly, not a failure of inclusion.
+   - Compute `need_Ri` **separately**, by G3 under `R_i`'s **reviewed** rules only, with the G4
+     preconditions. Check `receipt.gasUsed == need_Ri`: `GAS_ACCOUNTED` or
+     `GAS_ACCOUNTING_MISMATCH`.
+   - **Keep both values** in the gate-F record: the recorded `need` with its rule set, and
+     `need_Ri` with `R_i`. Neither overwrites the other.
+5. **Unknown or unreviewed rule set.** Examples: `t_i` at or after the verifier's horizon, inside
+   an unreviewed fork, or missing.
+   - Report **`GAS_RULES_UNRESOLVED`**. The gas check is **UNRESOLVED**.
+   - The observed `gasUsed` is recorded, with **no expected value**.
+   - An expected value is **never guessed**. It does not come from:
+     - the recorded rule set;
+     - the nearest reviewed rule set;
+     - a provider estimate;
+     - an assumed runtime, state or refund term.
+   - The verdict stays UNRESOLVED until a new recorded review covers `t_i`.
+
+**Treatment of the findings:**
+- A mismatch or an UNRESOLVED gas check is **never** silently accepted. It is never "explained"
+  by assuming a non-zero runtime, state or refund term.
+- It is listed in the gate-F record for the founder's review before publication (H10).
+- A gas finding never changes the finality evidence: it neither makes an inclusion final nor
+  undoes one.
+- Funds at risk are already bounded by `30,000 × maxFeePerGas`.
 - The receipt is read under the existing finality rules (P7, ADR-RN-015). This adds no new trust
   in a provider.
-- In the gate-F record, the expected value is taken from the intent's `rnnet.tx-preparation.v2`
-  gas member (G13, Q4), never recomputed from an unreviewed rule set.
+
+**Preliminary findings.** A status-check finding under steps 1–5 is marked **preliminary**. It
+never replaces the authoritative gate-F result or its finality evidence, and it never settles
+either.
+
+**What this section does not change:**
+- the historic C6 evidence and report;
+- every refusal in G5, G8 and C1;
+- the fixed 30,000 limit.
 
 ### G11. 1RPC remains an independent blocker
 
@@ -833,7 +889,7 @@ remove the only live signal that the provider's rules differ from RN-NET's revie
 | Separate block-hash semantics | G9 (Q3) | `SEPOLIA_COMPATIBILITY.blockHashSemantics`; classifier | estimate in range with semantics `null` stays UNRESOLVED; no code path sets it `true`; preparation proceeds with it `null` only if every C1 control passes | A number never proves pinning |
 | Record v2 | G13 (Q4) | `rnnet.tx-preparation.v2` spec, builder, verifier; `rnnet_prep_reference.py` | v2 rebuilt byte for byte (JS = Python); v2 without its gas member refused; a C2 Sepolia intent never emitted as v1; historical v1 records and fixtures replay unchanged | History is immutable; the need is bound by the intent digest |
 | Classifier versioning | G9 | `tools/compat/classify.mjs` v2; frozen v1; `rnnet_compat_reference.py` | C6-H3 replay with v1 rebuilds the report (16/16); v2 gives PublicNode's estimate in range | History is immutable |
-| Receipt check | G10 (Q5) | durable gate-F verifier (authoritative); status check (preliminary only) | gasUsed = need, ≠ need, rules crossed; a preliminary status finding does not change the gate-F result | Mismatch reported, never explained away; finality evidence never replaced |
+| Receipt check | G10 (Q5) | durable gate-F verifier (authoritative); status check (preliminary only) | **integrity:** recorded need altered, unknown rule-set id or source digest mismatch → `GAS_RECORD_INVALID`, record fails. **Same rules:** gasUsed = need → `GAS_ACCOUNTED`; ≠ need → `GAS_ACCOUNTING_MISMATCH`. **Crossed** (reviewed `R_i`): `GAS_RULES_CROSSED`, with gasUsed = / ≠ `need_Ri`, and the recorded need and `need_Ri` both kept. **Unknown:** `t_i` ≥ the verifier's horizon, or inside an unreviewed fork → `GAS_RULES_UNRESOLVED`, no expected value. `t_i` comes only from the finality-verified inclusion block. A preliminary status finding does not change the gate-F result | Recorded values immutable; inclusion rules determined independently from reviewed sources; an expected value is never guessed; mismatch reported, never explained away; finality evidence never replaced |
 | 1RPC independent | G11 | none in C2 | compatibility with 1RPC `null` stays BLOCKED | Two providers, no relaxation |
 
 ### G13. Assumptions and founder decisions
