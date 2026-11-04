@@ -567,10 +567,22 @@ def sepolia_tx_ok(tx, commitment) -> bool:
     )
 
 
+def preparation_ok(p) -> bool:
+    """RN-NET S1: the only preparation records the intent protocol accepts (rnnet.unsigned-tx-intent.v1 §2)."""
+    if not isinstance(p, dict):
+        return False
+    members = set(p)
+    if "format" in members:  # only the reviewed v1 top level
+        return (members == {"format", "source", "rules", "observedAt", "providers"}
+                and p["format"] == "rnnet.tx-preparation.v1" and p["source"] == "rpc-read" and p["rules"] == "ADR-RN-018")
+    # the synthetic fixture record: {source} or {source, note: str}, nothing else
+    return p.get("source") == "synthetic" and (members == {"source"} or (members == {"source", "note"} and isinstance(p["note"], str)))
+
+
 def intent_ok(intent) -> bool:
     if not isinstance(intent, dict) or sorted(intent) != ["commitment", "format", "network", "preparation", "purpose", "transaction"]:
         return False
-    if intent["format"] != "rnnet.unsigned-tx-intent.v1" or intent["purpose"] != "genesis-proof-01" or not isinstance(intent["preparation"], dict):
+    if intent["format"] != "rnnet.unsigned-tx-intent.v1" or intent["purpose"] != "genesis-proof-01" or not preparation_ok(intent["preparation"]):
         return False
     c = intent["commitment"]
     if not isinstance(c, str) or DIGEST.fullmatch(c) is None:
@@ -744,6 +756,38 @@ def checks(root: Path):
         yield f"{name} hashes", rec["blobSha256"] == signed["blobSha256"] and rec["transactionHash"] == signed["transactionHash"]
     neg = g["negative"]
     yield "negative corpus present", len(neg) >= 40
+
+    # RN-NET S1: the preparation-format allowlist, decided here independently.
+    s1 = json.loads((root / "fixtures/s1-preparation/cases.json").read_text("utf-8"))
+    base = {"xrpl:testnet": json.loads((d / "xrpl-intent.json").read_text("utf-8")), "evm:11155111": json.loads((d / "sepolia-intent.json").read_text("utf-8"))}
+    s1_bad = [c["id"] for c in s1["cases"] if intent_ok({**base[c["network"]], "preparation": c["preparation"]}) != c["accept"]]
+    for name in s1_bad:
+        print("  S1 disagrees:", name)
+    yield f"S1: {len(s1['cases']) - len(s1_bad)}/{len(s1['cases'])} preparation cases decided independently", s1["format"] == "rnnet.s1-preparation-cases.v1" and not s1_bad
+    own = [({"source": "synthetic"}, True), ({"source": "synthetic", "note": "n"}, True), ({"format": "rnnet.tx-preparation.v2"}, False),
+           ({"source": "synthetic", "note": "n", "x": 1}, False), ([], False), ({"source": "rpc-read"}, False)]
+    yield "S1: own literal cases", all(preparation_ok(p) is want for p, want in own)
+    # Every historical intent still passes, and its preparation is one of the two accepted shapes.
+    historical = []
+    for f in sorted((root / "fixtures").rglob("*.json")):
+        if f.parent.name in ("s1-preparation", "preparation-v2"):
+            continue
+        def visit(o):
+            if isinstance(o, str) and o.startswith('{"commitment"'):
+                try:
+                    visit(json.loads(o))
+                except ValueError:
+                    pass
+            elif isinstance(o, dict):
+                if o.get("format") == "rnnet.unsigned-tx-intent.v1" and "preparation" in o:
+                    historical.append(o)
+                for v in o.values():
+                    visit(v)
+            elif isinstance(o, list):
+                for v in o:
+                    visit(v)
+        visit(json.loads(f.read_text("utf-8")))
+    yield f"S1: all {len(historical)} historical intents keep an accepted preparation", len(historical) >= 250 and all(preparation_ok(i["preparation"]) for i in historical)
     for case in neg:
         rec = verify(case["intent"], case["approvedDigest"], case["signedTransaction"])
         yield f"negative {case['id']} -> {case['expectedCode']}", rec["code"] == case["expectedCode"] and canon(rec) == canon(case["expectedVerification"])

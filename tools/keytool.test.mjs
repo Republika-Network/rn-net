@@ -12,7 +12,10 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { canonicalize } from '../packages/canonical/src/index.mjs';
-import { intentDigest, makeIntent } from '../packages/tx-intent/src/index.mjs';
+import { createHash } from 'node:crypto';
+import { canonicalBytes } from '../packages/canonical/src/index.mjs';
+import { INTENT_DIGEST_DOMAIN, intentDigest, makeIntent } from '../packages/tx-intent/src/index.mjs';
+import { cases as s1Cases } from './s1/build-s1-cases.mjs';
 import { fixtureKey } from '../signer/test/fixture-keys.mjs';
 import { parseArguments, run } from './keytool/cli.mjs';
 import { KeyToolError } from './keytool/errors.mjs';
@@ -747,3 +750,24 @@ test('the sign log replays every committed case as recorded', () => {
 // JavaScript against the independent Python reference on real directories is
 // tools/signing/keytool-python.check.mjs (a subprocess, so it runs outside this preloaded test run,
 // still inside the network namespace), and the reference itself runs in tools/ci/offline-checks.sh.
+
+test('RN-NET S1: keytool sign refuses an unsupported preparation before the confirmation, the passphrase and any sign-log write', async () => {
+  const s1 = Object.fromEntries(s1Cases().map((c) => [c.id, c]));
+  const d = workspace();
+  const { exit } = await keygen(SEP, d);
+  assert.equal(exit, 0);
+  const logBefore = files(d.log);
+  const base = JSON.parse(readFileSync(INTENT[SEP], 'utf8'));
+  for (const id of ['v2-record', 'v9-record']) {
+    const intent = { ...base, preparation: s1[id].preparation };
+    const path = join(d.base, `${id}.json`);
+    writeFileSync(path, canonicalize(intent), { mode: 0o600 });
+    const digest = `sha256:${createHash('sha256').update(INTENT_DIGEST_DOMAIN).update(canonicalBytes(intent)).digest('hex')}`;
+    const { exit: signExit, e } = await sign(SEP, d, { intent: path, digest });
+    assert.notEqual(signExit, 0, id);
+    assert.match(e.text(), /RNTX_INTENT_INVALID/, id);
+    assert.equal(e.left(), 2, `${id}: neither the confirmation nor the passphrase was asked`);
+    assert.deepEqual(files(d.log), logBefore, `${id}: no sign-log entry`);
+    assert.deepEqual(files(d.out), [], `${id}: nothing signed`);
+  }
+});
