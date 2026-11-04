@@ -74,7 +74,7 @@ test('makeIntent returns a deeply frozen canonical copy; changing the input late
 test('the intent digest is domain-separated and changes with every field', () => {
   const base = intentDigest(sepoliaIntent());
   for (const change of [{ nonce: '0x1' }, { maxFeePerGas: '0x3b9aca23' }, { gas: '0x752f' }]) assert.notEqual(intentDigest(sepoliaIntent(change)), base);
-  assert.notEqual(intentDigest({ ...sepoliaIntent(), preparation: { source: 'other' } }), base);
+  assert.notEqual(intentDigest({ ...sepoliaIntent(), preparation: { source: 'synthetic', note: 'other' } }), base);
 });
 
 test('intents are refused with RNTX_INTENT_INVALID', () => {

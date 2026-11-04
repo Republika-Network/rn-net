@@ -17,7 +17,13 @@ import {
   XRPL_FIELD_CODES,
   xrplTxHash,
 } from '../packages/tx-intent/src/index.mjs';
+import { createHash } from 'node:crypto';
 import { checkHandoff } from '../packages/broadcast-handoff/src/index.mjs';
+import { canonicalBytes } from '../packages/canonical/src/index.mjs';
+import { INTENT_DIGEST_DOMAIN } from '../packages/tx-intent/src/index.mjs';
+import { createSigner } from '../signer/src/sign.mjs';
+import { fixtureKey } from '../signer/test/fixture-keys.mjs';
+import { cases as s1Cases } from './s1/build-s1-cases.mjs';
 import { keccak256, secp256k1RecoverAddress, secp256k1SignDigest } from '../signer/src/crypto.mjs';
 import { verifySignedTransaction } from '../txverify/src/index.mjs';
 import { check } from './guards/dependency-boundaries.mjs';
@@ -165,4 +171,17 @@ test('isolation: the broadcaster and packages cannot reach the signer or its lib
   // A bare library specifier in tools/ also makes the file network-capable (RN-NET-03B2-C2).
   assert.deepEqual(rules('tools/verify-live-anchor.mjs', "import { keccak_256 } from '@noble/hashes/sha3.js';"), ['signer-library-outside-signer', 'network-capable-file-not-allowed:module-bare:@noble/hashes/sha3.js']);
   assert.deepEqual(rules('tools/signing/build-b1-fixtures.mjs', "import { createSigner } from '../../signer/src/sign.mjs';"), []);
+});
+
+test('RN-NET S1: the signer refuses an unsupported preparation, with a correctly recomputed digest, before any signature', () => {
+  const s1 = Object.fromEntries(s1Cases().map((c) => [c.id, c]));
+  const base = intentOf('sepolia');
+  const raw = (intent) => `sha256:${createHash('sha256').update(INTENT_DIGEST_DOMAIN).update(canonicalBytes(intent)).digest('hex')}`;
+  const key = fixtureKey('evm:11155111', 'rn-net-03b2b1-sepolia-1');
+  for (const id of ['v2-record', 'v9-record', 'v1-with-gas', 'synthetic-with-format']) {
+    const intent = { ...base, preparation: s1[id].preparation };
+    assert.equal(code(() => createSigner().sign(intent, raw(intent), key)), 'RNTX_INTENT_INVALID', id);
+  }
+  // The historical synthetic intent still signs to its golden bytes.
+  assert.equal(createSigner().sign(base, golden.signed.sepolia.intentDigest, key).signedTransaction, golden.signed.sepolia.signedTransaction);
 });

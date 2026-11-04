@@ -18,6 +18,37 @@ const INTENT_FIELDS = ['commitment', 'format', 'network', 'preparation', 'purpos
 const COMMITMENT = /^sha256:[0-9a-f]{64}$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 
+/**
+ * The preparation records this intent protocol accepts (spec/rnnet.unsigned-tx-intent.v1.md §2,
+ * RN-NET S1). Everything else is refused, whatever the approved digest says. That includes
+ * rnnet.tx-preparation.v2 and any other or future version.
+ *   - rnnet.tx-preparation.v1, top level exactly {format, source: "rpc-read", rules: "ADR-RN-018",
+ *     observedAt, providers}. This is a top-level allowlist only: it does not re-validate the
+ *     recorded RPC evidence. That stays with preparation and its references, as before S1.
+ *   - the synthetic fixture record: exactly {source: "synthetic"} or {source: "synthetic", note:
+ *     <string>}, with no `format`. Accepting it here grants nothing operational: every key,
+ *     authorization and live control still applies.
+ * Getters, proxies and inherited members are refused earlier, by isPlainData over the whole intent.
+ * Adding a format is a reviewed acceptance-policy change.
+ */
+export const ACCEPTED_PREPARATION_FORMATS = Object.freeze(['rnnet.tx-preparation.v1', 'synthetic']);
+const PREPARATION_V1_KEYS = 'format,observedAt,providers,rules,source';
+export function preparationProblem(preparation) {
+  const p = preparation;
+  if (p === null || typeof p !== 'object' || Array.isArray(p)) return 'preparation must be an object';
+  const keys = Object.keys(p).sort().join(',');
+  if (Object.hasOwn(p, 'format')) {
+    if (p.format !== 'rnnet.tx-preparation.v1') return `unsupported preparation format ${JSON.stringify(p.format)}`;
+    if (keys !== PREPARATION_V1_KEYS) return 'an rnnet.tx-preparation.v1 record has exactly format, observedAt, providers, rules and source';
+    if (p.source !== 'rpc-read' || p.rules !== 'ADR-RN-018') return 'an rnnet.tx-preparation.v1 record has source rpc-read and rules ADR-RN-018';
+    return null;
+  }
+  if (p.source !== 'synthetic') return 'unsupported preparation: neither rnnet.tx-preparation.v1 nor a synthetic fixture record';
+  if (keys === 'source') return null;
+  if (keys === 'note,source' && typeof p.note === 'string') return null;
+  return 'a synthetic preparation record has exactly source, and optionally a string note';
+}
+
 const deepFreeze = (value) => {
   if (value !== null && typeof value === 'object') {
     for (const key of Object.keys(value)) deepFreeze(value[key]);
@@ -40,7 +71,8 @@ export function makeIntent(intent) {
   ensure(Object.values(IntentNetwork).includes(intent.network), TxErrorCode.INTENT_INVALID, 'network must be xrpl:testnet or evm:11155111');
   ensure(PURPOSES.includes(intent.purpose), TxErrorCode.INTENT_INVALID, 'unknown purpose');
   ensure(typeof intent.commitment === 'string' && COMMITMENT.test(intent.commitment), TxErrorCode.INTENT_INVALID, 'commitment must be sha256:<64 lowercase hex>');
-  ensure(intent.preparation !== null && typeof intent.preparation === 'object' && !Array.isArray(intent.preparation), TxErrorCode.INTENT_INVALID, 'preparation must be an object');
+  const preparationIssue = preparationProblem(intent.preparation);
+  ensure(preparationIssue === null, TxErrorCode.INTENT_INVALID, preparationIssue);
   const tx = intent.transaction;
   const problems = intent.network === IntentNetwork.XRPL_TESTNET ? checkXrplAnchorTx(tx, intent.commitment) : checkSepoliaAnchorTx(tx, intent.commitment);
   if (intent.network === IntentNetwork.XRPL_TESTNET && problems.length === 0) {
