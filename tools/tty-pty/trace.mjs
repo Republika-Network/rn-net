@@ -1,11 +1,11 @@
 // A byte trace of the C6 typed approval on the founder's own terminal (RN-NET-03B2-C6-H3, TTY
 // approval review). A DIAGNOSTIC, run by hand only:
 //   stty -a </dev/tty; node tools/tty-pty/trace.mjs
-// It runs the unchanged production createTtyApproval() with its terminal calls wrapped so that
-// every open, read and close of /dev/tty is printed (flags, byte counts, the bytes in hex, errors,
-// milliseconds since start). It asks for the word PRUEBA, never for a C6 answer: it uses no digest,
-// starts no C6 command, reads no authorization, endpoints file or evidence directory, and imports no
-// network module. Its output contains only what was typed at its own prompt.
+// It runs the production createTtyApproval() with its terminal calls wrapped so that every open,
+// read and close of /dev/tty, and the post-answer partial-line release, is printed (flags, byte
+// counts, the bytes in hex, errors, milliseconds since start). It asks for the word PRUEBA, never
+// for a C6 answer: it uses no digest, starts no C6 command, reads no authorization, endpoints file
+// or evidence directory, and imports no network module. Its output contains only what was typed at its own prompt.
 import { constants } from 'node:fs';
 import { createTtyApproval, TTY_IO } from '../compat-live/tty-approval.mjs';
 
@@ -45,6 +45,15 @@ const io = Object.freeze({
   closeSync(fd) {
     note(`close fd ${fd}`);
     return TTY_IO.closeSync(fd);
+  },
+  releasePartialLine() {
+    try {
+      TTY_IO.releasePartialLine();
+      note('release partial line (canonical mode off and on) -> ok');
+    } catch (error) {
+      note(`release partial line -> ${error.code ?? error.message}`);
+      throw error;
+    }
   },
   isatty(fd) {
     const yes = TTY_IO.isatty(fd);

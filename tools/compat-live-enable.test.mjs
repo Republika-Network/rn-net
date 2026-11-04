@@ -390,8 +390,8 @@ test('the command wiring: the environment is checked first, the default evidence
 });
 
 test('the approval is typed on the terminal: never read from standard input, one bounded line, no terminal no approval', async () => {
-  const fakeTty = ({ tty = true, input = 'c6 0123456789abcdef\n', chunk = 1, typedAhead = '' } = {}) => {
-    const seen = { opened: [], written: '', closed: 0, discarded: 0 };
+  const fakeTty = ({ tty = true, input = 'c6 0123456789abcdef\n', chunk = 1, typedAhead = '', release = () => {} } = {}) => {
+    const seen = { opened: [], written: '', closed: 0, discarded: 0, released: 0 };
     let pos = 0;
     let prompted = false;
     let ahead = Buffer.from(typedAhead, 'utf8');
@@ -426,6 +426,7 @@ test('the approval is typed on the terminal: never read from standard input, one
           return n;
         },
         closeSync: () => { seen.closed += 1; },
+        releasePartialLine: () => { seen.released += 1; release(); },
       },
       left: () => bytes.length - pos,
     };
@@ -437,6 +438,8 @@ test('the approval is typed on the terminal: never read from standard input, one
   assert.equal(TTY_PATH, '/dev/tty');
   assert.match(ok.seen.written, /^PROMPT\n\(press Ctrl-U first to clear anything typed before this prompt\)\n> $/);
   assert.equal(ok.seen.closed, 3);
+  // The partial line (no Enter) left after the answer is released for the discard, once (review R2).
+  assert.equal(ok.seen.released, 1);
   // Typed before the prompt (type-ahead, a stuck key, a paste): discarded, never an answer.
   const ahead = fakeTty({ typedAhead: 'c6 0123456789abcdef\n', input: 'no\n' });
   assert.equal(await createTtyApproval(ahead.io)('P'), 'no');
@@ -463,6 +466,12 @@ test('the approval is typed on the terminal: never read from standard input, one
     else await assert.rejects(createTtyApproval(f.io)('P'), outcome, label);
     assert.equal(f.left(), 0, `${label}: input left on the terminal`);
   }
+  // If the terminal cannot be switched to release a partial line, the approval is refused (fail
+  // closed), even after a right answer; the complete lines are still discarded and the terminal closed.
+  const stuck = fakeTty({ input: 'c6 0123456789abcdef\necho INJECTED\n', release: () => { throw new Error('setRawMode failed'); } });
+  await assert.rejects(createTtyApproval(stuck.io)('P'), /setRawMode failed/);
+  assert.equal(stuck.left(), 0);
+  assert.equal(stuck.seen.closed, 3);
   // A terminal that keeps sending after the answer is refused, even after a right answer.
   await assert.rejects(createTtyApproval(fakeTty({ input: `c6 0123456789abcdef\n${'x'.repeat(70_000)}`, chunk: 4096 }).io)('P'), /does not stop/);
   const noTty = { ...fakeTty().io, openSync: () => { throw Object.assign(new Error('x'), { code: 'ENXIO' }); } };
