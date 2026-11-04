@@ -22,5 +22,5 @@ ADR is not edited to change its decision; a later ADR supersedes it.
 | [ADR-RN-015](ADR-RN-015-live-finality-trust-semantics.md) | Live finality and trust semantics | Accepted |
 | [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md) | Genesis Proof 01 anchoring transactions and execution controls | Accepted; Amendment C1 Accepted (offline implementation only) |
 | [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md) | Offline test-only signing toolchain and its dependencies | Accepted (offline gate A only); Amendment C1 Accepted for the reviewed offline key-tool implementation only (no gate B or D) |
-| [ADR-RN-018](ADR-RN-018-transaction-preparation-reads.md) | Read-only transaction preparation | Accepted (offline read-only preparation only); Amendment C1 Accepted (offline architecture only) |
+| [ADR-RN-018](ADR-RN-018-transaction-preparation-reads.md) | Read-only transaction preparation | Accepted (offline read-only preparation only); Amendment C1 Accepted (offline architecture only); Amendment C2 Proposed (fork-aware Sepolia gas policy) |
 | [ADR-RN-019](ADR-RN-019-controlled-testnet-broadcasting.md) | Controlled testnet broadcasting | Accepted (offline architecture and simulated implementation only); Amendment C1 Proposed |

@@ -12,6 +12,21 @@
   transport, the terminal approval, durable evidence with a journal. **Live access is still
   disabled** by two locks (`LIVE_NETWORK_ACCESS = false`, `AGREED_EVIDENCE_DIR = null`), whose
   change is the founder's (spec §7).
+- **C6-H3 result (run `c6-h3-20261104-032110-0aa58aaa`, report SHA-256 `036542204dc7beefd08b9a2ced888c72ee778d90c143b104fc1e61907dedc701`):**
+  BLOCKED. XRPL PASS; Sepolia BLOCKED, branch B; 18 of 22 requests sent; the Python reference
+  agrees 16/16. The report is immutable and is **not** re-classified.
+  - The BLOCKED estimate check (S10) was PublicNode answering **14,847**, below this document's
+    22,680 lower bound.
+  - **That bound is the Prague value.** The captured blocks are after Sepolia's Amsterdam
+    activation, where the need is 14,688. So the check reflects a stale bound in RN-NET's
+    classifier, not a provider refusal.
+  - Pinned-block compliance stays UNRESOLVED.
+  - 1RPC's pin read (S06) got HTTP 404, so S11–S14 were not sent and its pinned reads are
+    UNRESOLVED.
+  - See [ADR-RN-018 Amendment C2](../adr/ADR-RN-018-transaction-preparation-reads.md)
+    (**Proposed**), G0, G9 and G11. The 22,680 values in §3, §5 and §6 below are kept as
+    reviewed for that run. A future run needs the fork-aware, versioned classifier of
+    Amendment C2.
 - Basis: [ADR-RN-018](../adr/ADR-RN-018-transaction-preparation-reads.md) Amendment C1, P4, P5
   and P7; [readiness analysis](rn-net-03b2c-operational-readiness.md) §4 "C6" and "Sepolia
   finality constraints"; [ADR-RN-013](../adr/ADR-RN-013-read-only-rpc-architecture.md) limits.
