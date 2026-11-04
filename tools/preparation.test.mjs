@@ -76,7 +76,8 @@ test('no live path: only the fixture builder, the disabled entry point, the rehe
   const importers = files.filter((f) => !f.startsWith('packages/tx-prepare/') && !testData.includes(f) && /tx-prepare\//.test(readFileSync(`${ROOT}/${f}`, 'utf8')));
   // RN-NET-03B2-C3 adds the live entry point (disabled for live use, no transport), its test, and the
   // offline rehearsal's simulated network (the B2 simulated providers on a simulated clock).
-  assert.deepEqual(importers.sort(), ['tools/preparation.test.mjs', 'tools/preparation/build-b2-fixtures.mjs', 'tools/prepare-live.test.mjs', 'tools/prepare/prepare-live.mjs', 'tools/rehearsal/network.mjs']);
+  // RN-NET-03B2-WP3 adds the offline v2 fixture builder and its test (simulated providers; no transport).
+  assert.deepEqual(importers.sort(), ['tools/preparation-v2.test.mjs', 'tools/preparation-v2/build-v2-fixtures.mjs', 'tools/preparation.test.mjs', 'tools/preparation/build-b2-fixtures.mjs', 'tools/prepare-live.test.mjs', 'tools/prepare/prepare-live.mjs', 'tools/rehearsal/network.mjs']);
   // This file names the forbidden modules in the pattern below, so it is left out of the scan.
   for (const f of [...importers, ...files.filter((x) => x.startsWith('packages/tx-prepare/'))].filter((x) => x !== 'tools/preparation.test.mjs')) {
     const text = readFileSync(`${ROOT}/${f}`, 'utf8');

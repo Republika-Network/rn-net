@@ -69,7 +69,7 @@ const sha256 = (bytes) => `sha256:${createHash('sha256').update(bytes).digest('h
 
 // --- inputs --------------------------------------------------------------------------------------
 
-function checkCommon({ commitment, providers, transport, now }, network) {
+export function checkCommon({ commitment, providers, transport, now }, network) {
   const fail = (why) => {
     throw new PrepError(C.INPUT_INVALID, null, why);
   };
@@ -120,7 +120,7 @@ function refusal(error, providerId) {
  * `read(step)` runs one step and turns a ReadError into a PrepError for this provider; `blocked`
  * marks a JSON-RPC error on a block-hash-pinned read (Sepolia pass 2, ADR-RN-018 Amendment C1, P2).
  */
-function providerReader(provider, transport, network) {
+export function providerReader(provider, transport, network) {
   const exchanges = [];
   const carriedHash = [];
   const recording = async (request) => {
@@ -159,7 +159,7 @@ async function readProvider(provider, transport, network, step) {
   return { observed, exchanges: reader.exchanges };
 }
 
-const intentFrom = (fields) => {
+export const intentFrom = (fields) => {
   try {
     const intent = makeIntent({ format: INTENT_FORMAT, purpose: 'genesis-proof-01', ...fields });
     return Object.freeze({ intent, digest: intentDigest(intent) });
@@ -169,8 +169,8 @@ const intentFrom = (fields) => {
   }
 };
 
-const minOf = (values) => values.reduce((a, b) => (b < a ? b : a));
-const maxOf = (values) => values.reduce((a, b) => (b > a ? b : a));
+export const minOf = (values) => values.reduce((a, b) => (b < a ? b : a));
+export const maxOf = (values) => values.reduce((a, b) => (b > a ? b : a));
 
 // --- XRPL Testnet --------------------------------------------------------------------------------
 

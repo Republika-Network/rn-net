@@ -43,7 +43,7 @@ test('the gas-rules module names no clock, environment, randomness or network ca
   }
 });
 
-test('WP2 wires the engine into nothing: no production file outside packages/tx-intent uses it', () => {
+test('the engine reaches only tx-prepare\'s v2 path (WP3); WP2 itself wired it into nothing else', () => {
   const NAMES = /\b(evaluateGenesisGas|selectSepoliaGasRules|calldataGas|calldataGasForInput|checkForkBoundary|validateReviewedRulesHorizon|validateGenesisGasPreconditions|SEPOLIA_GAS_RULES_REVIEW|gas-rules\.mjs)\b/;
   const files = walk('./');
   assert.ok(files.length > 100);
@@ -52,8 +52,14 @@ test('WP2 wires the engine into nothing: no production file outside packages/tx-
     'packages/tx-intent/src/gas-rules.mjs',
     'packages/tx-intent/src/index.mjs',
     'packages/tx-intent/test/gas-rules.test.mjs',
+    // RN-NET-03B2-WP3: the offline v2 preparation and verifier, their unit tests and the v2 fixture
+    // test. tools/preparation-v2.test.mjs proves no operational caller (prepare-live, rehearsal,
+    // submit, signer, txverify) uses the v2 path.
+    ['packages', 'tx-prepare', 'src', 'prepare-v2.mjs'].join('/'), // built from parts: the import scans read text
+    ['packages', 'tx-prepare', 'test', 'tx-prepare-v2.test.mjs'].join('/'),
     'tools/gas-rules.test.mjs',
     'tools/gas-rules/build-gas-rules-vectors.mjs',
+    'tools/preparation-v2.test.mjs',
   ]);
 });
 
