@@ -25,7 +25,8 @@ const walk = (dir) =>
     if (e.isDirectory()) return SKIP.has(e.name) ? [] : walk(`${path}/`);
     return path.endsWith('.mjs') ? [path] : [];
   });
-const importers = (target) => walk('./').filter((f) => new RegExp(`^(?:import|export) [^;]* from '[^']*${target.replace('.', '\\.')}';$`, 'm').test(read(f)));
+const escapeRegExp = (s) => s.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&');
+const importers = (target) => walk('./').filter((f) => new RegExp(`^(?:import|export) [^;]* from '[^']*${escapeRegExp(target)}';$`, 'm').test(read(f)));
 
 test('the committed gate-F B1 fixtures are exactly what the builder produces', async () => {
   assert.equal(readFileSync(PATH, 'utf8'), await build());
@@ -222,7 +223,7 @@ test('the gate-F files are pure: fixed imports, no network, clock, environment, 
     assert.deepEqual([...text.matchAll(/^import [^;]* from '([^']+)';$/gm)].map((m) => m[1]), imports, file);
     const code = text.replace(/\/\/.*$/gm, '');
     for (const name of ['fetch', 'Date', 'process', 'globalThis', 'require', 'child_process', 'node:http', 'node:https', 'node:net', 'node:fs', 'WebSocket', 'signer/', 'chain-submit', 'setTimeout']) {
-      assert.doesNotMatch(code, new RegExp(`\\b${name.replace(/[/.:]/g, '\\$&')}(?![\\w])`), `${file}: ${name}`);
+      assert.doesNotMatch(code, new RegExp(`\\b${escapeRegExp(name)}(?![\\w])`), `${file}: ${name}`);
     }
   }
 });
