@@ -15,13 +15,20 @@
 #   none    no controlling terminal at all (new session, no terminal opened).
 #   ahead   bytes typed after the probe has started but BEFORE it shows the prompt (type-ahead).
 #   steps   after the prompt: ["send", str] types bytes, ["sleep", s] waits.
-#   after   bytes typed once the probe has exited (a control: they must appear in "pending").
+#   after   bytes typed once the probe has exited, as into the resumed shell (e.g. a control that
+#           must appear in "pending", or the Enter that completes a partial line left behind).
+#   reveal  "noncanonical": before reading "pending", turn canonical mode off on the terminal, as
+#           an interactive shell's line editor does when it resumes; a partial line (no Enter) left
+#           in the kernel's line buffer then becomes readable, exactly as it would to the shell.
 # Output (stdout, one JSON line):
-#   {"result": <the probe's record or null>, "blocked": bool, "transcript": str, "pending": str | null}
+#   {"result": <the probe's record or null>, "blocked": bool, "transcript": str, "pending": str | null,
+#    "restored": bool | null}
 #   pending  what is left in the terminal's input queue once the probe has exited: exactly what the
 #            shell that started it would read next (and run as a command). The driver keeps its own
 #            descriptor of the terminal (the slave side) open so the queue outlives the probe, and
 #            reads it without blocking. null when there is no terminal or the probe never finished.
+#   restored whether the terminal's settings (termios) after the probe exited are exactly those it
+#            had before the prompt. null when there is no terminal or the probe never finished.
 import errno
 import fcntl
 import json
@@ -84,7 +91,9 @@ def main():
     def send(text):
         os.write(master, text.encode('latin-1'))
 
+    settings = None
     if pump(until=lambda b: READY in b):
+        settings = termios.tcgetattr(slave)  # the terminal's settings before the approval runs
         if scenario.get('ahead'):
             send(scenario['ahead'])
         if pump(until=lambda b: PROMPT_END in b):
@@ -101,10 +110,19 @@ def main():
     except ProcessLookupError:
         pass
     os.waitpid(pid, 0)
+    restored = None if blocked or settings is None else termios.tcgetattr(slave) == settings
     if not blocked and scenario.get('after'):
-        send(scenario['after'])  # typed once the probe has gone: the control that pending is seen
+        send(scenario['after'])  # typed once the probe has gone (the shell resumed): e.g. Enter
         time.sleep(0.1)
-    report(out, blocked, None if blocked else pending_input(slave))
+    if not blocked and scenario.get('reveal') == 'noncanonical':
+        # As an interactive shell's line editor (readline) does when it resumes: canonical mode off,
+        # which makes a partial line still in the kernel's line buffer readable.
+        attrs = termios.tcgetattr(slave)
+        attrs[3] &= ~termios.ICANON
+        attrs[6][termios.VMIN] = 0
+        attrs[6][termios.VTIME] = 0
+        termios.tcsetattr(slave, termios.TCSANOW, attrs)
+    report(out, blocked, None if blocked else pending_input(slave), restored)
 
 
 def pending_input(slave):
@@ -153,16 +171,16 @@ def no_terminal(node, probe, timeout):
     except ProcessLookupError:
         pass
     os.waitpid(pid, 0)
-    report(out, blocked, None)
+    report(out, blocked, None, None)
 
 
-def report(out, blocked, pending):
+def report(out, blocked, pending, restored):
     result = None
     at = out.rfind(MARKER)
     if at >= 0:
         line = out[at + len(MARKER):].split(b'\n', 1)[0].strip()
         result = json.loads(line.decode('utf-8'))
-    print(json.dumps({'result': result, 'blocked': blocked, 'transcript': out.decode('utf-8', 'replace'), 'pending': pending}))
+    print(json.dumps({'result': result, 'blocked': blocked, 'transcript': out.decode('utf-8', 'replace'), 'pending': pending, 'restored': restored}))
 
 
 if __name__ == '__main__':

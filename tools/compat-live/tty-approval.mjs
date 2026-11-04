@@ -2,19 +2,48 @@
 // written to, and the answer read from, the controlling terminal (/dev/tty) only. Standard input is
 // never read, so a pipe, a here-document, a file or another program cannot answer for the founder;
 // without a terminal there is no approval. There is no flag, variable or file that approves.
-// Anything typed before the prompt is discarded first, and anything still pending after the answer
-// line (the rest of an over-long line, further pasted lines) is discarded before returning, so the
-// shell never receives it. The answer is one line of at most 64 bytes; the entry point compares it with
+// Anything typed before the prompt is discarded first, and the input pending on the terminal when the
+// answer line has been read (the rest of an over-long line, further pasted lines, a partial line
+// without Enter) is discarded before returning, so the shell does not receive it. The answer is one line of at most 64 bytes; the entry point compares it with
 // `c6 <last 16 hex digits of the authorization digest>` (entry.mjs, requireApproval).
 import { Buffer } from 'node:buffer';
 import { closeSync, constants, openSync, readSync, writeSync } from 'node:fs';
-import { isatty } from 'node:tty';
+import { isatty, ReadStream } from 'node:tty';
 
 export const TTY_PATH = '/dev/tty';
 export const MAX_ANSWER_BYTES = 64;
 
+/**
+ * Makes a partial line (typed without Enter) readable (review R2). In canonical mode such bytes sit
+ * in the kernel's line buffer, invisible to any read, and would reach the shell after this program
+ * exits (with the next Enter, or at once when its line editor turns canonical mode off). Turning
+ * canonical mode off and back on makes the kernel end them as a line (Linux n_tty: on the switch
+ * to canonical with input pending, the pending bytes become a line), so the non-blocking discard
+ * can then read them. The terminal's own settings are restored exactly (libuv saves them first).
+ * Throws if the terminal cannot be switched: the approval is then refused.
+ */
+function releasePartialLine() {
+  const fd = openSync(TTY_PATH, constants.O_RDWR | constants.O_NOCTTY);
+  let stream;
+  try {
+    stream = new ReadStream(fd);
+  } catch (error) {
+    closeSync(fd);
+    throw error;
+  }
+  try {
+    stream.setRawMode(true);
+  } finally {
+    try {
+      stream.setRawMode(false);
+    } finally {
+      stream.destroy();
+    }
+  }
+}
+
 /** The terminal calls the approval uses; tests replace them (there is no terminal in CI). */
-export const TTY_IO = Object.freeze({ openSync, readSync, writeSync, closeSync, isatty });
+export const TTY_IO = Object.freeze({ openSync, readSync, writeSync, closeSync, isatty, releasePartialLine });
 
 /**
  * Returns approve(prompt) => Promise<string>: shows `prompt` on the terminal and returns the line
@@ -42,10 +71,15 @@ export function createTtyApproval(io = TTY_IO) {
           if (length > MAX_ANSWER_BYTES) throw new Error('answer too long');
         }
       } finally {
-        // Whatever the outcome, nothing typed for this prompt is left on the terminal: the rest of
-        // a line longer than MAX_ANSWER_BYTES (and its Enter), or further pasted lines, would
-        // otherwise be read by the shell as a command once this program exits (C6-H3, TTY review).
-        discardTypeAhead(io);
+        // Whatever the outcome, what was typed for this prompt is not left on the terminal: the
+        // rest of a line longer than MAX_ANSWER_BYTES (and its Enter), further pasted lines, and a
+        // partial line without Enter (review R2) would otherwise be read by the shell as a command
+        // once this program exits (C6-H3, TTY review). Input typed after this point is not covered.
+        try {
+          io.releasePartialLine();
+        } finally {
+          discardTypeAhead(io); // also when the release fails, which then refuses the approval
+        }
       }
     } finally {
       io.closeSync(fd);
