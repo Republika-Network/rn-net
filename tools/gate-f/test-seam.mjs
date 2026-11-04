@@ -13,9 +13,20 @@
 //     fixture builder (GATE_F_RESTRICTED; gate-f-test-seam-importer-not-allowed), and every
 //     importer of core.mjs except verify.mjs and this file (gate-f-core-importer-not-allowed);
 //   - it creates no intent, changes no allowlist (S1), signs, submits and writes nothing.
-import { evaluateGateFTestStandIn } from './core.mjs';
+import { evaluateGateFTestStandIn, evaluateGateFTestStandInStageB } from './core.mjs';
 
 /** TEST ONLY. As verifyGateF, with a synthetic-preparation intent standing in for a Stage B subject. */
 export function verifyGateFHypotheticalStageB(inputs) {
   return evaluateGateFTestStandIn(inputs);
+}
+
+/**
+ * TEST ONLY (WP4-B2). As verifyGateFHypotheticalStageB, with the v2 preparation the hypothetical
+ * Stage B intent would carry, and a TEST ONLY review history in inputs.reviewHistory (every
+ * reviewer must start with TEST ONLY). It exercises gas integrity, the inclusion rule set and the
+ * accounting on synthetic vectors, and may give the hypothetical full-contract result,
+ * ELIGIBLE_FOR_FOUNDER_REVIEW included. It is never an approval: no Stage B exists.
+ */
+export function verifyGateFHypotheticalStageBGas(inputs, stageBPreparation) {
+  return evaluateGateFTestStandInStageB(inputs, stageBPreparation);
 }

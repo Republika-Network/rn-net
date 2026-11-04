@@ -1293,3 +1293,26 @@ test('gate F (WP4-B1-SEC-01 R2): only the listed files reach the core, the test 
   // The operational verifier is importable by anyone; it refuses every subject.
   assert.deepEqual(rules('tools/x.mjs', "import { verifyGateF } from './gate-f/verify.mjs';").filter((r) => r.startsWith('gate-f-')), []);
 });
+
+test('gate F (WP4-B2): only the core and the gas test reach gas.mjs; the B2 stand-in only through the test seam', () => {
+  const has = (path, content, rule) => rules(path, content).includes(rule);
+  for (const [path, content] of [
+    ['tools/gate-f/verify.mjs', "import { evaluateRecordedGas } from './gas.mjs';"],
+    ['tools/submit/x.mjs', "import { evaluateRecordedGas } from '../gate-f/gas.mjs';"],
+    ['tools/prepare/x.mjs', "const m = await import('../gate-f/gas.mjs');"],
+    ['tools/gate-f.test.mjs', "import { verifyRecordedGas } from './gate-f/gas.mjs';"],
+    ['scripts/x.mjs', 'const m = await import(`../tools/gate-f/gas.mjs`);'],
+  ]) assert.ok(has(path, content, 'gate-f-gas-importer-not-allowed'), `${path}: ${content}`);
+  assert.ok(!has('tools/gate-f/core.mjs', "import { evaluateRecordedGas } from './gas.mjs';", 'gate-f-gas-importer-not-allowed'));
+  assert.ok(!has('tools/gate-f-gas.test.mjs', "import { evaluateRecordedGas } from './gate-f/gas.mjs';", 'gate-f-gas-importer-not-allowed'));
+  // N45: the TEST ONLY Stage B stand-in from a production file.
+  for (const path of ['tools/gate-f/verify.mjs', 'tools/submit/x.mjs', 'tools/broadcast/x.mjs', 'tools/compat-live/x.mjs']) {
+    assert.ok(has(path, "import { verifyGateFHypotheticalStageBGas } from '../gate-f/test-seam.mjs';", 'gate-f-test-seam-importer-not-allowed'), path);
+  }
+  assert.ok(!has('tools/gate-f-gas.test.mjs', "import { verifyGateFHypotheticalStageBGas } from './gate-f/test-seam.mjs';", 'gate-f-test-seam-importer-not-allowed'));
+  assert.ok(has('tools/prepare/x.mjs', "import { evaluateGateFTestStandInStageB } from '../gate-f/core.mjs';", 'gate-f-core-importer-not-allowed'));
+  // A text reader may name the files, never import them.
+  assert.ok(has('tools/gas-rules.test.mjs', "import { evaluateRecordedGas } from './gate-f/gas.mjs';", 'gate-f-gas-importer-not-allowed'));
+  assert.ok(has('tools/gas-rules.test.mjs', "import { evaluateGateFTestStandInStageB } from './gate-f/core.mjs';", 'gate-f-core-importer-not-allowed'));
+  assert.ok(!has('tools/gas-rules.test.mjs', "const files = ['tools/gate-f/gas.mjs'];", 'gate-f-gas-importer-not-allowed'));
+});

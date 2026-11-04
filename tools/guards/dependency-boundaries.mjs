@@ -267,11 +267,15 @@ export const WRITE_TRANSPORT_JOINERS = [];
 //   - inside tools/gate-f/, a computed import() is refused outright, so no path is assembled at run time.
 export const GATE_F_RESTRICTED = Object.freeze({
   core: { file: 'tools/gate-f/core.mjs', text: /gate-f\/core\b/, importers: ['tools/gate-f/verify.mjs', 'tools/gate-f/test-seam.mjs'] },
-  'test-seam': { file: 'tools/gate-f/test-seam.mjs', text: /test-seam/, importers: ['tools/gate-f.test.mjs', 'tools/gate-f/build-gate-f-fixtures.mjs'] },
-  'fixture-builder': { file: 'tools/gate-f/build-gate-f-fixtures.mjs', text: /build-gate-f-fixtures/, importers: ['tools/gate-f.test.mjs'] },
+  'test-seam': { file: 'tools/gate-f/test-seam.mjs', text: /test-seam/, importers: ['tools/gate-f.test.mjs', 'tools/gate-f-gas.test.mjs', 'tools/gate-f/build-gate-f-fixtures.mjs'] },
+  'fixture-builder': { file: 'tools/gate-f/build-gate-f-fixtures.mjs', text: /build-gate-f-fixtures/, importers: ['tools/gate-f.test.mjs', 'tools/gate-f-gas.test.mjs'] },
+  // WP4-B2: the gas functions take the review history as an argument (as the WP2 engine takes a
+  // review). Only the core passes it, from the reviewed constant or the test stand-in.
+  gas: { file: 'tools/gate-f/gas.mjs', text: /gate-f\/gas\b/, importers: ['tools/gate-f/core.mjs', 'tools/gate-f-gas.test.mjs'] },
 });
-// The gate-F test reads these files' text to check their imports; it does not import core.mjs.
-export const GATE_F_TEXT_READERS = ['tools/gate-f.test.mjs'];
+// These tests read the files' text (imports, purity, the WP2 users pin); naming a file is all they
+// may do: the import check still applies to them.
+export const GATE_F_TEXT_READERS = ['tools/gate-f.test.mjs', 'tools/gate-f-gas.test.mjs', 'tools/gas-rules.test.mjs'];
 
 export const CHAIN_SUBMIT_IMPORTERS = /^(?:tools\/submit\/[^/]+\.mjs|tools\/broadcast\/[^/]+\.mjs|tools\/rehearsal\/[^/]+\.mjs|tools\/[^/]+\.test\.mjs|txverify\/test\/[^/]+\.test\.mjs)$/;
 // Manifest fields that change what npm installs or links, beyond the dependency lists.

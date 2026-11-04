@@ -224,15 +224,16 @@ test('R2: the operational entry refuses every subject, and no caller can supply 
 test('R2: core.mjs exports no evaluator that takes a rule; the seam and builder are pinned by the guard and here', () => {
   const core = read('tools/gate-f/core.mjs');
   const exported = [...core.matchAll(/^export (?:async )?(?:function|const|class|let) (\w+)(\([^)]*\))?/gm)].map((m) => [m[1], m[2] ?? null]);
-  assert.deepEqual(exported, [['GATE_F_INPUTS', null], ['evaluateGateFOperational', '(inputs)'], ['evaluateGateFTestStandIn', '(inputs)']]);
+  // WP4-B2 adds one TEST ONLY evaluator. It takes the stand-in v2 preparation, never a rule, a policy or a mode.
+  assert.deepEqual(exported, [['GATE_F_INPUTS', null], ['evaluateGateFOperational', '(inputs)'], ['evaluateGateFTestStandIn', '(inputs)'], ['evaluateGateFTestStandInStageB', '(inputs, stageBPreparation)']]);
   assert.doesNotMatch(core, /^export (?:default|\{|\*)/m);
   for (const gone of ['OPERATIONAL_SUBJECT_POLICY', 'evaluateGateF(', 'policy.eligible']) assert.ok(!core.includes(gone), gone);
   assert.match(read('tools/gate-f/verify.mjs'), /^import \{ evaluateGateFOperational \} from '\.\/core\.mjs';$/m);
   assert.doesNotMatch(read('tools/gate-f/verify.mjs'), /TestStandIn|test-seam/);
-  assert.match(read('tools/gate-f/test-seam.mjs'), /^import \{ evaluateGateFTestStandIn \} from '\.\/core\.mjs';$/m);
+  assert.match(read('tools/gate-f/test-seam.mjs'), /^import \{ evaluateGateFTestStandIn, evaluateGateFTestStandInStageB \} from '\.\/core\.mjs';$/m);
   // Importers in the tree: exactly the allowed ones.
-  assert.deepEqual(importers('test-seam.mjs').sort(), ['tools/gate-f.test.mjs', 'tools/gate-f/build-gate-f-fixtures.mjs']);
-  assert.deepEqual(importers('build-gate-f-fixtures.mjs'), ['tools/gate-f.test.mjs']);
+  assert.deepEqual(importers('test-seam.mjs').sort(), ['tools/gate-f-gas.test.mjs', 'tools/gate-f.test.mjs', 'tools/gate-f/build-gate-f-fixtures.mjs']);
+  assert.deepEqual(importers('build-gate-f-fixtures.mjs').sort(), ['tools/gate-f-gas.test.mjs', 'tools/gate-f.test.mjs']);
   assert.deepEqual(importers('gate-f/core.mjs'), []);
   assert.deepEqual(walk('./').filter((f) => /from '\.\/core\.mjs';$/m.test(read(f))).sort(), ['tools/gate-f/test-seam.mjs', 'tools/gate-f/verify.mjs']);
   // The repository guard enforces the same pins (dependency-boundaries GATE_F_RESTRICTED).
@@ -317,9 +318,10 @@ test('R3: exactly the ten finding groups of spec §5; any other group is refused
 test('the gate-F files are pure: fixed imports, no network, clock, environment, subprocess, key or write path', () => {
   const allowed = {
     'tools/gate-f/record.mjs': ['node:buffer', 'node:crypto', '../../packages/canonical/src/index.mjs', '../../packages/tx-intent/src/index.mjs'],
-    'tools/gate-f/core.mjs': ['node:buffer', 'node:crypto', '../../packages/canonical/src/index.mjs', '../../packages/chain-readonly/src/index.mjs', '../../packages/tx-intent/src/index.mjs', '../../txverify/src/index.mjs', './record.mjs'],
+    'tools/gate-f/core.mjs': ['node:buffer', 'node:crypto', '../../packages/canonical/src/index.mjs', '../../packages/chain-readonly/src/index.mjs', '../../packages/tx-intent/src/index.mjs', '../../txverify/src/index.mjs', './gas.mjs', './record.mjs'],
     'tools/gate-f/verify.mjs': ['./core.mjs'],
     'tools/gate-f/test-seam.mjs': ['./core.mjs'],
+    'tools/gate-f/gas.mjs': ['node:buffer', 'node:crypto', '../../packages/canonical/src/index.mjs', '../../packages/chain-readonly/src/index.mjs', '../../packages/tx-intent/src/index.mjs'],
   };
   for (const [file, imports] of Object.entries(allowed)) {
     const text = read(file);

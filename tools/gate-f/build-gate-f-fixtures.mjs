@@ -21,13 +21,16 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { canonicalBytes, canonicalize } from '../../packages/canonical/src/index.mjs';
-import { CAPTURE_FORMAT, recordingTransport, verifyLiveAnchor } from '../../packages/chain-readonly/src/index.mjs';
-import { verifyGateFHypotheticalStageB } from './test-seam.mjs';
+import { CAPTURE_FORMAT, Network, PREPARATION_REQUESTS, recordingTransport, verifyLiveAnchor } from '../../packages/chain-readonly/src/index.mjs';
+import { REVIEWED_GAS_RULE_SOURCES } from '../../packages/tx-intent/src/index.mjs';
+import { verifyGateFHypotheticalStageB, verifyGateFHypotheticalStageBGas } from './test-seam.mjs';
 import { verifyGateF } from './verify.mjs';
 
 export const PATH = fileURLToPath(new URL('../../fixtures/gate-f-b1/cases.json', import.meta.url));
 /** WP4-B1-SEC-01: regression cases in their own file, so the merged B1 fixtures stay byte-identical. */
 export const PATH_SEC01 = fileURLToPath(new URL('../../fixtures/gate-f-b1-sec01/cases.json', import.meta.url));
+/** WP4-B2: the gas vectors, in their own file (the B1 and SEC-01 files stay byte-identical). */
+export const PATH_B2 = fileURLToPath(new URL('../../fixtures/gate-f-b2/cases.json', import.meta.url));
 export const FIXTURES_FORMAT = 'rnnet.gate-f-b1-fixtures.v1';
 const fixture = (p) => JSON.parse(readFileSync(new URL(`../../fixtures/${p}`, import.meta.url), 'utf8'));
 
@@ -64,14 +67,14 @@ function chain(o = {}) {
   };
   let parent = h('parent-999');
   for (let n = 1000; n <= 1400; n++) {
-    const b = add({ hash: h(`block-${n}`), number: q(n), parentHash: parent, timestamp: q(T0 + 12 * (n - TX_BLOCK)), transactions: n === TX_BLOCK ? [OTHER_TX, TX_HASH] : [] });
+    const b = add({ hash: h(`block-${n}`), number: q(n), parentHash: parent, timestamp: q((o.t0 ?? T0) + 12 * (n - TX_BLOCK)), transactions: n === TX_BLOCK ? [OTHER_TX, TX_HASH] : [] });
     byNumber.set(n, b);
     parent = b.hash;
   }
   let forkParent = byNumber.get(TX_BLOCK - 1).hash;
   const fork = new Map();
   for (let n = TX_BLOCK; n <= 1040; n++) {
-    const b = add({ hash: h(`fork-${n}`), number: q(n), parentHash: forkParent, timestamp: q(T0 + 12 * (n - TX_BLOCK) + 1), transactions: [] });
+    const b = add({ hash: h(`fork-${n}`), number: q(n), parentHash: forkParent, timestamp: q((o.t0 ?? T0) + 12 * (n - TX_BLOCK) + 1), transactions: [] });
     fork.set(n, b);
     forkParent = b.hash;
   }
@@ -88,6 +91,7 @@ function chain(o = {}) {
     transactionHash: TX_HASH, blockHash: transaction.blockHash, blockNumber: transaction.blockNumber, transactionIndex: transaction.transactionIndex,
     from: t.from, to: t.to, status: '0x1', contractAddress: null, logs: [], gasUsed: '0x3960', cumulativeGasUsed: '0x3960', effectiveGasPrice: '0x3b9aca00', type: '0x2', ...o.receipt,
   };
+  if (receipt !== null) for (const k of o.dropReceiptFields ?? []) delete receipt[k];
   const head = (tag) => {
     const sel = o[tag] ?? (tag === 'finalized' ? 1040 : 1050);
     if (sel === null) return null;
@@ -248,20 +252,162 @@ export const SEC01_CASES = [
   { id: 'r2-operational-refuses-synthetic-with-note', entry: 'operational', inputs: (i) => withPreparation(i, s1Preparation('historical-synthetic-with-note')), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null] },
 ];
 
+// --- WP4-B2: synthetic gas vectors (TEST ONLY) -----------------------------------------------------
+// Times, by hand. A is the reviewed Sepolia amsterdamTime (WP2 table); it is restated here only as
+// a test input, never read by gate F from anywhere but the WP2 table.
+export const A = 1791294816;
+export const DAY = 86400;
+const SOURCES = REVIEWED_GAS_RULE_SOURCES.map((s) => ({ source: s.source, revision: s.revision, sha256: s.sha256 }));
+export const synthReview = (tag, reviewedAt, horizon, unreviewed = []) => Object.freeze({ reviewedAt, reviewer: `TEST ONLY: synthetic WP4-B2 review ${tag}, not a recorded review`, horizon, sources: Object.freeze(SOURCES.map((s) => Object.freeze({ ...s }))), knownUnreviewedActivations: Object.freeze([...unreviewed]) });
+/** R covers [.., H): reviewed at A − 6 days, horizon H = A + 24 days (30 days after the review). */
+export const REVIEW = synthReview('R', A - 6 * DAY, A + 24 * DAY);
+export const H = REVIEW.horizon;
+/** An earlier review (October 2025, under bpo1/bpo2), for a preparation it alone covers. */
+export const REVIEW_OLD = synthReview('OLD', 1761100000, 1761100000 + 30 * DAY);
+/** A review that knows an unreviewed activation at A + 10 days, so its horizon stops there. */
+export const REVIEW_UNREVIEWED = synthReview('U', A + DAY, A + 10 * DAY, [A + 10 * DAY]);
+/** The Genesis-payload values for this 42-byte, all-non-zero calldata, by hand (spec §7). */
+export const VALUES = Object.freeze({ prague: { standard: 21672, floor: 22680, need: 22680 }, amsterdam: { standard: 12672, floor: 14688, need: 14688 } });
+const digestOf = (v) => `sha256:${createHash('sha256').update(Buffer.from(canonicalBytes(v))).digest('hex')}`;
+const label = (s) => `sha256:${createHash('sha256').update(`rnnet:gate-f-b2-synthetic:${s}`).digest('hex')}`;
+
+/** A synthetic rnnet.tx-preparation.v2 record the hypothetical Stage B intent would carry. */
+export function v2Preparation({ ruleSetId, fork, pin, observedAt = pin + 60, review = REVIEW, values = VALUES[ruleSetId], baseFee = '0x11', code = '0x', estimate = values.need + 159 }) {
+  const block = { number: q(5000), hash: h(`pin-${pin}`), timestamp: q(pin), baseFeePerGas: baseFee };
+  return {
+    format: 'rnnet.tx-preparation.v2',
+    source: 'rpc-read',
+    rules: 'ADR-RN-018-C2',
+    observedAt,
+    gas: { ruleSetId, fork, reviewDigest: digestOf(review), review: JSON.parse(JSON.stringify(review)), standard: values.standard, floor: values.floor, need: values.need, gasLimit: 30000 },
+    providers: PROVIDERS.map((p) => ({
+      id: p.id,
+      operator: p.operator,
+      block: { ...block },
+      code,
+      estimateGas: q(estimate),
+      exchanges: PREPARATION_REQUESTS[Network.SEPOLIA].map((method, i) => ({ method, requestSha256: label(`${p.id}-${pin}-${i}-request`), responseSha256: label(`${p.id}-${pin}-${i}-response`) })),
+    })),
+  };
+}
+/** Prague (pinned under bpo2, 5 days before A) and Amsterdam (2 days after A) preparations under R. */
+export const PREP_PRAGUE = () => v2Preparation({ ruleSetId: 'prague', fork: 'bpo2', pin: A - 5 * DAY });
+export const PREP_AMSTERDAM = () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY });
+const PREP_OLD = () => v2Preparation({ ruleSetId: 'prague', fork: 'bpo1', pin: 1761200000, review: REVIEW_OLD });
+const PREP_UNREVIEWED = () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY, review: REVIEW_UNREVIEWED });
+const T_PRAGUE = A - 4 * DAY;
+const T_AMSTERDAM = A + 3 * DAY;
+const both = (o) => [o, o];
+const at = (t0, o = {}) => both({ t0, ...o });
+const used = (n) => ({ receipt: { gasUsed: q(n) } });
+const edit = (make, fn) => () => {
+  const p = make();
+  fn(p);
+  return p;
+};
+const ALL_INVALID = (t) => ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RECORD_INVALID'], t];
+const INVALID_GAS = ['GAS_RECORD_INVALID', 'NOT_EVALUATED', 'NOT_EVALUATED', null, 14688];
+const NOT_EVALUATED_GAS = ['NOT_EVALUATED', 'NOT_EVALUATED', 'NOT_EVALUATED', null, null];
+
+// gas: [record, rules, accounting, expected, gasUsed]; recordedSubject: the GAS_RECORD_INVALID subject.
+export const B2_CASES = [
+  // Positive (spec §7.1). The hypothetical full-contract result, through the TEST ONLY stand-in.
+  { id: 'b2-p1-amsterdam-same', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', [], T_AMSTERDAM], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-p2-prague-same', preparation: PREP_PRAGUE, chain: at(T_PRAGUE, used(22680)), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', [], T_PRAGUE], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 22680, 22680] },
+  { id: 'b2-p3-prague-crossed-to-amsterdam', preparation: PREP_PRAGUE, chain: at(T_AMSTERDAM), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED'], T_AMSTERDAM], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-p10-same-rule-set-other-fork-label', preparation: PREP_OLD, history: [REVIEW_OLD], chain: at(1761700000, used(22680)), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', [], 1761700000], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 22680, 22680] },
+  { id: 'b2-crossed-under-a-successor-review', preparation: PREP_OLD, history: [REVIEW_OLD, REVIEW], chain: at(T_AMSTERDAM), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED'], T_AMSTERDAM], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-p11-authority-absent', preparation: PREP_AMSTERDAM, history: [], chain: at(T_AMSTERDAM), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_RULES_AUTHORITY_ABSENT'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-single-provider-accounted', preparation: PREP_AMSTERDAM, chain: [{ t0: T_AMSTERDAM }, { t0: T_AMSTERDAM, finalized: 1005 }], expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED_SINGLE', [], T_AMSTERDAM], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-n32-execution-observed-accounted', preparation: PREP_AMSTERDAM, chain: [{ t0: T_AMSTERDAM, receipt: { logs: [{ address: INTENT.transaction.from, topics: [], data: '0x' }] } }, { t0: T_AMSTERDAM }], expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EXECUTION_OBSERVED'], T_AMSTERDAM], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 14688, 14688] },
+  // Integrity of the recorded member (§4.1): GAS_RECORD_INVALID, FAIL; inclusion and finality kept.
+  { id: 'b2-n1-need-changed', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.need += 1; }), recordedSubject: 'gas.need', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n2-standard-changed', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.standard -= 1; }), recordedSubject: 'gas.standard', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n3-floor-changed', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.floor += 16; }), recordedSubject: 'gas.floor', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n4-gas-limit-changed', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.gasLimit = 29999; }), recordedSubject: 'gas.gasLimit', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n5-review-digest-changed', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.reviewDigest = label('other-review'); }), recordedSubject: 'gas.reviewDigest', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n6-review-source-digest-changed', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.review.sources[3].sha256 = label('source-3'); p.gas.reviewDigest = digestOf(p.gas.review); }), recordedSubject: 'gas.review', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n7-unknown-rule-set', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.ruleSetId = 'glamsterdam'; }), recordedSubject: 'gas.ruleSetId', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n8-wrong-fork', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.fork = 'osaka'; }), recordedSubject: 'gas.fork', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n9-review-not-in-history', preparation: PREP_AMSTERDAM, history: [REVIEW_OLD], recordedSubject: 'gas.review', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n10-future-dated-review', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY, review: synthReview('F', A + 2 * DAY + 3600, A + 20 * DAY) }), history: [REVIEW, synthReview('F', A + 2 * DAY + 3600, A + 20 * DAY)], recordedSubject: 'gas.review', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n11-preparation-after-the-horizon', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: H - 30, observedAt: H + 10 }), recordedSubject: 'gas.review', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-n12-pin-under-another-rule-set', preparation: () => v2Preparation({ ruleSetId: 'prague', fork: 'bpo2', pin: A + 2 * DAY, values: VALUES.prague }), recordedSubject: 'gas.ruleSetId', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-pin-after-observed-at', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY, observedAt: A + 2 * DAY - 60 }), recordedSubject: 'observedAt', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-activation-in-the-boundary-window', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 1000 }), recordedSubject: 'gas.fork', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-sender-had-code', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY, code: '0x60' }), recordedSubject: 'transaction', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-estimate-below-need', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY, estimate: 14687 }), recordedSubject: 'providers', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-fee-not-from-the-pin', preparation: () => v2Preparation({ ruleSetId: 'amsterdam', fork: 'amsterdam', pin: A + 2 * DAY, baseFee: '0x12' }), recordedSubject: 'transaction.maxFeePerGas', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-negative-need', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.need = -1; }), recordedSubject: 'gas', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-gas-member-extra-field', preparation: edit(PREP_AMSTERDAM, (p) => { p.gas.expected = 14688; }), recordedSubject: 'gas', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-providers-pin-different-blocks', preparation: edit(PREP_AMSTERDAM, (p) => { p.providers[1].block.hash = h('other-pin'); }), recordedSubject: 'providers', chain: at(T_AMSTERDAM), expect: ALL_INVALID(T_AMSTERDAM), gas: INVALID_GAS },
+  { id: 'b2-integrity-before-accounting', preparation: edit(PREP_PRAGUE, (p) => { p.gas.need = 14688; }), recordedSubject: 'gas.need', chain: at(T_PRAGUE, used(14688)), expect: ALL_INVALID(T_PRAGUE), gas: INVALID_GAS },
+  // §3.1 step 3: not a v2 record → not eligible (no fallback to v1, no unknown version, no candidate).
+  { id: 'b2-n13-preparation-relabelled-v1', preparation: edit(PREP_AMSTERDAM, (p) => { p.format = 'rnnet.tx-preparation.v1'; }), chain: at(T_AMSTERDAM), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n14-unknown-preparation-format', preparation: edit(PREP_AMSTERDAM, (p) => { p.format = 'rnnet.tx-preparation.v9'; }), chain: at(T_AMSTERDAM), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-preparation-source-not-rpc-read', preparation: edit(PREP_AMSTERDAM, (p) => { p.source = 'synthetic'; }), chain: at(T_AMSTERDAM), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-preparation-extra-member', preparation: edit(PREP_AMSTERDAM, (p) => { p.note = 'x'; }), chain: at(T_AMSTERDAM), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-candidate-envelope-as-preparation', preparation: () => fixture('preparation-v2/cases.json').preparations.find((x) => x.id === 'amsterdam-pass-estimate-14847').expected.candidate, chain: at(T_AMSTERDAM), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n39-candidate-as-intent', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM), inputs: (i) => ({ ...i, intent: canonicalize(candidate().candidate), approvedDigest: candidate().digest }), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNTX_INTENT_INVALID'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n15-candidate-digest-as-approval', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM), inputs: (i) => ({ ...i, approvedDigest: candidate().digest }), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNTX_INTENT_DIGEST_MISMATCH'], null], gas: NOT_EVALUATED_GAS },
+  // Inclusion rule set (§4.2) and boundaries (§7.3): recorded prague, A = amsterdamTime, H = R's horizon.
+  { id: 'b2-boundary-a-minus-1', preparation: PREP_PRAGUE, chain: at(A - 1, used(22680)), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', [], A - 1], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 22680, 22680] },
+  { id: 'b2-boundary-a', preparation: PREP_PRAGUE, chain: at(A), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED'], A], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-boundary-a-plus-1', preparation: PREP_PRAGUE, chain: at(A + 1), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED'], A + 1], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-boundary-h-minus-1', preparation: PREP_AMSTERDAM, chain: at(H - 1), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', [], H - 1], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-boundary-h', preparation: PREP_AMSTERDAM, chain: at(H), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_UNRESOLVED'], H], gas: ['VALID', 'GAS_RULES_UNRESOLVED', 'UNRESOLVED', null, 14688] },
+  { id: 'b2-boundary-h-plus-1', preparation: PREP_AMSTERDAM, chain: at(H + 1), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_UNRESOLVED'], H + 1], gas: ['VALID', 'GAS_RULES_UNRESOLVED', 'UNRESOLVED', null, 14688] },
+  { id: 'b2-n18-inclusion-before-the-table', preparation: PREP_PRAGUE, chain: at(1741159775, used(22680)), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_UNRESOLVED'], 1741159775], gas: ['VALID', 'GAS_RULES_UNRESOLVED', 'UNRESOLVED', null, 22680] },
+  { id: 'b2-n19-unreviewed-activation-before-inclusion', preparation: PREP_UNREVIEWED, history: [REVIEW_UNREVIEWED], chain: at(A + 12 * DAY), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_UNRESOLVED'], A + 12 * DAY], gas: ['VALID', 'GAS_RULES_UNRESOLVED', 'UNRESOLVED', null, 14688] },
+  { id: 'b2-covered-before-the-unreviewed-activation', preparation: PREP_UNREVIEWED, history: [REVIEW_UNREVIEWED], chain: at(A + 9 * DAY), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', [], A + 9 * DAY], gas: ['VALID', 'SAME', 'GAS_ACCOUNTED', 14688, 14688] },
+  { id: 'b2-n23-provider-fork-label-ignored', preparation: PREP_PRAGUE, chain: at(T_AMSTERDAM, { block: (b) => (b.number === q(TX_BLOCK) ? { ...b, fork: 'prague', blockAccessListHash: h('bal'), slotNumber: '0x1' } : b) }), expect: ['ELIGIBLE_FOR_FOUNDER_REVIEW', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED'], T_AMSTERDAM], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTED', 14688, 14688] },
+  // Gas needs a linked t_i (§3.5): finality NOT_ESTABLISHED leaves it NOT_EVALUATED (spec N20, clarified).
+  { id: 'b2-n20-finality-not-established-gas-not-evaluated', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { finalized: 1005 }), expect: ['UNRESOLVED', 'ESTABLISHED', 'NOT_ESTABLISHED', [], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n33-inclusion-not-established', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { notFound: true }), expect: ['UNRESOLVED', 'NOT_ESTABLISHED', 'NOT_ESTABLISHED', [], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n22-timestamps-contradict', preparation: PREP_AMSTERDAM, chain: [{ t0: T_AMSTERDAM }, { t0: T_AMSTERDAM + 1 }], expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_CONTRADICTORY'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n21-inclusion-block-missing', preparation: PREP_AMSTERDAM, chain: [{ t0: T_AMSTERDAM, block: (b) => (b.number === q(TX_BLOCK) ? Object.fromEntries(Object.entries(b).filter(([k]) => k !== 'timestamp')) : b) }, { t0: T_AMSTERDAM }], expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_INCLUSION_TIMESTAMP_INVALID'], null], gas: NOT_EVALUATED_GAS },
+  // Receipt gas evidence (§3.6): FAIL as evidence, never a rule problem.
+  { id: 'b2-n25-gas-used-missing', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { dropReceiptFields: ['gasUsed'] }), expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_INVALID'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n26-gas-used-malformed', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { receipt: { gasUsed: '0xzz' } }), expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_INVALID'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n27-gas-used-not-canonical', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { receipt: { gasUsed: '0x03960' } }), expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_INVALID'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-gas-used-overflow', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { receipt: { gasUsed: q(2 ** 53) } }), expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_INVALID'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n28-gas-used-differs-between-providers', preparation: PREP_AMSTERDAM, chain: [{ t0: T_AMSTERDAM }, { t0: T_AMSTERDAM, ...used(14689) }], expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_CONTRADICTORY'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n28b-1rpc-gas-used-matches-the-recorded-need', preparation: PREP_PRAGUE, chain: [{ t0: T_AMSTERDAM }, { t0: T_AMSTERDAM, ...used(22680) }], expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_EVIDENCE_CONTRADICTORY'], T_AMSTERDAM], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n29-receipt-for-another-transaction', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { receipt: { transactionHash: OTHER_TX } }), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNAE_RECEIPT_MISMATCH'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n30-receipt-block-hash-differs', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { receipt: { blockHash: h('block-1011') } }), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNAE_CONFLICTING_BLOCK_REFERENCE'], null], gas: NOT_EVALUATED_GAS },
+  { id: 'b2-n31-receipt-reverted', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, { receipt: { status: '0x0' } }), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNAE_TRANSACTION_REVERTED'], null], gas: NOT_EVALUATED_GAS },
+  // Numerical mismatches (§4.3): UNRESOLVED, inclusion and finality stand.
+  { id: 'b2-n34-same-need-minus-1', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, used(14687)), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_ACCOUNTING_MISMATCH'], T_AMSTERDAM], gas: ['VALID', 'SAME', 'GAS_ACCOUNTING_MISMATCH', 14688, 14687] },
+  { id: 'b2-n35-same-need-plus-1', preparation: PREP_AMSTERDAM, chain: at(T_AMSTERDAM, used(14689)), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_ACCOUNTING_MISMATCH'], T_AMSTERDAM], gas: ['VALID', 'SAME', 'GAS_ACCOUNTING_MISMATCH', 14688, 14689] },
+  { id: 'b2-n36-crossed-gas-used-is-the-recorded-need', preparation: PREP_PRAGUE, chain: at(T_AMSTERDAM, used(22680)), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED', 'GAS_ACCOUNTING_MISMATCH'], T_AMSTERDAM], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTING_MISMATCH', 14688, 22680] },
+  { id: 'b2-n37-crossed-need-minus-1', preparation: PREP_PRAGUE, chain: at(T_AMSTERDAM, used(14687)), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED', 'GAS_ACCOUNTING_MISMATCH'], T_AMSTERDAM], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTING_MISMATCH', 14688, 14687] },
+  { id: 'b2-n38-crossed-need-plus-1', preparation: PREP_PRAGUE, chain: at(T_AMSTERDAM, used(14689)), expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['GAS_RULES_CROSSED', 'GAS_ACCOUNTING_MISMATCH'], T_AMSTERDAM], gas: ['VALID', 'GAS_RULES_CROSSED', 'GAS_ACCOUNTING_MISMATCH', 14688, 14689] },
+  // Authorization (§3.1): the operational verifier refuses the same synthetic subject, whatever its gas.
+  { id: 'b2-n41-operational-refuses-the-p1-subject', entry: 'operational', preparation: PREP_AMSTERDAM, history: [], chain: at(T_AMSTERDAM), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null], gas: NOT_EVALUATED_GAS },
+];
+
 export async function runCase(c) {
-  const inputs = c.inputs ? c.inputs(await baseInputs(c.chain)) : await baseInputs(c.chain);
-  const { record, digest } = await (c.entry === 'operational' ? verifyGateF(inputs) : verifyGateFHypotheticalStageB(inputs));
-  return { inputs, record, digest };
+  const base = await baseInputs(c.chain);
+  const withHistory = c.preparation ? { ...base, reviewHistory: c.history ?? [REVIEW] } : base;
+  const inputs = c.inputs ? c.inputs(withHistory) : withHistory;
+  let result;
+  if (c.entry === 'operational') result = await verifyGateF(inputs);
+  else if (c.preparation) result = await verifyGateFHypotheticalStageBGas(inputs, c.preparation());
+  else result = await verifyGateFHypotheticalStageB(inputs);
+  return { inputs, record: result.record, digest: result.digest };
 }
 
-const matches = (record, [disposition, inclusion, finality, codes, timestamp]) => record.disposition === disposition && record.inclusion.status === inclusion
-  && record.finality.disposition === finality && JSON.stringify(record.findings.map((f) => f.code)) === JSON.stringify(codes) && record.inclusion.timestamp === timestamp;
+export const gasOf = (record) => [record.gas.record, record.gas.rules, record.gas.accounting, record.gas.expected, record.gas.gasUsed];
+const matches = (record, [disposition, inclusion, finality, codes, timestamp], c = {}) => record.disposition === disposition && record.inclusion.status === inclusion
+  && record.finality.disposition === finality && JSON.stringify(record.findings.map((f) => f.code)) === JSON.stringify(codes) && record.inclusion.timestamp === timestamp
+  && (c.gas === undefined || JSON.stringify(gasOf(record)) === JSON.stringify(c.gas))
+  && (c.recordedSubject === undefined || record.findings.find((f) => f.code === 'GAS_RECORD_INVALID')?.subject === c.recordedSubject);
 
 export async function build(list = CASES) {
   const cases = [];
   for (const c of list) {
     const { record, digest } = await runCase(c);
-    if (!matches(record, c.expect)) throw new Error(`${c.id}: expected ${JSON.stringify(c.expect)}, got ${JSON.stringify([record.disposition, record.inclusion.status, record.finality.disposition, record.findings.map((f) => f.code), record.inclusion.timestamp])}`);
+    if (!matches(record, c.expect, c)) throw new Error(`${c.id}: expected ${JSON.stringify([c.expect, c.gas ?? null, c.recordedSubject ?? null])}, got ${JSON.stringify([[record.disposition, record.inclusion.status, record.finality.disposition, record.findings.map((f) => f.code), record.inclusion.timestamp], gasOf(record), record.findings.map((f) => f.subject)])}`);
     // Inputs are regenerated deterministically by this builder; the record names each by digest.
     cases.push({ id: c.id, entry: c.entry ?? 'seam', expected: { record, digest } });
   }
@@ -273,7 +419,7 @@ export async function build(list = CASES) {
   return `${Buffer.from(canonicalBytes(doc)).toString('utf8')}\n`;
 }
 
-export const SETS = [{ path: PATH, cases: CASES }, { path: PATH_SEC01, cases: SEC01_CASES }];
+export const SETS = [{ path: PATH, cases: CASES }, { path: PATH_SEC01, cases: SEC01_CASES }, { path: PATH_B2, cases: B2_CASES }];
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   let allCurrent = true;
