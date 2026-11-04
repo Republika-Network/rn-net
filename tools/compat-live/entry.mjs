@@ -53,11 +53,11 @@ export const C6_MANIFEST_SHA256 = 'sha256:2a45e37c0067e6e7e9aaa0705a298c712335b9
  */
 export const REVIEWED_ENDPOINTS_SHA256 = 'sha256:14ce613018c9f59f4c6a601e0333d979f3d3f46d84dfe8290e1445aeb4361246';
 /**
- * The agreed private evidence directory (H11: a new directory outside every repository). Proposed in
- * RN-NET-03B2-C6-H3 (WSL ext4, not under /mnt/c, not cloud-synchronized, mode 0700), PENDING the
- * founder's approval; restored to null by the post-run deactivation change.
+ * The agreed private evidence directory (H11: a new directory outside every repository). null:
+ * restored by the RN-NET-03B2-C6-H3 post-run deactivation, so no run can pass. Any future run needs a
+ * new, reviewed enabling change.
  */
-export const AGREED_EVIDENCE_DIR = '/home/vicvalch/rn-net-private/c6-evidence';
+export const AGREED_EVIDENCE_DIR = null;
 /** An authorization may be written at most this long before it is void (one sitting). */
 export const MAX_AUTHORIZATION_AHEAD_SECONDS = 3600;
 export const COMPAT_FLAGS = Object.freeze(['authorization', 'endpoints', 'evidence-dir']);
