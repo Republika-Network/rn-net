@@ -107,6 +107,9 @@ run_checks() {
   echo "::group::Key tool sign log: JavaScript against the Python reference on real directories (no preload; still inside the namespace)"
   node tools/signing/keytool-python.check.mjs "$(command -v python3)"
   echo "::endgroup::"
+  echo "::group::The C6 typed approval on a real pseudo-terminal (no preload; still inside the namespace; never the C6 command)"
+  node tools/tty-pty/pty.check.mjs "$(command -v python3)"
+  echo "::endgroup::"
   echo "::group::The live entry points refuse as commands (no preload; still inside the namespace)"
   node tools/broadcast/live-disabled.check.mjs
   echo "::endgroup::"
