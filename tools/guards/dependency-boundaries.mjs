@@ -662,6 +662,7 @@ export const NETWORK_CAPABLE_FILES = [
   'tools/signing/keytool-python.check.mjs', // runs the Python key tool reference (offline-checks.sh, in the namespace)
   'tools/broadcast/concurrent-log.check.mjs', // starts concurrent log writers (offline-checks.sh, in the namespace); imports nothing of the write side
   'tools/broadcast/live-disabled.check.mjs', // starts the three disabled live entry points as commands (offline-checks.sh, in the namespace); imports nothing of them
+  'tools/tty-pty/pty.check.mjs', // starts the Python PTY driver with the approval-only probe (offline-checks.sh, in the namespace); never the C6 command
   ...SUBMIT_SUBPROCESS_FILES,
 ];
 // Test data of the guard's own tests: sources that are meant to be refused.
