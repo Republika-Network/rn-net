@@ -53,3 +53,12 @@ Its result is frozen and module-local, **not** a protocol format: `ruleSetId`, `
 **Independent reference.** `tools/reference/rnnet_gas_rules_reference.py` recomputes every case of `fixtures/gas-rules-wp2/vectors.json`, which `tools/gas-rules/build-gas-rules-vectors.mjs` builds and `tools/gas-rules.test.mjs` keeps current.
 
 - **Dependencies:** `packages/canonical`, `packages/anchor`, and the Node.js built-ins `Buffer`, `createHash` and `types` (from `node:util`).
+
+## The Stage A v2 preparation candidate (`src/candidate.mjs`; RN-NET-03B2-WP3-R1, offline)
+
+`rnnet.tx-preparation-v2-candidate.v1` carries a fork-aware Sepolia `rnnet.tx-preparation.v2` record ([spec](../../spec/rnnet.tx-preparation.v2.md) §5; ADR-RN-018 C2 Q4, Proposed).
+
+- **It is not an intent.** `makeIntent`, `approvedIntent`, the signer, txverify and every later consumer refuse it.
+- **Its digest uses its own domain,** `rnnet:tx-preparation-v2-candidate:v1\0`, so it confers no authority to sign or broadcast.
+- **A relabelled candidate is still refused.** An intent carrying a v2 preparation is refused by the S1 allowlist (`ACCEPTED_PREPARATION_FORMATS`).
+- **What it checks:** `makePreparationCandidate`, `candidateDigest` and `verifiedPreparationCandidate` check the envelope only (members, Sepolia, the anchor transaction, the v2 top level). `verifySepoliaCandidateV2` in packages/tx-prepare checks the record's semantics.

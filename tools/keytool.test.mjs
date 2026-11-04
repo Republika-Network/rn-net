@@ -771,3 +771,23 @@ test('RN-NET S1: keytool sign refuses an unsupported preparation before the conf
     assert.deepEqual(files(d.out), [], `${id}: nothing signed`);
   }
 });
+
+test('RN-NET WP3-R1: keytool sign refuses a v2 candidate in either form before any prompt or sign-log write', async () => {
+  const v2 = JSON.parse(readFileSync(join(ROOT, 'fixtures/preparation-v2/cases.json'), 'utf8'));
+  const { candidate, digest: candidateDigestValue } = v2.preparations.find((c) => c.id === 'amsterdam-pass-estimate-14847').expected;
+  const relabelled = { ...candidate, format: 'rnnet.unsigned-tx-intent.v1' };
+  const raw = (value) => `sha256:${createHash('sha256').update(INTENT_DIGEST_DOMAIN).update(canonicalBytes(value)).digest('hex')}`;
+  const d = workspace();
+  assert.equal((await keygen(SEP, d)).exit, 0);
+  const logBefore = files(d.log);
+  for (const [name, value, digest] of [['candidate', candidate, candidateDigestValue], ['relabelled', relabelled, raw(relabelled)]]) {
+    const path = join(d.base, `${name}.json`);
+    writeFileSync(path, canonicalize(value), { mode: 0o600 });
+    const { exit, e } = await sign(SEP, d, { intent: path, digest });
+    assert.notEqual(exit, 0, name);
+    assert.match(e.text(), /RNTX_INTENT_INVALID/, name);
+    assert.equal(e.left(), 2, `${name}: neither the confirmation nor the passphrase was asked`);
+    assert.deepEqual(files(d.log), logBefore, `${name}: no sign-log entry`);
+    assert.deepEqual(files(d.out), [], `${name}: nothing signed`);
+  }
+});

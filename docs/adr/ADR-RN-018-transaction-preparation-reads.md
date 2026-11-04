@@ -775,7 +775,7 @@ remove the only live signal that the provider's rules differ from RN-NET's revie
   - never settles the gate-F result in either direction.
 
 **Recorded values (permanent).**
-- The intent's `rnnet.tx-preparation.v2` gas member (G13, Q4) records, at gate D:
+- The `rnnet.tx-preparation.v2` gas member (G13, Q4) records, at gate D (in a Stage B intent; until then, in the Stage A candidate):
   - the **original reviewed rule-set identity**: the rule-set id, the `RULES_REVIEW` reference and
     the G2 source digests;
   - the computed `standard`, `floor` and `need`.
@@ -922,6 +922,26 @@ Proposed amendment, and they are not an acceptance of it.
   - A v1 record is never accepted as a C2 Sepolia intent, and a C2 Sepolia intent is never
     emitted as v1.
   - The v2 specification is written and reviewed in the implementation PR, not here.
+  - **Two-stage lifecycle (WP3-R1 amendment, Proposed; after RN-NET S1, #40).** S1 makes the
+    shared intent boundary accept only `rnnet.tx-preparation.v1` and the synthetic fixture record.
+    So "covered by the intent digest" is reached in two stages, and only Stage A exists:
+    - **Stage A: the v2 candidate** (`rnnet.tx-preparation-v2-candidate.v1`, spec
+      `rnnet.tx-preparation.v2` §5):
+      - produced and verified offline. It carries the complete v2 record: the gas member with the
+        rule set, fork, reviewed-source identity, `standard`, `floor` and `need`; provider
+        provenance; observations;
+      - **its own domain-separated canonical digest** (`rnnet:tx-preparation-v2-candidate:v1\0`);
+      - **not an `rnnet.unsigned-tx-intent.v1`**, and not a signing or broadcasting
+        authorization. Every intent consumer refuses it, and a candidate's digest confers no
+        authority.
+    - **Stage B: a future approved intent** carrying the v2 record. **Not implemented and not
+      accepted.** It needs, each separately:
+      - a reviewed acceptance-policy amendment, adding v2 to the S1 allowlist with its full
+        downstream format and semantic verification;
+      - the complete verified v2 record bound to the intent digest;
+      - founder authorization.
+    - The Q4 fields and integrity properties are unchanged. In Stage A they are covered by the
+      candidate digest; in Stage B, by the intent digest.
 - **Q5 (receipt).** The authoritative receipt `gasUsed` verification is in the durable gate-F
   verifier. The status check may report preliminary findings, without replacing finality
   evidence (G10).

@@ -19,6 +19,9 @@ export {
   xrplAnchorTemplate,
 } from './genesis.mjs';
 export { approvedIntent, INTENT_DIGEST_DOMAIN, INTENT_FORMAT, intentDigest, IntentNetwork, intentSender, intentSequence, makeIntent, PURPOSES } from './intent.mjs';
+// RN-NET-03B2-WP3-R1: the Stage A v2 preparation candidate. It is not an intent: makeIntent and every
+// consumer refuse it, and its digest uses its own domain (ADR-RN-018 C2 Q4, Proposed).
+export { CANDIDATE_DIGEST_DOMAIN, CANDIDATE_FORMAT, candidateDigest, makePreparationCandidate, verifiedPreparationCandidate } from './candidate.mjs';
 export {
   addressFromPublicKey,
   decodeAddress,
