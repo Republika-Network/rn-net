@@ -24,3 +24,4 @@ ADR is not edited to change its decision; a later ADR supersedes it.
 | [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md) | Offline test-only signing toolchain and its dependencies | Accepted (offline gate A only); Amendment C1 Accepted for the reviewed offline key-tool implementation only (no gate B or D) |
 | [ADR-RN-018](ADR-RN-018-transaction-preparation-reads.md) | Read-only transaction preparation | Accepted (offline read-only preparation only); Amendment C1 Accepted (offline architecture only); Amendment C2 Proposed (fork-aware Sepolia gas policy) |
 | [ADR-RN-019](ADR-RN-019-controlled-testnet-broadcasting.md) | Controlled testnet broadcasting | Accepted (offline architecture and simulated implementation only); Amendment C1 Proposed |
+| [ADR-RN-020](ADR-RN-020-durable-gate-f-verification.md) | Durable gate-F verification for Genesis Proof 01 (Sepolia) | Proposed (documentation only; not implemented) |
