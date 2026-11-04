@@ -1259,3 +1259,37 @@ test('C6-LIVE(-ENABLE): only the command and the narrow C6 transport reach the n
   const offline = found([['tools/compat-live/compat-live.mjs', "import { runCompatibility } from '../compat/run.mjs';\nexport const r = runCompatibility;"], ['tools/compat/run.mjs', 'export const runCompatibility = 1;']]);
   assert.ok(!offline.some((f) => /compat-live-reaches|compat-transport-join/.test(f)), offline.join(' '));
 });
+
+test('gate F (WP4-B1-SEC-01 R2): only the listed files reach the core, the test seam and the fixture builder', () => {
+  const has = (path, content, rule) => rules(path, content).includes(rule);
+  // The core: verify.mjs and the seam only, by any import form or by naming it.
+  for (const [path, content] of [
+    ['tools/submit/x.mjs', "import { evaluateGateFTestStandIn } from '../gate-f/core.mjs';"],
+    ['tools/gate-f/other.mjs', "import { evaluateGateFTestStandIn } from './core.mjs';"],
+    ['tools/gate-f/other.mjs', "export { evaluateGateFTestStandIn } from './core.mjs';"],
+    ['tools/gate-f/other.mjs', "const m = await import('./core.mjs');"],
+    ['scripts/run.mjs', "const m = await import('../tools/gate-f/core.mjs');"],
+    ['tools/x.mjs', 'const m = await import(`./gate-f/core.mjs`);'],
+    ['tools/x.mjs', "import { evaluateGateFTestStandIn } from './gate-f/%63ore.mjs';"],
+    ['tools/gate-f.test.mjs', "import { evaluateGateFTestStandIn } from './gate-f/core.mjs';"],
+  ]) assert.ok(has(path, content, 'gate-f-core-importer-not-allowed'), `${path}: ${content}`);
+  assert.ok(!has('tools/gate-f/verify.mjs', "import { evaluateGateFOperational } from './core.mjs';", 'gate-f-core-importer-not-allowed'));
+  assert.ok(!has('tools/gate-f/test-seam.mjs', "import { evaluateGateFTestStandIn } from './core.mjs';", 'gate-f-core-importer-not-allowed'));
+  // The test seam: the gate-F test and the builder only; never verify.mjs or an operational tool.
+  for (const [path, content] of [
+    ['tools/gate-f/verify.mjs', "import { verifyGateFHypotheticalStageB } from './test-seam.mjs';"],
+    ['tools/submit/x.mjs', "import { verifyGateFHypotheticalStageB } from '../gate-f/test-seam.mjs';"],
+    ['tools/rehearsal/x.mjs', "const m = await import('../gate-f/test-seam.mjs');"],
+    ['tools/other.test.mjs', "import { verifyGateFHypotheticalStageB } from './gate-f/test-seam.mjs';"],
+  ]) assert.ok(has(path, content, 'gate-f-test-seam-importer-not-allowed'), `${path}: ${content}`);
+  assert.ok(!has('tools/gate-f.test.mjs', "import { verifyGateFHypotheticalStageB } from './gate-f/test-seam.mjs';", 'gate-f-test-seam-importer-not-allowed'));
+  assert.ok(!has('tools/gate-f/build-gate-f-fixtures.mjs', "import { verifyGateFHypotheticalStageB } from './test-seam.mjs';", 'gate-f-test-seam-importer-not-allowed'));
+  // The fixture builder (test support): the gate-F test only.
+  assert.ok(has('tools/prepare/x.mjs', "import { baseInputs } from '../gate-f/build-gate-f-fixtures.mjs';", 'gate-f-fixture-builder-importer-not-allowed'));
+  assert.ok(!has('tools/gate-f.test.mjs', "import { baseInputs } from './gate-f/build-gate-f-fixtures.mjs';", 'gate-f-fixture-builder-importer-not-allowed'));
+  // Inside tools/gate-f/, no path is assembled at run time.
+  assert.ok(has('tools/gate-f/verify.mjs', "const name = 'core'; const m = await import(`./${name}.mjs`);", 'gate-f-computed-import'));
+  assert.ok(has('tools/gate-f/verify.mjs', 'const m = await import(name);', 'gate-f-computed-import'));
+  // The operational verifier is importable by anyone; it refuses every subject.
+  assert.deepEqual(rules('tools/x.mjs', "import { verifyGateF } from './gate-f/verify.mjs';").filter((r) => r.startsWith('gate-f-')), []);
+});

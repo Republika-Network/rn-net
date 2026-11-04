@@ -15,9 +15,17 @@
 //   - no clock, environment, key, signer, write path or transport is used;
 //   - classifications stay CLAIMED / UNRESOLVED, and nothing is CHAIN_PROVEN.
 //
-// The subject policy is a parameter of this file only. verify.mjs passes the operational policy,
-// which accepts no subject until a Stage B policy is reviewed. test-seam.mjs passes the test
-// policy, and only tests import it.
+// Subject acceptance is fixed here, never supplied by a caller (WP4-B1-SEC-01 R2). No exported
+// function takes an eligibility callback, a policy object or a mode argument. This file exports
+// exactly two evaluators:
+//   - evaluateGateFOperational: accepts no subject, because no Stage B acceptance policy exists
+//     (ADR-RN-020 D1). verify.mjs is its only caller;
+//   - evaluateGateFTestStandIn: TEST ONLY. It accepts an approved intent with a SYNTHETIC
+//     preparation as a stand-in for a hypothetical Stage B subject, and nothing else (not v1
+//     rpc-read, not a candidate). The test seam beside verify.mjs is its only caller.
+// JavaScript cannot hide an export from a file that imports this one, so the boundary is enforced
+// by the repository guard (dependency-boundaries GATE_F_RESTRICTED: the core, seam and builder
+// importer rules), which CI runs on every change, and pinned by tests.
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { canonicalBytes, canonicalize, parse } from '../../packages/canonical/src/index.mjs';
@@ -79,15 +87,21 @@ function readInputs(inputs) {
   return frozen;
 }
 
-/** The operational subject policy: no Stage B acceptance policy exists, so no subject is eligible (ADR-RN-020 V4, D1). */
-export const OPERATIONAL_SUBJECT_POLICY = Object.freeze({ id: 'operational', eligible: () => false });
+/** Operational: no subject is eligible until a Stage B acceptance policy is separately authorized (ADR-RN-020 V4, D1). */
+export function evaluateGateFOperational(inputs) {
+  return evaluate(inputs, () => false);
+}
+
+/** TEST ONLY (see the header): an approved intent with a synthetic preparation stands in for a Stage B subject. */
+export function evaluateGateFTestStandIn(inputs) {
+  return evaluate(inputs, (intent) => intent.preparation !== null && typeof intent.preparation === 'object' && intent.preparation.source === 'synthetic' && !Object.hasOwn(intent.preparation, 'format'));
+}
 
 /**
- * Evaluates one gate-F verification. Returns { record, digest }, or throws GateFError for an unusable
- * input set or an invalid predecessor.
+ * Evaluates one gate-F verification with a fixed subject rule (not exported). Returns
+ * { record, digest }, or throws GateFError for an unusable input set or an invalid predecessor.
  */
-export async function evaluateGateF(inputs, policy) {
-  if (policy === null || typeof policy !== 'object' || typeof policy.eligible !== 'function') throw new TypeError('a subject policy is required');
+async function evaluate(inputs, eligible) {
   const v = readInputs(inputs);
   const findings = [];
   const note = (code, group, subject = null) => findings.push({ code, group, subject });
@@ -123,7 +137,7 @@ export async function evaluateGateF(inputs, policy) {
       break run;
     }
     subject.commitment = intent.commitment;
-    if (intent.network !== Network.SEPOLIA || intent.purpose !== 'genesis-proof-01' || !policy.eligible(intent)) {
+    if (intent.network !== Network.SEPOLIA || intent.purpose !== 'genesis-proof-01' || !eligible(intent)) {
       note('RNGF_SUBJECT_NOT_ELIGIBLE', 'subject', 'intent');
       failed = true;
       break run;
@@ -189,6 +203,12 @@ export async function evaluateGateF(inputs, policy) {
     const evidenceFailure = evidenceFailureOf(report, observed);
     if (evidenceFailure) {
       note(evidenceFailure.code, 'evidence', evidenceFailure.subject);
+      // A CONFLICT the report shows is never hidden behind the evidence failure: finality is not
+      // evaluated (§3.3 ends verification), but each conflicting provider is still recorded.
+      for (const id of GATE_F_PROVIDERS) {
+        const p = report.providers.find((e) => e.id === id && e.outcome === 'OBSERVED');
+        if (p && (p.finality.finalized === 'CONFLICT' || p.finality.safe === 'CONFLICT')) note('RNLO_FINALITY_CONFLICT', 'finality', id);
+      }
       failed = true;
       break run;
     }
@@ -234,8 +254,13 @@ export async function evaluateGateF(inputs, policy) {
     else if (pn === 'IN_ANCESTRY') disposition = 'PROVIDER_REPORTED_FINALIZED_SINGLE';
     else disposition = 'NOT_ESTABLISHED';
     finality = { disposition, perProvider, classification: perProvider.some((p) => p.result !== 'NOT_OBSERVED') ? 'CLAIMED' : 'UNRESOLVED', chainInclusionProof: 'UNRESOLVED' };
-    if (disposition === 'CONFLICT') {
-      for (const p of perProvider) if (p.result === 'CONFLICT') note('RNLO_FINALITY_CONFLICT', 'finality', p.id);
+    // Any CONFLICT is FAIL, then verification ends (§3.4). perProvider holds the finalized walk; a
+    // CONFLICT of a provider's safe walk is recorded as a finding on that provider (the disposition
+    // stays the finalized table's), never dropped and never mapped to UNRESOLVED.
+    const safeConflict = (id) => report.providers.some((p) => p.id === id && p.outcome === 'OBSERVED' && p.finality.safe === 'CONFLICT');
+    const conflicted = perProvider.filter((p) => p.result === 'CONFLICT' || safeConflict(p.id));
+    if (conflicted.length > 0) {
+      for (const p of conflicted) note('RNLO_FINALITY_CONFLICT', 'finality', p.id);
       failed = true;
       break run;
     }
@@ -314,41 +339,49 @@ async function observe(capture, providers, report) {
     try {
       const read = await readEvm(context, capture.transactionHash);
       if (entry?.outcome === 'OBSERVED') {
+        // The second replay must be the reading the report digested, provider by provider (no
+        // reattribution between providers).
+        if (sha256(read.observation) !== entry.observationSha256 || sha256(read.material) !== entry.materialSha256) {
+          throw new GateFError('RNGF_EVIDENCE_INVALID', 'the second replay disagrees with the report');
+        }
         const o = JSON.parse(Buffer.from(read.observation).toString('utf8'));
-        out.push({ id: provider.id, transaction: o.transaction, receipt: o.receipt, blocks });
+        // The reader's own compared material (readers.mjs readEvm), with its finality member removed.
+        const { finality: _finality, ...material } = JSON.parse(Buffer.from(read.material).toString('utf8'));
+        out.push({ id: provider.id, transaction: o.transaction, receipt: o.receipt, material, blocks });
       }
     } catch (error) {
       if (!(error instanceof ReadError)) throw error;
-      if (entry?.outcome === 'OBSERVED') throw new GateFError('RNGF_EVIDENCE_INVALID', 'the second replay disagrees with the report');
+      if (entry?.outcome === 'OBSERVED' || entry?.error !== error.code) throw new GateFError('RNGF_EVIDENCE_INVALID', 'the second replay disagrees with the report');
     }
+    if (entry?.outcome === 'OBSERVED' && !out.some((o) => o.id === provider.id)) throw new GateFError('RNGF_EVIDENCE_INVALID', 'the second replay disagrees with the report');
   }
   replay.assertConsumed();
   return out;
 }
 
-// The live report's compared material (live-observation-report §7.2) without its finality member.
-const MATERIAL = (o) => ({
-  hash: o.transaction.hash, blockHash: o.transaction.blockHash ?? null, blockNumber: o.transaction.blockNumber ?? null, transactionIndex: o.transaction.transactionIndex ?? null,
-  input: o.transaction.input ?? null, from: o.transaction.from ?? null, to: o.transaction.to ?? null, status: o.receipt === null ? null : (o.receipt.status ?? null),
-});
+/** Every per-provider outcome the live report can give (live.mjs). Anything else is refused. */
+const PROVIDER_OUTCOMES = ['OBSERVED', 'NOT_FOUND', 'UNAVAILABLE', 'INCONSISTENT', 'WRONG_NETWORK', 'INVALID_RESPONSE'];
 
 /**
- * The first evidence failure in the replayed report, or null (spec §3.3 step 3; §3.4 for pending
- * and not found).
- *
- * The report's material includes the finality result, so a provider whose walk differs, such as the
- * unresolved 1RPC lag, makes the report DISAGREEMENT. Spec §3.4 decides finality differences:
- * PROVIDER_REPORTED_FINALIZED_SINGLE, or a recorded per-provider CONFLICT, then FAIL. So
- * RNLO_PROVIDER_DISAGREEMENT is an evidence FAIL here only when the providers disagree on the
- * rest of the material, or one finds the transaction and another does not (ADR-RN-019 §8: a
- * finality difference is reported, not averaged). Clarification proposed for the spec.
+ * The first evidence failure in the replayed report, or null. Spec §3.3 step 3 and the provider
+ * comparison table (§3.3.1, WP4-B1-SEC-01 R1):
+ *   - an outcome the report cannot give: RNGF_EVIDENCE_INVALID;
+ *   - one provider OBSERVED and another NOT_FOUND (a missing observation contradicted by another
+ *     provider): RNLO_PROVIDER_DISAGREEMENT, FAIL;
+ *   - two OBSERVED providers whose material differs once the finality member is removed (hash,
+ *     block hash, number, index, input, from, to, receipt status; the reader's own definition,
+ *     readers.mjs readEvm): RNLO_PROVIDER_DISAGREEMENT, FAIL;
+ *   - an INCONSISTENT, WRONG_NETWORK or INVALID_RESPONSE provider: its error, FAIL;
+ *   - an observed anchor record that did not PASS, except RNAE_PENDING (§3.4): FAIL.
+ * A report DISAGREEMENT that is none of these differs only in finality, and §3.4 decides it; it is
+ * never averaged away (ADR-RN-019 §8). UNAVAILABLE is not a disagreement: that provider is
+ * NOT_OBSERVED.
  */
 function evidenceFailureOf(report, observed) {
-  if (report.findings.some((f) => f.code === 'RNLO_PROVIDER_DISAGREEMENT')) {
-    const notFound = report.providers.some((p) => p.outcome === 'NOT_FOUND');
-    const materials = new Set(observed.map((o) => Buffer.from(canonicalBytes(MATERIAL(o))).toString('hex')));
-    if (notFound || materials.size > 1) return { code: 'RNLO_PROVIDER_DISAGREEMENT', subject: 'providers' };
-  }
+  for (const p of report.providers) if (!PROVIDER_OUTCOMES.includes(p.outcome)) return { code: 'RNGF_EVIDENCE_INVALID', subject: p.id };
+  const missing = observed.length > 0 && report.providers.some((p) => p.outcome === 'NOT_FOUND');
+  const materials = new Set(observed.map((o) => Buffer.from(canonicalBytes(o.material)).toString('hex')));
+  if (missing || materials.size > 1) return { code: 'RNLO_PROVIDER_DISAGREEMENT', subject: 'providers' };
   for (const p of report.providers) {
     if (['INCONSISTENT', 'WRONG_NETWORK', 'INVALID_RESPONSE'].includes(p.outcome)) return { code: p.error, subject: p.id };
     if (p.outcome === 'OBSERVED' && p.record.outcome !== 'PASS') {

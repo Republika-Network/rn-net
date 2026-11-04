@@ -11,7 +11,7 @@ export const GATE_F_RULES = 'ADR-RN-020';
 export const GATE_F_DIGEST_DOMAIN = 'rnnet:gate-f-sepolia-verification:v1\0';
 export const GATE_F_PROVIDERS = Object.freeze(['sepolia-publicnode', 'sepolia-1rpc']);
 export const SUPERSESSION_REASONS = Object.freeze(['NEW_EVIDENCE', 'NEW_RULES_REVIEW', 'CORRECTION']);
-/** The eleven finding groups of spec §5. */
+/** The ten finding groups of spec §5; no other group exists (WP4-B1-SEC-01 R3). */
 export const FINDING_GROUPS = Object.freeze(['subject', 'binding', 'evidence', 'inclusion', 'finality', 'gasRecord', 'gasRules', 'gasAccounting', 'review', 'chain']);
 const ENUM = Object.freeze({
   inclusion: ['ESTABLISHED', 'NOT_ESTABLISHED', 'NOT_EVALUATED'],
