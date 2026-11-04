@@ -80,6 +80,7 @@ function terminal({ answer = '', tty = true, open = true } = {}) {
       return n;
     },
     closeSync: () => {},
+    releasePartialLine: () => {},
   };
   return { approve: createTtyApproval(io), seen };
 }

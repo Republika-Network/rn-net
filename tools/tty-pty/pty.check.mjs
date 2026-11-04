@@ -82,6 +82,19 @@ const scenarios = [
   // 8. Lines pasted after the answer line never reach the shell (the first line alone is the answer).
   ['wrong answer, then a pasted command line', { mode: 'cooked', steps: [['send', 'no\recho RNNET-INJECTED\r']] }, { approved: false, answer: 'no', code: 'RNCL_APPROVAL_REFUSED' }],
   ['right answer, then a pasted command line', { mode: 'cooked', steps: [['send', `${RIGHT}\recho RNNET-INJECTED\r`]] }, { approved: true, answer: RIGHT }],
+  // 9. Review R2: a partial line (no Enter) typed after the answer, before the program exits, sits
+  // in the kernel's canonical line buffer, invisible to a non-blocking read. It must not reach the
+  // shell: neither when Enter is pressed after the shell resumes, nor when the shell's line editor
+  // turns canonical mode off. Typed in the same write as the answer, so the order is deterministic.
+  ['R2: right answer, then a partial line; Enter after exit', { mode: 'cooked', steps: [['send', `${RIGHT}\recho RNNET-INJECTED`]], after: '\r' }, { approved: true, answer: RIGHT, pending: '\n' }],
+  ['R2: right answer, then a partial line; line editor resumes', { mode: 'cooked', steps: [['send', `${RIGHT}\recho RNNET-INJECTED`]], reveal: 'noncanonical' }, { approved: true, answer: RIGHT }],
+  ['R2: wrong answer, then a partial line', { mode: 'cooked', steps: [['send', 'no\recho RNNET-INJECTED']], after: '\r' }, { approved: false, answer: 'no', code: 'RNCL_APPROVAL_REFUSED', pending: '\n' }],
+  ['R2: over-long line, then a partial line', { mode: 'cooked', steps: [['send', `${'x'.repeat(80)}\recho RNNET-INJECTED`]], reveal: 'noncanonical' }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED' }],
+  ['R2: over-long line, more lines, then a partial line', { mode: 'cooked', steps: [['send', `${'x'.repeat(80)}\rid\recho RNNET-INJECTED`]], after: '\r' }, { approved: false, error: 'answer too long', code: 'RNCL_APPROVAL_REFUSED', pending: '\n' }],
+  // Controls: a partial line typed once the program has exited is invisible to a plain non-blocking
+  // read (why R2 exists), and IS seen once the line editor resumes (so the R2 checks above mean it).
+  ['control: partial line typed after exit is invisible without a reveal', { mode: 'cooked', steps: [['send', `${RIGHT}\r`]], after: 'echo later' }, { approved: true, answer: RIGHT, pending: '' }],
+  ['control: partial line typed after exit, line editor resumes', { mode: 'cooked', steps: [['send', `${RIGHT}\r`]], after: 'echo later', reveal: 'noncanonical' }, { approved: true, answer: RIGHT, pending: 'echo later' }],
   // Control: input typed once the program has exited IS seen as pending, so "nothing pending" above means it.
   ['control: typed after the program exited is pending', { mode: 'cooked', steps: [['send', `${RIGHT}\r`]], after: 'echo later\r' }, { approved: true, answer: RIGHT, pending: 'echo later\n' }],
 ];
@@ -104,6 +117,8 @@ for (const [label, scenario, expected] of scenarios) {
       if (!expected.approved) assert.notEqual(r.code, null, `${label}: refused`);
       // What the shell would read next from this terminal: nothing, unless the scenario typed it later.
       if (scenario.mode !== 'none') assert.equal(got.pending, expected.pending ?? '', `${label}: input left on the terminal for the shell`);
+      // The approval leaves the terminal's settings exactly as it found them (R2 switches modes).
+      if (scenario.mode !== 'none') assert.equal(got.restored, true, `${label}: terminal settings restored`);
     }
     process.stdout.write(`ok   ${label}\n`);
   } catch (failure) {
