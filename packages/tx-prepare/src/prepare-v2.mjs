@@ -6,6 +6,11 @@
 //     tools/prepare/ (disabled) are unchanged and still produce v1;
 //   - this path produces only v2, and its verifier accepts only v2.
 //
+// WP3-R1, after S1: the result is a Stage A CANDIDATE (rnnet.tx-preparation-v2-candidate.v1, with
+// its own digest domain). It is never an intent. makeIntent and every signing and broadcasting
+// consumer refuse it, and a v2 preparation inside an intent is refused by the S1 allowlist (C2 Q4,
+// Proposed).
+//
 // Request plan: the C1 three passes, byte for byte (8 requests per provider, one attempt, pinned
 // reads at {blockHash, requireCanonical: true}, eth_estimateGas included). WP3 adds no request,
 // no retry and no fallback.
@@ -19,19 +24,21 @@
 //   - the guard forbids joining tx-prepare to any transport (PREPARE_TRANSPORT_JOINERS is empty).
 import { Network, PREPARATION_REQUESTS, readSepoliaHead, readSepoliaPin, readSepoliaPinned } from '../../chain-readonly/src/index.mjs';
 import {
-  approvedIntent,
+  candidateDigest,
+  CANDIDATE_FORMAT,
   evaluateGenesisGas,
   GAS_RULES_LIMIT,
-  INTENT_FORMAT,
   isPlainData,
+  makePreparationCandidate,
   SEPOLIA,
   SEPOLIA_GAS_RULES_REVIEW,
   sepoliaAnchorTemplate,
   sepoliaMaxFee,
   validateReviewedRulesHorizon,
+  verifiedPreparationCandidate,
 } from '../../tx-intent/src/index.mjs';
 import { PrepError, PrepErrorCode as C } from './errors.mjs';
-import { checkCommon, intentFrom, maxOf, minOf, PREPARATION_RULES, providerReader } from './prepare.mjs';
+import { checkCommon, maxOf, minOf, PREPARATION_RULES, providerReader } from './prepare.mjs';
 
 export const PREPARATION_FORMAT_V2 = 'rnnet.tx-preparation.v2';
 export const PREPARATION_RULES_V2_ID = 'ADR-RN-018-C2';
@@ -76,6 +83,16 @@ const gasStep = (fn) => {
     throw gasRefusal(error);
   }
 };
+/** The Stage A candidate and its candidate digest, built once from verified values. */
+const candidateFrom = (fields) => {
+  try {
+    const candidate = makePreparationCandidate({ format: CANDIDATE_FORMAT, purpose: 'genesis-proof-01', ...fields });
+    return Object.freeze({ candidate, digest: candidateDigest(candidate) });
+  } catch (error) {
+    if (error?.name === 'TxError') throw new PrepError(C.INTENT_INVALID, null, error.detail);
+    throw error;
+  }
+};
 const toTimestamp = (quantity) => {
   const v = BigInt(quantity);
   if (v > BigInt(Number.MAX_SAFE_INTEGER)) throw new PrepError(C.MALFORMED, null, 'block timestamp out of range');
@@ -83,8 +100,8 @@ const toTimestamp = (quantity) => {
 };
 
 /** Operational v2 preparation: the reviewed authority only (null today, so every run is refused before any request). */
-export function prepareSepoliaIntentV2(input) {
-  return prepareSepoliaIntentV2WithAuthority(input, SEPOLIA_GAS_RULES_REVIEW);
+export function prepareSepoliaCandidateV2(input) {
+  return prepareSepoliaCandidateV2WithAuthority(input, SEPOLIA_GAS_RULES_REVIEW);
 }
 
 /**
@@ -101,12 +118,13 @@ export function prepareSepoliaIntentV2(input) {
  *      provider's pinned code;
  *   9. per provider: estimate > 30,000 → RNTP_GAS_TOO_HIGH; estimate < need → RNTP_INCONSISTENT;
  *  10. balance ≥ 30,000 × maxFeePerGas;
- *  11. the v2 record and the intent, built once.
+ *  11. the v2 record and the Stage A candidate, built once: {candidate, digest} (a candidate digest,
+ *      never an intent digest).
  *
  * Change from v1: v1 checks the estimate inside step 5 against the Prague bound. v2 checks it in
  * step 9 against the fork-aware need. Everything else keeps the v1 order.
  */
-export async function prepareSepoliaIntentV2WithAuthority(input, authority) {
+export async function prepareSepoliaCandidateV2WithAuthority(input, authority) {
   if (input === null || typeof input !== 'object' || !exactKeys(input, INPUT_KEYS)) throw new PrepError(C.INPUT_INVALID, null, `input must have exactly ${INPUT_KEYS.join(', ')}`);
   // Each field is read exactly once; providers must be plain data and are frozen copies from here
   // on, so a getter, a proxy or a transport that edits the caller's objects cannot show the checks
@@ -198,7 +216,7 @@ export async function prepareSepoliaIntentV2WithAuthority(input, authority) {
   for (const { reader, o } of readings) {
     if (BigInt(o.balance) < worstCase) throw new PrepError(C.INSUFFICIENT_BALANCE, reader.provider.id, 'balance below gas limit times maxFeePerGas');
   }
-  // 11. One record, one intent.
+  // 11. One record, one candidate.
   const preparation = {
     format: PREPARATION_FORMAT_V2,
     source: 'rpc-read',
@@ -214,36 +232,36 @@ export async function prepareSepoliaIntentV2WithAuthority(input, authority) {
       exchanges: reader.exchanges,
     })),
   };
-  return intentFrom({ network: Network.SEPOLIA, commitment, transaction, preparation });
+  return candidateFrom({ network: Network.SEPOLIA, commitment, transaction, preparation });
 }
 
-/** Operational v2 verifier: the reviewed authority only (null today, so every record is refused). */
-export function verifySepoliaPreparationV2(intent, approvedDigest) {
-  return verifySepoliaPreparationV2WithAuthority(intent, approvedDigest, SEPOLIA_GAS_RULES_REVIEW);
+/** Operational v2 verifier: the reviewed authority only (null today, so every candidate is refused). */
+export function verifySepoliaCandidateV2(candidate, digest) {
+  return verifySepoliaCandidateV2WithAuthority(candidate, digest, SEPOLIA_GAS_RULES_REVIEW);
 }
 
 /**
- * Checks an approved Sepolia intent whose preparation is a v2 record, without any network, in
- * this order:
- *   1. the intent and its digest (approvedIntent): any change to the record, its gas member or
+ * Checks a Stage A candidate and its candidate digest, without any network, in this order:
+ *   1. the candidate envelope and its digest (verifiedPreparationCandidate): an intent, a v1
+ *      record or any other format is refused here, and any change to the record, its gas member or
  *      its review breaks the digest;
  *   2. the record's exact structure: RNTP_INTENT_INVALID for an unsupported `format` (v1
  *      included), an unknown, missing or ill-typed member;
  *   3. pin agreement: every provider entry names the same block;
  *   4. the fee is the one the pin implies; gas is 30,000;
- *   5. the WP2 engine is re-run on the intent's transaction, the pin timestamp, `observedAt`, the
+ *   5. the WP2 engine is re-run on the candidate's transaction, the pin timestamp, `observedAt`, the
  *      given authority and the recorded codes. `ruleSetId`, `fork`, `reviewDigest`, `review`,
  *      `standard`, `floor`, `need` and `gasLimit` must each equal the recomputation
  *      (RNTP_INCONSISTENT);
  *   6. every estimate within [need, 30,000].
- * Returns the frozen intent. Gate D and later gates do not call this yet (WP4).
+ * Returns the frozen candidate. It grants nothing: no consumer signs or broadcasts a candidate.
  */
-export function verifySepoliaPreparationV2WithAuthority(intent, approvedDigest, authority) {
+export function verifySepoliaCandidateV2WithAuthority(candidate, digest, authority) {
   let checked;
   try {
-    checked = approvedIntent(intent, approvedDigest);
+    checked = verifiedPreparationCandidate(candidate, digest);
   } catch (error) {
-    // TxError: an invalid intent or digest; CanonicalError: not canonical data (a fractional or unsafe number).
+    // TxError: an invalid candidate or digest; CanonicalError: not canonical data (a fractional or unsafe number).
     if (error?.name === 'TxError' || error?.name === 'CanonicalError') throw new PrepError(C.INTENT_INVALID, null, error.detail ?? error.code);
     throw error;
   }
@@ -253,7 +271,7 @@ export function verifySepoliaPreparationV2WithAuthority(intent, approvedDigest, 
   const inconsistent = (detail, providerId = null) => {
     throw new PrepError(C.INCONSISTENT, providerId, detail);
   };
-  if (checked.format !== INTENT_FORMAT || checked.network !== Network.SEPOLIA) invalid('not a Sepolia rnnet.unsigned-tx-intent.v1');
+  if (checked.format !== CANDIDATE_FORMAT || checked.network !== Network.SEPOLIA) invalid(`not a Sepolia ${CANDIDATE_FORMAT}`);
   const p = checked.preparation;
   if (!isPlainData(p) || !exactKeys(p, RECORD_KEYS)) invalid(`preparation must have exactly ${RECORD_KEYS.join(', ')}`);
   if (p.format !== PREPARATION_FORMAT_V2) invalid(`unsupported preparation format ${JSON.stringify(p.format)}: only ${PREPARATION_FORMAT_V2}`);

@@ -5,10 +5,13 @@ Written from spec/rnnet.tx-preparation.v2.md and ADR-RN-018 Amendment C2, not fr
 From fixtures/preparation-v2/cases.json it:
   * replays every preparation from the recorded exchanges alone, through the Python v1 provider
     model (rnnet_prep_reference: request bytes, strict parsing, read failures) and the Python gas
-    twin (rnnet_gas_rules_reference), and rebuilds the v2 record, intent and digest, or the
-    refusal: code, provider, RNTX_GAS_* code, blocked reason, and every exchange used;
-  * re-verifies every approved record with its own verifier: structure, version, pin agreement,
-    fee binding, and recomputed rule set, fork, review, standard, floor, need and limit;
+    twin (rnnet_gas_rules_reference), and rebuilds the v2 record, the Stage A candidate
+    (rnnet.tx-preparation-v2-candidate.v1) and its candidate-domain digest, or the refusal: code,
+    provider, RNTX_GAS_* code, blocked reason, and every exchange used;
+  * re-verifies every candidate with its own verifier: envelope, digest domain, version, pin
+    agreement, fee binding, and recomputed rule set, fork, review, standard, floor, need and limit;
+  * checks that a candidate is never an intent: the S1 Python intent_ok refuses every candidate
+    and every v2 preparation placed in an intent;
   * checks that v1 replay is untouched: the B2 fixtures still reproduce under the v1 reference,
     and a v1 record is refused as v2.
 
@@ -35,6 +38,8 @@ gas = _load("rnnet_gas_rules_reference")  # the independent gas engine twin
 tx_ref = prep.tx_ref
 
 V2 = "rnnet.tx-preparation.v2"
+CANDIDATE = "rnnet.tx-preparation-v2-candidate.v1"
+CANDIDATE_DOMAIN = b"rnnet:tx-preparation-v2-candidate:v1\x00"
 RULES = "ADR-RN-018-C2"
 LIMIT = 30000
 PLAN = ["eth_chainId", "eth_getBlockByNumber", "eth_getBlockByNumber", "eth_getTransactionCount", "eth_getTransactionCount",
@@ -53,6 +58,24 @@ def via_gas(fn):
         return fn()
     except gas.Refusal as r:
         raise Refused("RNTP_GAS_TOO_HIGH" if r.code == gas.LIMIT_CODE else "RNTP_INCONSISTENT", None, r.code)
+
+
+def candidate_ok(c) -> bool:
+    """The Stage A envelope: exact members, Sepolia, the Genesis purpose, a v2 top level, the anchor transaction."""
+    if not isinstance(c, dict) or set(c) != {"commitment", "format", "network", "preparation", "purpose", "transaction"}:
+        return False
+    if c["format"] != CANDIDATE or c["network"] != "evm:11155111" or c["purpose"] != "genesis-proof-01":
+        return False
+    if not isinstance(c["commitment"], str) or not prep.COMMITMENT.fullmatch(c["commitment"]):
+        return False
+    p = c["preparation"]
+    if not isinstance(p, dict) or set(p) != {"format", "gas", "observedAt", "providers", "rules", "source"} or p["format"] != V2:
+        return False
+    return tx_ref.sepolia_tx_ok(c["transaction"], c["commitment"]) and int(c["transaction"]["nonce"], 16) < 2**64
+
+
+def candidate_digest(c) -> str:
+    return "sha256:" + prep.hashlib.sha256(CANDIDATE_DOMAIN + tx_ref.canon(c)).hexdigest()
 
 
 def max_fee(base_fee_hex):
@@ -159,13 +182,13 @@ def reproduce(case):
         tx, record = prepare_v2(case, providers, case["testRulesReview"])
     except Refused as r:
         used = len(case["exchanges"]) - sum(len(p.queue) for p in providers)
-        return {"outcome": "FAIL", "code": r.code, "providerId": r.provider, "gasRules": r.gas_rules, "blocked": r.blocked, "digest": None, "intent": None}, used
-    intent = {"format": "rnnet.unsigned-tx-intent.v1", "network": "evm:11155111", "purpose": "genesis-proof-01",
-              "commitment": case["input"]["commitment"], "transaction": tx, "preparation": record}
-    if not tx_ref.intent_ok(intent):
-        return {"outcome": "FAIL", "code": "RNTP_INTENT_INVALID", "providerId": None, "gasRules": None, "blocked": None, "digest": None, "intent": None}, 0
+        return {"outcome": "FAIL", "code": r.code, "providerId": r.provider, "gasRules": r.gas_rules, "blocked": r.blocked, "digest": None, "candidate": None}, used
+    candidate = {"format": CANDIDATE, "network": "evm:11155111", "purpose": "genesis-proof-01",
+                 "commitment": case["input"]["commitment"], "transaction": tx, "preparation": record}
+    if not candidate_ok(candidate):
+        return {"outcome": "FAIL", "code": "RNTP_INTENT_INVALID", "providerId": None, "gasRules": None, "blocked": None, "digest": None, "candidate": None}, 0
     used = len(case["exchanges"]) - sum(len(p.queue) for p in providers)
-    return {"outcome": "PASS", "code": None, "providerId": None, "gasRules": None, "blocked": None, "digest": tx_ref.intent_digest(intent), "intent": intent}, used
+    return {"outcome": "PASS", "code": None, "providerId": None, "gasRules": None, "blocked": None, "digest": candidate_digest(candidate), "candidate": candidate}, used
 
 
 # --- the record verifier ----------------------------------------------------------------------
@@ -174,7 +197,7 @@ def is_qty(v):
     return isinstance(v, str) and prep.QUANTITY.fullmatch(v) is not None
 
 
-def verify(intent, digest, authority):
+def verify(intent, digest, authority):  # `intent` is the candidate under check
     """'PASS' or [code, gasRules]: the spec §6 order."""
     def invalid():
         raise Refused("RNTP_INTENT_INVALID")
@@ -183,9 +206,11 @@ def verify(intent, digest, authority):
         raise Refused("RNTP_INCONSISTENT", pid, rules)
 
     try:
-        if not tx_ref.intent_ok(intent) or not isinstance(digest, str) or tx_ref.intent_digest(intent) != digest:
-            invalid()
-        if intent["network"] != "evm:11155111":
+        try:
+            ok = candidate_ok(intent)
+        except (KeyError, TypeError, ValueError):
+            ok = False
+        if not ok or not isinstance(digest, str) or candidate_digest(intent) != digest:
             invalid()
         p = intent["preparation"]
         if sorted(p) != sorted(["format", "source", "rules", "observedAt", "gas", "providers"]):
@@ -272,25 +297,31 @@ def checks(root: Path):
     yield f"{len(preps) - len(bad)}/{len(preps)} preparations reproduced from the exchanges alone (intent, digest, refusal, requests)", not bad
 
     by = {c["id"]: c for c in preps}
-    g = by["amsterdam-pass-estimate-14847"]["expected"]["intent"]["preparation"]["gas"]
+    g = by["amsterdam-pass-estimate-14847"]["expected"]["candidate"]["preparation"]["gas"]
     yield "Amsterdam: need 14,688 (standard 12,672), estimate 14,847 accepted", (g["need"], g["standard"], g["floor"], g["ruleSetId"]) == (14688, 12672, 14688, "amsterdam")
-    pr = by["prague-pass"]["expected"]["intent"]["preparation"]["gas"]
-    os_ = by["osaka-pass"]["expected"]["intent"]["preparation"]["gas"]
+    pr = by["prague-pass"]["expected"]["candidate"]["preparation"]["gas"]
+    os_ = by["osaka-pass"]["expected"]["candidate"]["preparation"]["gas"]
     yield "Prague and Osaka: need 22,680 under rule set prague", pr["need"] == os_["need"] == 22680 and pr["ruleSetId"] == os_["ruleSetId"] == "prague" and os_["fork"] == "osaka"
-    yield "every accepted v2 intent keeps gas 0x7530 and 16 requests", all(c["expected"]["intent"]["transaction"]["gas"] == "0x7530" and len(c["exchanges"]) == 16
+    yield "every accepted v2 candidate keeps gas 0x7530 and 16 requests", all(c["expected"]["candidate"]["transaction"]["gas"] == "0x7530" and len(c["exchanges"]) == 16
                                                                          for c in preps if c["expected"]["outcome"] == "PASS")
     pre_read = [c for c in preps if c["id"].startswith(("review-", "input-"))]
     yield "review and input refusals send no request", pre_read and all(c["exchanges"] == [] for c in pre_read)
     yield "the review-injection input is refused", by["input-review-injection"]["expected"]["code"] == "RNTP_INPUT_INVALID"
 
     recs = doc["records"]
-    rbad = [r["id"] for r in recs if verify(r["intent"], r["approvedDigest"], r["testRulesReview"]) != r["expected"]]
+    rbad = [r["id"] for r in recs if verify(r["candidate"], r["candidateDigest"], r["testRulesReview"]) != r["expected"]]
     for name in rbad:
         print("  record disagrees:", name)
-    yield f"{len(recs) - len(rbad)}/{len(recs)} records verified independently (valid, tampered, downgraded)", not rbad
+    yield f"{len(recs) - len(rbad)}/{len(recs)} candidates verified independently (valid, tampered, downgraded, confused with an intent)", not rbad
     tamper = [r for r in recs if r["id"].startswith("tamper-")]
     yield f"all {len(tamper)} tampered records are refused", tamper and all(r["expected"] != "PASS" for r in tamper)
-    yield "a v1 record is refused as v2", next(r for r in recs if r["id"] == "v1-record-refused")["expected"] == ["RNTP_INTENT_INVALID", None]
+    yield "a v1 intent is refused as a v2 candidate", next(r for r in recs if r["id"] == "v1-intent-refused")["expected"] == ["RNTP_INTENT_INVALID", None]
+    passes = [c for c in preps if c["expected"]["outcome"] == "PASS"]
+    yield "a candidate is never an intent (S1 intent_ok refuses every candidate)", passes and not any(tx_ref.intent_ok(c["expected"]["candidate"]) for c in passes)
+    yield "a candidate relabelled as an intent is refused (S1 refuses its v2 preparation)", not any(
+        tx_ref.intent_ok({**c["expected"]["candidate"], "format": "rnnet.unsigned-tx-intent.v1"}) for c in passes)
+    yield "the candidate digest is never the intent-domain digest", all(
+        candidate_digest(c["expected"]["candidate"]) != tx_ref.intent_digest(c["expected"]["candidate"]) for c in passes)
     yield "no authority: every v2 record is refused", next(r for r in recs if r["id"] == "no-authority")["expected"] == ["RNTP_INCONSISTENT", "RNTX_GAS_RULES_UNREVIEWED"]
 
     # v1 is untouched: the B2 fixtures still reproduce under the v1 reference, and none is v2.

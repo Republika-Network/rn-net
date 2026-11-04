@@ -141,3 +141,75 @@ test('status: an unsupported preparation is refused at makeIntent, before any re
   }
   assert.equal(typeof replayTextTransport, 'function');
 });
+
+// --- RN-NET-03B2-WP3-R1: Stage A v2 candidates are never intents ---------------------------------
+
+const V2_CASES = JSON.parse(read('fixtures/preparation-v2/cases.json'));
+const passing = V2_CASES.preparations.find((c) => c.id === 'amsterdam-pass-estimate-14847').expected;
+const CANDIDATE = passing.candidate;
+const CANDIDATE_DIGEST = passing.digest;
+// The two forms a candidate could be presented in: as itself with its candidate digest, and
+// relabelled as an intent with a correctly recomputed intent-domain digest.
+const candidateForms = () => {
+  const relabelled = { ...CANDIDATE, format: 'rnnet.unsigned-tx-intent.v1' };
+  return [['candidate', CANDIDATE, CANDIDATE_DIGEST], ['relabelled', relabelled, rawDigest(relabelled)]];
+};
+
+test('WP3-R1: makeIntent, approvedIntent and intentDigest refuse a v2 candidate in either form', () => {
+  assert.equal(CANDIDATE.format, 'rnnet.tx-preparation-v2-candidate.v1');
+  for (const [name, value, digest] of candidateForms()) {
+    invalid(() => makeIntent(value));
+    invalid(() => approvedIntent(value, digest));
+    invalid(() => intentDigest(value));
+    assert.notEqual(rawDigest(value), CANDIDATE_DIGEST, `${name}: an intent-domain digest is never the candidate digest`);
+  }
+});
+
+test('WP3-R1: txverify and the hand-off refuse a v2 candidate in either form', () => {
+  const passingRecord = verifySignedTransaction({ intent: SEP_INTENT, approvedDigest: SEP_SIGNED.intentDigest, signedTransaction: SEP_SIGNED.signedTransaction });
+  for (const [name, value, digest] of candidateForms()) {
+    const record = verifySignedTransaction({ intent: value, approvedDigest: digest, signedTransaction: SEP_SIGNED.signedTransaction });
+    assert.deepEqual([record.outcome, record.code], ['FAIL', 'RNTX_INTENT_INVALID'], name);
+    invalid(() => checkHandoff({ intent: value, approvedDigest: digest, signedTransaction: SEP_SIGNED.signedTransaction, verifications: [passingRecord, passingRecord] }));
+  }
+});
+
+test('WP3-R1: the broadcaster sends nothing for a v2 candidate in either form', async () => {
+  const c = b3.submit.find((x) => x.inputs.intent.includes('"network":"evm:11155111"') && x.expected.writes === 1);
+  for (const [name, value, digest] of candidateForms()) {
+    const inputs = { ...c.inputs, intent: canonicalize(value), approvedDigest: digest };
+    let sent = 0;
+    const transport = async () => {
+      sent += 1;
+      throw new Error('no request may be sent');
+    };
+    transport.remaining = () => 0;
+    const referenceVerifier = () => verifySignedTransaction({ intent: value, approvedDigest: digest, signedTransaction: inputs.signedTransaction });
+    const { result } = await withLog(c.logBefore, (dirs) => runBroadcast({
+      inputs,
+      environment: { endpoints: b3.endpoints, now: () => c.now, referenceVerifier, transport, logDir: dirs.logDir, evidenceDir: dirs.evidenceDir, ...c.environmentExtra },
+    }));
+    assert.deepEqual([result.outcome, result.code, result.requests, result.writes, sent], ['NOT_SENT', 'RNTX_INTENT_INVALID', 0, 0, 0], name);
+  }
+});
+
+test('WP3-R1: status never treats a v2 candidate as an approved intent, even when the log names its digest', async () => {
+  const c = b3.statusChecks.find((x) => x.inputs.intent.includes('"network":"evm:11155111"'));
+  for (const [name, value, digest] of candidateForms()) {
+    const oldAttempt = entryDigest(c.logBefore.find((e) => e.kind === 'ATTEMPTING'));
+    const relabelledLog = c.logBefore.map((e) => (e.kind === 'ATTEMPTING' ? { ...e, intentDigest: digest } : e));
+    const attempt = relabelledLog.find((e) => e.kind === 'ATTEMPTING');
+    const logBefore = relabelledLog.map((e) => (e.attemptEntry === oldAttempt ? { ...e, attemptEntry: entryDigest(attempt) } : e));
+    const authorization = canonicalize({ ...JSON.parse(c.inputs.authorization), attemptEntry: entryDigest(attempt) });
+    let sent = 0;
+    const transport = async () => {
+      sent += 1;
+      throw new Error('no request may be sent');
+    };
+    const { result } = await withLog(logBefore, (dirs) => runStatusCheck({
+      inputs: { ...c.inputs, authorization, intent: canonicalize(value) },
+      environment: { endpoints: b3.endpoints, now: () => c.now, transport, logDir: dirs.logDir, evidenceDir: dirs.evidenceDir },
+    }));
+    assert.deepEqual([result.code, result.finding, sent], ['RNBC_STATUS_MISMATCH', null, 0], name);
+  }
+});

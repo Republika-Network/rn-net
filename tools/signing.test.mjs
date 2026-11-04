@@ -185,3 +185,13 @@ test('RN-NET S1: the signer refuses an unsupported preparation, with a correctly
   // The historical synthetic intent still signs to its golden bytes.
   assert.equal(createSigner().sign(base, golden.signed.sepolia.intentDigest, key).signedTransaction, golden.signed.sepolia.signedTransaction);
 });
+
+test('RN-NET WP3-R1: the signer refuses a v2 candidate as itself and relabelled as an intent', () => {
+  const v2 = JSON.parse(readFileSync(new URL('../fixtures/preparation-v2/cases.json', import.meta.url), 'utf8'));
+  const { candidate, digest } = v2.preparations.find((c) => c.id === 'amsterdam-pass-estimate-14847').expected;
+  const raw = (value) => `sha256:${createHash('sha256').update(INTENT_DIGEST_DOMAIN).update(canonicalBytes(value)).digest('hex')}`;
+  const key = fixtureKey('evm:11155111', 'rn-net-03b2b1-sepolia-1');
+  const relabelled = { ...candidate, format: 'rnnet.unsigned-tx-intent.v1' };
+  assert.equal(code(() => createSigner().sign(candidate, digest, key)), 'RNTX_INTENT_INVALID');
+  assert.equal(code(() => createSigner().sign(relabelled, raw(relabelled), key)), 'RNTX_INTENT_INVALID');
+});

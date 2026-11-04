@@ -46,7 +46,7 @@ const refused = (code, providerId = null) => (error) => {
 const methodsOf = (exchanges, id) => exchanges.filter((e) => e.providerId === id).map((e) => JSON.parse(e.request).method);
 
 test('the public API prepares intents only: no key, signing or write function', () => {
-  assert.deepEqual(Object.keys(api).sort(), ['BlockedReason', 'PREPARATION_FORMAT', 'PREPARATION_FORMAT_V2', 'PREPARATION_RULES', 'PREPARATION_RULES_V2_ID', 'PrepError', 'PrepErrorCode', 'prepareSepoliaIntent', 'prepareSepoliaIntentV2', 'prepareXrplIntent', 'verifySepoliaPreparationV2']);
+  assert.deepEqual(Object.keys(api).sort(), ['BlockedReason', 'PREPARATION_FORMAT', 'PREPARATION_FORMAT_V2', 'PREPARATION_RULES', 'PREPARATION_RULES_V2_ID', 'PrepError', 'PrepErrorCode', 'prepareSepoliaCandidateV2', 'prepareSepoliaIntent', 'prepareXrplIntent', 'verifySepoliaCandidateV2']);
   assert.ok(Object.isFrozen(PREPARATION_RULES) && Object.isFrozen(PREPARATION_RULES.xrpl) && Object.isFrozen(PREPARATION_RULES.sepolia));
   assert.equal(PREPARATION_RULES.maxAttempts, 1);
 });

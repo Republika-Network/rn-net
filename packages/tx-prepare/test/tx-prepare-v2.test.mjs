@@ -1,9 +1,9 @@
 // RN-NET-03B2-WP3: fork-aware Sepolia preparation and rnnet.tx-preparation.v2 (offline, synthetic).
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { approvedIntent, intentDigest, REVIEWED_GAS_RULE_SOURCES, SEPOLIA_GAS_RULES_REVIEW } from '../../tx-intent/src/index.mjs';
+import { approvedIntent, candidateDigest, intentDigest, makeIntent, REVIEWED_GAS_RULE_SOURCES, SEPOLIA_GAS_RULES_REVIEW } from '../../tx-intent/src/index.mjs';
 import * as api from '../src/index.mjs';
-import { PREPARATION_FORMAT_V2, prepareSepoliaIntentV2WithAuthority, verifySepoliaPreparationV2WithAuthority } from '../src/prepare-v2.mjs';
+import { PREPARATION_FORMAT_V2, prepareSepoliaCandidateV2WithAuthority, verifySepoliaCandidateV2WithAuthority } from '../src/prepare-v2.mjs';
 import { COMMITMENT, fakeTransport, NOW, SEPOLIA_FROM, sepoliaProviders, sepoliaServer } from './fake-providers.mjs';
 
 const [A, B] = sepoliaProviders();
@@ -20,7 +20,7 @@ const servers = (a = {}, b = a, shift = 0) => ({ [A.id]: sepoliaServer({ shift, 
 const run = (opts = {}) => {
   const transport = fakeTransport(opts.servers ?? servers());
   const input = { commitment: COMMITMENT, from: SEPOLIA_FROM, now: opts.now ?? NOW, providers: opts.providers ?? [A, B], transport, ...(opts.extra ?? {}) };
-  return { transport, promise: prepareSepoliaIntentV2WithAuthority(input, Object.hasOwn(opts, 'review') ? opts.review : review()) };
+  return { transport, promise: prepareSepoliaCandidateV2WithAuthority(input, Object.hasOwn(opts, 'review') ? opts.review : review()) };
 };
 const refused = (code, providerId = null, gasRules = undefined) => (e) => {
   assert.equal(e.name, 'PrepError');
@@ -35,16 +35,16 @@ const neverCalled = async () => {
 
 test('the operational v2 exports take the reviewed authority only, which is null: refused before any request', async () => {
   assert.equal(SEPOLIA_GAS_RULES_REVIEW, null);
-  assert.ok(!('prepareSepoliaIntentV2WithAuthority' in api) && !('verifySepoliaPreparationV2WithAuthority' in api));
-  await assert.rejects(api.prepareSepoliaIntentV2({ commitment: COMMITMENT, from: SEPOLIA_FROM, now: NOW, providers: [A, B], transport: neverCalled }), refused('RNTP_INCONSISTENT', null, 'RNTX_GAS_RULES_UNREVIEWED'));
+  assert.ok(!('prepareSepoliaCandidateV2WithAuthority' in api) && !('verifySepoliaCandidateV2WithAuthority' in api));
+  await assert.rejects(api.prepareSepoliaCandidateV2({ commitment: COMMITMENT, from: SEPOLIA_FROM, now: NOW, providers: [A, B], transport: neverCalled }), refused('RNTP_INCONSISTENT', null, 'RNTX_GAS_RULES_UNREVIEWED'));
   const { promise } = run();
-  const { intent, digest } = await promise;
-  assert.throws(() => api.verifySepoliaPreparationV2(intent, digest), refused('RNTP_INCONSISTENT', null, 'RNTX_GAS_RULES_UNREVIEWED'));
+  const { candidate: intent, digest } = await promise;
+  assert.throws(() => api.verifySepoliaCandidateV2(intent, digest), refused('RNTP_INCONSISTENT', null, 'RNTX_GAS_RULES_UNREVIEWED'));
 });
 
 test('Amsterdam: need 14,688; estimate 14,847 accepted; gas stays 30,000; one v2 record covered by the digest', async () => {
   const { transport, promise } = run();
-  const { intent, digest } = await promise;
+  const { candidate: intent, digest } = await promise;
   assert.equal(transport.exchanges.length, 16);
   const p = intent.preparation;
   assert.equal(p.format, PREPARATION_FORMAT_V2);
@@ -53,15 +53,20 @@ test('Amsterdam: need 14,688; estimate 14,847 accepted; gas stays 30,000; one v2
   assert.deepEqual(p.gas.review, review());
   assert.equal(intent.transaction.gas, '0x7530');
   assert.deepEqual(p.providers.map((e) => [e.id, e.code, e.estimateGas]), [[A.id, '0x', '0x39ff'], [B.id, '0x', '0x39ff']]);
-  assert.deepEqual(approvedIntent(intent, digest), intent);
-  assert.equal(intentDigest(intent), digest);
-  assert.deepEqual(verifySepoliaPreparationV2WithAuthority(intent, digest, review()), intent);
+  // A Stage A candidate: its own format and digest domain; never an intent (S1, C2 Q4).
+  assert.equal(intent.format, 'rnnet.tx-preparation-v2-candidate.v1');
+  assert.equal(candidateDigest(intent), digest);
+  assert.deepEqual(verifySepoliaCandidateV2WithAuthority(intent, digest, review()), intent);
+  assert.throws(() => makeIntent(intent), (e) => e.code === 'RNTX_INTENT_INVALID');
+  assert.throws(() => approvedIntent(intent, digest), (e) => e.code === 'RNTX_INTENT_INVALID');
+  const asIntent = { ...intent, format: 'rnnet.unsigned-tx-intent.v1' };
+  assert.throws(() => intentDigest(asIntent), (e) => e.code === 'RNTX_INTENT_INVALID'); // the S1 allowlist refuses v2
 });
 
 test('Prague and Osaka eras: need 22,680 under rule set prague; the fork is recorded', async () => {
   for (const [now, fork] of [[1_750_000_000, 'prague'], [1_760_600_000, 'osaka']]) {
     const { promise } = run({ now, review: review(now - 86400), servers: servers({ estimate: q(22680) }, { estimate: q(22680) }, NOW - now) });
-    const { intent } = await promise;
+    const { candidate: intent } = await promise;
     assert.deepEqual([intent.preparation.gas.ruleSetId, intent.preparation.gas.fork, intent.preparation.gas.need], ['prague', fork, 22680]);
   }
 });
@@ -131,14 +136,14 @@ test('each input field is read once; a transport that edits the caller objects c
   };
   const input = { commitment: COMMITMENT, from: SEPOLIA_FROM, providers, transport };
   Object.defineProperty(input, 'now', { enumerable: true, get: () => { reads += 1; return NOW; } });
-  const { intent } = await prepareSepoliaIntentV2WithAuthority(input, review());
+  const { candidate: intent } = await prepareSepoliaCandidateV2WithAuthority(input, review());
   assert.equal(reads, 1);
   assert.deepEqual(intent.preparation.providers.map((e) => [e.id, e.operator]), [[A.id, A.operator], [B.id, B.operator]]);
 });
 
 test('the request plan is C1 exactly: 8 per provider, every account read and the estimate at {blockHash, requireCanonical}', async () => {
   const { transport, promise } = run();
-  const { intent } = await promise;
+  const { candidate: intent } = await promise;
   const hash = intent.preparation.providers[0].block.hash;
   for (const id of [A.id, B.id]) {
     const bodies = transport.exchanges.filter((e) => e.providerId === id).map((e) => JSON.parse(e.request));
@@ -150,23 +155,23 @@ test('the request plan is C1 exactly: 8 per provider, every account read and the
 });
 
 test('verifier: strict version dispatch and recomputation of every gas field', async () => {
-  const { intent, digest } = await run().promise;
+  const { candidate: intent, digest } = await run().promise;
   const r = review();
   const tamper = (edit) => {
     const i = JSON.parse(JSON.stringify(intent));
     edit(i);
-    return [i, intentDigest(i)];
+    return [i, candidateDigest(i)];
   };
   for (const edit of [(i) => { i.preparation.format = 'rnnet.tx-preparation.v1'; }, (i) => { i.preparation.gas.extra = 1; }, (i) => { i.preparation.gas.need = 14688.5; }]) {
     const [i, d] = (() => { try { return tamper(edit); } catch { const i2 = JSON.parse(JSON.stringify(intent)); edit(i2); return [i2, digest]; } })();
-    assert.throws(() => verifySepoliaPreparationV2WithAuthority(i, d, r), refused('RNTP_INTENT_INVALID'));
+    assert.throws(() => verifySepoliaCandidateV2WithAuthority(i, d, r), refused('RNTP_INTENT_INVALID'));
   }
   for (const k of ['standard', 'floor', 'need']) {
     const [i, d] = tamper((x) => { x.preparation.gas[k] += 1; });
-    assert.throws(() => verifySepoliaPreparationV2WithAuthority(i, d, r), refused('RNTP_INCONSISTENT'));
+    assert.throws(() => verifySepoliaCandidateV2WithAuthority(i, d, r), refused('RNTP_INCONSISTENT'));
   }
   // A digest that is not the approved one.
   const changed = JSON.parse(JSON.stringify(intent));
   changed.preparation.gas.need += 1;
-  assert.throws(() => verifySepoliaPreparationV2WithAuthority(changed, digest, r), refused('RNTP_INTENT_INVALID'));
+  assert.throws(() => verifySepoliaCandidateV2WithAuthority(changed, digest, r), refused('RNTP_INTENT_INVALID'));
 });

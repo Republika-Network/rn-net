@@ -8,8 +8,8 @@
 //   - `preparations`: a simulated provider pair (the B2 fake providers, unresolvable
 //     fixture.invalid hosts), the exact exchanges, and the result stated BY HAND below (PASS, or
 //     a code, provider, RNTX_GAS_* code and request count);
-//   - `records`: approved v2 intents, valid or tampered, and the verifier's expected outcome,
-//     stated by hand.
+//   - `records`: Stage A candidates (rnnet.tx-preparation-v2-candidate.v1, never intents), valid,
+//     tampered or confused with intents, and the verifier's expected outcome, stated by hand.
 //
 // The rules review in each case is a TEST record ("TEST ONLY"). It is passed to the internal
 // …WithAuthority seam and is never the reviewed authority, which stays null.
@@ -18,8 +18,9 @@ import { Buffer } from 'node:buffer';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { canonicalBytes } from '../../packages/canonical/src/index.mjs';
-import { intentDigest, REVIEWED_GAS_RULE_SOURCES } from '../../packages/tx-intent/src/index.mjs';
-import { prepareSepoliaIntentV2WithAuthority, verifySepoliaPreparationV2WithAuthority } from '../../packages/tx-prepare/src/prepare-v2.mjs';
+import { candidateDigest, INTENT_DIGEST_DOMAIN, REVIEWED_GAS_RULE_SOURCES } from '../../packages/tx-intent/src/index.mjs';
+import { createHash } from 'node:crypto';
+import { prepareSepoliaCandidateV2WithAuthority, verifySepoliaCandidateV2WithAuthority } from '../../packages/tx-prepare/src/prepare-v2.mjs';
 import { COMMITMENT, fakeTransport, NOW, reply, SEPOLIA_FROM, sepoliaProviders, sepoliaServer } from '../../packages/tx-prepare/test/fake-providers.mjs';
 
 export const PATH = fileURLToPath(new URL('../../fixtures/preparation-v2/cases.json', import.meta.url));
@@ -129,11 +130,11 @@ async function runPreparation(c) {
   const review = reviewOf(c);
   let r;
   try {
-    const { intent, digest } = await prepareSepoliaIntentV2WithAuthority({ ...input, transport }, review);
-    r = { outcome: 'PASS', code: null, providerId: null, gasRules: null, blocked: null, digest, intent };
+    const { candidate, digest } = await prepareSepoliaCandidateV2WithAuthority({ ...input, transport }, review);
+    r = { outcome: 'PASS', code: null, providerId: null, gasRules: null, blocked: null, digest, candidate };
   } catch (error) {
     if (error?.name !== 'PrepError') throw error;
-    r = { outcome: 'FAIL', code: error.code, providerId: error.providerId, gasRules: error.gasRules ?? null, blocked: error.blocked, digest: null, intent: null };
+    r = { outcome: 'FAIL', code: error.code, providerId: error.providerId, gasRules: error.gasRules ?? null, blocked: error.blocked, digest: null, candidate: null };
   }
   const exp = c.expect;
   const ok = exp === 'PASS'
@@ -155,7 +156,7 @@ async function runPreparation(c) {
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const RECORD_MUTATIONS = [
-  // [id, mutate(intent), redigest?, expected [code, gasRules]]
+  // [id, mutate(candidate), redigest?, expected [code, gasRules]]
   ['format-v1', (i) => { i.preparation.format = 'rnnet.tx-preparation.v1'; }, true, ['RNTP_INTENT_INVALID', null]],
   ['format-v3', (i) => { i.preparation.format = 'rnnet.tx-preparation.v3'; }, true, ['RNTP_INTENT_INVALID', null]],
   ['rules-c1', (i) => { i.preparation.rules = 'ADR-RN-018'; }, true, ['RNTP_INTENT_INVALID', null]],
@@ -195,44 +196,50 @@ const RECORD_MUTATIONS = [
   ['pin-not-redigested', (i) => { i.preparation.providers[0].block.hash = `0x${'aa'.repeat(32)}`; }, false, ['RNTP_INTENT_INVALID', null]],
 ];
 
-function runRecord(id, intent, digest, authority, expect) {
+function runRecord(id, candidate, digest, authority, expect) {
   let got;
   try {
-    verifySepoliaPreparationV2WithAuthority(intent, digest, authority);
+    verifySepoliaCandidateV2WithAuthority(candidate, digest, authority);
     got = 'PASS';
   } catch (error) {
     if (error?.name !== 'PrepError') throw error;
     got = [error.code, error.gasRules ?? null];
   }
   if (JSON.stringify(got) !== JSON.stringify(expect)) throw new Error(`record ${id}: expected ${JSON.stringify(expect)}, got ${JSON.stringify(got)}`);
-  return { id, intent, approvedDigest: digest, testRulesReview: authority, expected: got };
+  return { id, candidate, candidateDigest: digest, testRulesReview: authority, expected: got };
 }
 
 function buildRecords(preparations, b2Cases) {
   const out = [];
   for (const base of preparations.filter((p) => p.expected.outcome === 'PASS' && ['amsterdam-pass-estimate-14847', 'prague-pass', 'osaka-pass'].includes(p.id))) {
-    out.push(runRecord(`valid-${base.id}`, base.expected.intent, base.expected.digest, base.testRulesReview, 'PASS'));
+    out.push(runRecord(`valid-${base.id}`, base.expected.candidate, base.expected.digest, base.testRulesReview, 'PASS'));
   }
   const base = preparations.find((p) => p.id === 'amsterdam-pass-estimate-14847');
-  out.push(runRecord('no-authority', base.expected.intent, base.expected.digest, null, ['RNTP_INCONSISTENT', 'RNTX_GAS_RULES_UNREVIEWED']));
-  out.push(runRecord('other-authority', base.expected.intent, base.expected.digest, testReview(NOW - 3600), ['RNTP_INCONSISTENT', null]));
-  out.push(runRecord('wrong-approved-digest', base.expected.intent, `sha256:${'4'.repeat(64)}`, base.testRulesReview, ['RNTP_INTENT_INVALID', null]));
+  out.push(runRecord('no-authority', base.expected.candidate, base.expected.digest, null, ['RNTP_INCONSISTENT', 'RNTX_GAS_RULES_UNREVIEWED']));
+  out.push(runRecord('other-authority', base.expected.candidate, base.expected.digest, testReview(NOW - 3600), ['RNTP_INCONSISTENT', null]));
+  out.push(runRecord('wrong-candidate-digest', base.expected.candidate, `sha256:${'4'.repeat(64)}`, base.testRulesReview, ['RNTP_INTENT_INVALID', null]));
+  // Candidate and intent never interchange: an intent-domain digest is not a candidate digest, and
+  // a candidate relabelled as an intent is not a candidate.
+  const intentDomain = `sha256:${createHash('sha256').update(INTENT_DIGEST_DOMAIN).update(canonicalBytes(base.expected.candidate)).digest('hex')}`;
+  out.push(runRecord('intent-domain-digest', base.expected.candidate, intentDomain, base.testRulesReview, ['RNTP_INTENT_INVALID', null]));
+  const relabelled = { ...clone(base.expected.candidate), format: 'rnnet.unsigned-tx-intent.v1' };
+  out.push(runRecord('relabelled-as-intent', relabelled, base.expected.digest, base.testRulesReview, ['RNTP_INTENT_INVALID', null]));
   for (const [id, mutate, redigest, expect] of RECORD_MUTATIONS) {
-    const intent = clone(base.expected.intent);
-    mutate(intent);
+    const candidate = clone(base.expected.candidate);
+    mutate(candidate);
     let digest = base.expected.digest;
     if (redigest) {
       try {
-        digest = intentDigest(intent);
+        digest = candidateDigest(candidate);
       } catch {
-        digest = base.expected.digest; // the intent itself is invalid: the verifier refuses it before any digest comparison matters
+        digest = base.expected.digest; // the candidate itself is invalid: the verifier refuses it before any digest comparison matters
       }
     }
-    out.push(runRecord(`tamper-${id}`, intent, digest, base.testRulesReview, expect));
+    out.push(runRecord(`tamper-${id}`, candidate, digest, base.testRulesReview, expect));
   }
-  // A v1 record (the C1 B2 fixture) is never accepted as v2.
+  // A v1 intent (the C1 B2 fixture) is never accepted as a v2 candidate.
   const v1 = b2Cases.find((c) => c.id === 'sepolia-pass');
-  out.push(runRecord('v1-record-refused', v1.expected.intent, v1.expected.digest, base.testRulesReview, ['RNTP_INTENT_INVALID', null]));
+  out.push(runRecord('v1-intent-refused', v1.expected.intent, v1.expected.digest, base.testRulesReview, ['RNTP_INTENT_INVALID', null]));
   return out;
 }
 
