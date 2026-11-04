@@ -185,6 +185,18 @@ The SMOKE-02 finalized block carried post-Prague header fields (`blockAccessList
 `slotNumber`). A later fork may have repriced calldata, so gas use **must be confirmed with
 `eth_estimateGas` at gate D**, and the limit re-checked, before signing.
 
+**Update (Genesis Proof 01 WP1; [ADR-RN-018 Amendment C2](../adr/ADR-RN-018-transaction-preparation-reads.md), Proposed).**
+- The 22,680 above holds under Prague and Osaka rules only.
+- Sepolia activated Amsterdam (Glamsterdam) at `amsterdamTime` 1791294816 (2026-10-06 13:53:36
+  UTC).
+- Under Amsterdam:
+  - EIP-2780 sets the base for this self-send to 12,000;
+  - EIP-7976 sets the floor to 16 gas × 4 tokens per byte;
+  - gas used is max(12,000 + 672, 12,000 + 16 × 168) = **14,688**, which leaves 15,312 of
+    margin.
+- Amendment C2 proposes a fork-aware calculation, keeps the pinned `eth_estimateGas` as a
+  fork-aware cross-check, and adds a receipt `gasUsed` check.
+
 ### 3.4 Fees and funding
 
 | Item | Value |
@@ -242,4 +254,4 @@ nothing about any network.
 | 5 | ADR-RN-009 to ADR-RN-012 (payload and transports) are still **Proposed** on `main`. ADR-RN-016 is Accepted. | Founder acceptance of ADR-RN-009 to 012 before gate D |
 | 6 | SMOKE-01 raw captures and their hashes could not be recovered, so SMOKE-01 has not been independently re-verified | Founder locates them, or accepts the recorded summary |
 | 7 | 1RPC finalized-block lag unresolved | A separately authorized read-only comparison of the finalized block on both providers |
-| 8 | The calldata gas rules of Sepolia's current fork are unconfirmed | `eth_estimateGas` at gate D |
+| 8 | The calldata gas rules of Sepolia's current fork are unconfirmed. **Researched in WP1:** Amsterdam is active and the need is 14,688 (§3.3 update) | ADR-RN-018 Amendment C2 (Proposed): the fork-aware need, the pinned `eth_estimateGas` cross-check at gate D, the receipt check |

@@ -3,6 +3,7 @@
 - Status: Accepted for the offline read-only preparation architecture only (founder approval of PR #16 as implemented, RN-NET-03B2-B2 governance closure)
 - Date: 2026-11-01
 - Amendment C1: **Accepted for the reviewed offline two-pass Sepolia preparation architecture only** (recorded when the founder merges this documentation change; the implementation is RN-NET-03B2-C3, PR #26, squash-merged as main `1723439`, whose tree `a91fc55` equals the reviewed head `578a4db`). It authorizes no live RPC: the C6 compatibility check (P5) and every preparation run need their own read authorization. Live Sepolia preparation stays `BLOCKED` until C6 records block-hash support on both providers, and its live provisions (P5, P9 enabled) are not accepted.
+- Amendment C2: **Proposed** (RN-NET Genesis Proof 01 WP1), not accepted: a fork-aware Sepolia gas policy (see *Amendment C2* below). Until it is accepted, Amendment C1 applies unchanged; C2 authorizes no implementation, no live RPC request and no change to the C6 manifest, evidence or report.
 - Amends: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md). It adds read-only methods to the allowlist and changes nothing else in that ADR.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md)
 - Specification: [rnnet.tx-preparation.v1](../../spec/rnnet.tx-preparation.v1.md)
@@ -446,3 +447,367 @@ access disabled; that record accepted nothing and authorized nothing.
   - **broadcasting** (gate E, H8 and H9);
   - **public evidence publication** (gate F, H10).
 - **Not covered:** ADR-RN-019 Amendment C1 (live entry points) stays **Proposed**.
+
+## Amendment C2 (Proposed): fork-aware Sepolia gas policy
+
+- Status: **Proposed** (RN-NET Genesis Proof 01 WP1). **Not accepted.** While it is Proposed:
+  - Amendment C1 applies unchanged, and so does P4's bar on any alternative estimation strategy;
+  - it authorizes no implementation, no live RPC request, no new read authorization (H3 or H6),
+    and no change to `LIVE_NETWORK_ACCESS`, `AGREED_EVIDENCE_DIR` or `SEPOLIA_COMPATIBILITY`;
+  - it makes no change to the C6 manifest, evidence or report.
+- Acceptance needs three things, in order (P4):
+  - an independent review of this text;
+  - an implementation PR with simulated refusal cases and an independent Python reference;
+  - the founder's acceptance.
+- Basis:
+  - the C6-H3 run, authorization `c6-h3-20261104-032110-0aa58aaa`, report SHA-256
+    `036542204dc7beefd08b9a2ced888c72ee778d90c143b104fc1e61907dedc701`, replayed by the Python
+    reference with 16/16 agreeing;
+  - the founder's private WP0 research memo, whose sources are pinned in G2. The raw C6 evidence
+    stays private, and nothing from it is reproduced here beyond the sanitized facts in G9.
+
+### G0. Why an amendment is needed
+
+C6-H3 ended **BLOCKED, branch B**: PublicNode's pinned `eth_estimateGas` (S10) was classified
+BLOCKED. The provider did not refuse the request. It answered with a QUANTITY of **14,847**. The
+reviewed classifier requires at least **22,680**, which is the EIP-7623 floor for the 42-byte
+payload **under Prague rules**.
+
+Every block C6 captured is after Sepolia's Amsterdam (Glamsterdam) activation (G1). Under the
+Amsterdam rules the same transaction needs **14,688** (G4). The standard estimator reports a
+limit at most 1.5 % above the need, and its exact search reproduces **14,847** from 14,688
+(G8).
+
+The 22,680 minimum was therefore **outdated for the observed blocks**. RN-NET's preparation code
+has the same Prague-only bound in two places:
+- `packages/tx-prepare/src/prepare.mjs`: `estimate < intrinsic`;
+- `packages/tx-intent/src/genesis.mjs`: `intrinsicGas`.
+
+So preparation would refuse a correct estimate too.
+
+This amendment replaces the single, fork-blind bound with a reviewed, fork-aware policy. It keeps
+every protection of Amendment C1:
+- pinned block-hash reads, `requireCanonical: true` and one agreed pin;
+- chain identity and provider agreement;
+- refusal without fallback;
+- the fixed 30,000 gas limit;
+- the live estimate, as a cross-check.
+
+### G1. Supported Sepolia forks and activation timestamps
+
+Activation is by **block timestamp** (execution layer), from the Sepolia chain configuration in G2.
+
+| Rule set | Sepolia activation (`…Time`, unix s, UTC) | CL epoch | Gas rules for this transaction |
+|---|---|---|---|
+| — (pre-Prague) | before 1741159776 | — | **unsupported: refused** |
+| `prague` | `pragueTime` 1741159776 (2025-03-05 07:29:36) | Electra 222464 | EIP-2028 calldata, EIP-7623 floor |
+| `prague` (unchanged) | `osakaTime` 1760427360 (2025-10-14 07:36:00); `bpo1Time` 1761017184; `bpo2Time` 1761607008 | Fulu 272640; 274176; 275712 | Osaka and the two blob-parameter-only forks change nothing for this transaction. EIP-7825's 2^24 cap does not bind at 30,000 |
+| `amsterdam` | `amsterdamTime` **1791294816** (2026-10-06 13:53:36) | Gloas 353024 | EIP-2780 base, EIP-7976 floor (G3) |
+| — (later) | any activation after `amsterdamTime`, or any time at or after `REVIEWED_RULES_HORIZON` | — | **unreviewed: refused** |
+
+- The selector is `rules(t)`: the last rule set whose activation is ≤ `t`. It is a pure function
+  of a reviewed table and a timestamp.
+- **A JSON-RPC response never selects a rule set.** Header fields (for example
+  `blockAccessListHash`, `slotNumber`) may only *refuse*, as a secondary consistency check (G5,
+  R7). They never prove a fork.
+- **Scheduled is not the same as activated.** EIP-7773 lists Glamsterdam's EIPs as "Scheduled for
+  Inclusion". EIP-2780, EIP-7976, EIP-8037 and EIP-7778 are still Last Call. The rules in force
+  are those **implemented by the client releases at the activation**. G2 pins two independent
+  implementations, which agree.
+
+### G2. Reviewed, version-pinned primary sources
+
+| Source | Pinned at | Used for | SHA-256 of the file as fetched |
+|---|---|---|---|
+| `eth-clients/sepolia` `metadata/genesis.json` | commit `7b1b9d9549787b6bbf538f943304c4cf84f7e39e` | `pragueTime` … `amsterdamTime`; no later fork configured | `d558a75ef48e6fdb224b063c84c309de8a55995e263db63515b79ad4432a37df` |
+| `ethereum/execution-specs` `src/ethereum/forks/amsterdam/vm/gas.py` | commit `16898000911c1e3caa57be08509536c10ae92d3e` (branch `forks/amsterdam`) | `TX_BASE` 12000, `TX_VALUE_COST` 6000, `COLD_ACCOUNT_ACCESS` 3000, `TX_DATA_TOKEN_STANDARD` 4, `TX_DATA_TOKEN_FLOOR` 16 | `67973191c49234387186ad17316c556adab73723f782e95104dd3a949132367c` |
+| `ethereum/execution-specs` `src/ethereum/forks/amsterdam/transactions.py` | same commit | `calculate_intrinsic_cost`: self-transfer skips the recipient and value charges; `floor_tokens_in_calldata = len(data) × 4`; floor base = `TX_BASE` + recipient charge | `846e1b579e133ab2e282ca19e85903b2b7a969d47b0b8511cf70c938e38d7188` |
+| go-ethereum `params/protocol_params.go` | tag `v1.17.7` = commit `3d858f858a458effb2a563788aedf1fe65e1f0d3` (release notes: "ready for the Amsterdam fork on Sepolia") | `TxBaseCost2780` 12000, `TxValueCost2780` 6000, `TxCostFloorPerToken7976` 16, `TxTokenPerNonZeroByte` 4, `TxDataNonZeroGasEIP2028` 16, `TxDataZeroGas` 4, `TxCostFloorPerToken` 10 | `94657cdf80d2f0b136ff6d89003326f496d3b1ba1abcb1a855b7b98c941e9e28` |
+| go-ethereum `core/state_transition.go` | same commit | `intrinsicBaseGasEIP2780`, `FloorDataGas` (Amsterdam floor base = the EIP-2780 base), `settleGas` | `72e7a68d1f180069920dd5db624fe8fbc7f4cb96f4491d3478239a91ae3d170d` |
+| go-ethereum `eth/gasestimator/gasestimator.go` and `internal/ethapi/api.go` | same commit | estimator search; `estimateGasErrorRatio = 0.015` | `5b2949f6c16abf05cf5ad5a1ecd985c0adc693530c11b9b6e0221aefa70fcf68`, `df5d20455fe37005d4b953a448a019f5ba0ec7aaee258060c7ed28d142743990` |
+| EIPs 2028, 7623, 2780, 7976, 8037, 8038, 7981, 7778, 7708, 7773 (eips.ethereum.org) | text read 2026-11-03 | the rationale and the mapping of each rule to its EIP | not pinned: these are living documents. The implementations above are normative for RN-NET |
+
+**The implementation must fail closed on its sources.** The reviewed constants are written into
+the code and into the Python reference **independently**. A test checks both against the values
+in this table. Any later change to the sources needs a new review: a new client release, a Last
+Call edit, or a new fork in the chain configuration.
+
+### G3. Deterministic gas computation
+
+Let `d` be the transaction data. `z` is its count of zero bytes and `n = len(d) − z`.
+
+**`prague`** (EIP-2028, EIP-7623):
+- `standard = 21000 + 4·z + 16·n`
+- `floor = 21000 + 10·(z + 4·n)`
+- `intrinsic = standard`
+
+**`amsterdam`** (EIP-2780, EIP-7976; EIP-7623 mechanism):
+- `base = TX_BASE (12000) + recipient + value`
+  - `recipient`: 0 for a self-transfer, otherwise 3000 (12000 for a creation, refused anyway);
+  - `value`: 6000 only if the value is non-zero and the transaction is not a self-transfer.
+  - For the Genesis transaction, `base = 12000`.
+- `standard = base + 4·z + 16·n` (calldata metering unchanged)
+- `floor = base + 16·(4·len(d))` (EIP-7976: every byte is 4 floor tokens)
+- `intrinsic = standard` (access-list and authorization terms are 0 by precondition)
+
+**Applicable runtime and state gas** (all rule sets):
+- `runtime = 0`, `state = 0` and `refund = 0` **only under the preconditions of G4**:
+  - no code runs;
+  - no account or storage is created;
+  - EIP-8037 state gas is not triggered;
+  - EIP-8038 has no runtime access;
+  - EIP-7708 emits no log, because the value is zero and it is a self-transfer.
+- The calculation **never estimates a non-zero runtime, state or refund term**. If the
+  preconditions do not hold, it refuses (G5). It never computes a larger number instead.
+
+**Need:** `need_R = max(intrinsic + runtime + state − refund, floor)`, which reduces to
+`max(standard, floor)` under G4.
+
+### G4. Transaction shape and state preconditions
+
+The calculation is valid only when **all** of the following hold. Each is already enforced or
+read today:
+1. **Shape** (`checkSepoliaAnchorTx`, ADR-RN-016):
+   - type `0x2`; chain id `0xaa36a7`;
+   - `to == from` (self-send; never `null`); `value == 0x0`;
+   - `accessList == []`; no `authorizationList`, no blob fields;
+   - `input` exactly the 42-byte payload of the Genesis commitment;
+   - `gas == 30000`.
+2. **No code at the sender:** `eth_getCode(from, {blockHash: H, requireCanonical: true})` returns
+   `"0x"` on **every** provider. Any other value refuses (`RNTP_ACCOUNT_UNSUITABLE`), including
+   an EIP-7702 delegation `0xef0100…`.
+3. **No delegation before inclusion.** The signer produces only EIP-1559 type-2 signatures, and
+   no EIP-7702 authorization path exists. The sender's code cannot change between H and
+   inclusion without the key.
+
+**Values for the Genesis Proof 01 payload:** `RNNETANC` ‖ `01` ‖ `01` ‖ 32-byte digest, with 0
+zero bytes and 42 non-zero bytes.
+
+| Rule set | standard | floor | need_R | Margin to 30,000 |
+|---|---|---|---|---|
+| `prague` (Prague, Osaka, BPO1–2) | 21,000 + 672 = 21,672 | 21,000 + 10·168 = 22,680 | **22,680** | 7,320 |
+| `amsterdam` | 12,000 + 672 = 12,672 | 12,000 + 16·168 = 14,688 | **14,688** | 15,312 |
+
+**A naive combination is wrong.** Using EIP-7976's own text with a 21,000 base would give
+23,688. Both implementations, and EIP-2780's text, use the EIP-2780 base for the floor.
+
+**Over all v1 payloads:** the Amsterdam floor is 14,688 for any digest. The Prague value ranges
+from 21,720 to 22,680. The value is always computed from the bytes, never hard-coded.
+
+### G5. Refusals (fail closed)
+
+Each is a refusal before any intent is written. It uses an existing code unless review adds one
+(P2, "no new codes"):
+- **R1. Unsupported fork.** `rules(P.timestamp)` is pre-Prague → `RNTP_INCONSISTENT`.
+- **R2. Unreviewed horizon.** `P.timestamp` or `now` is at or after `REVIEWED_RULES_HORIZON` →
+  refused. The horizon is a reviewed constant, set at implementation review no later than the
+  earliest of:
+  - any next Sepolia activation in the pinned chain configuration;
+  - the start of any client release that changes a G2 constant;
+  - a fixed date that the review chooses (open question Q1).
+- **R3. Fork boundary.** Any activation `A` in the table with
+  `P.timestamp − BOUNDARY_BEFORE ≤ A ≤ now + BOUNDARY_AFTER` is refused.
+  - The point: the pin, the run and the expected inclusion must all fall under one rule set.
+  - Proposed values: `BOUNDARY_BEFORE` = 3,600 s, `BOUNDARY_AFTER` = 86,400 s (Q2).
+  - **One rule set per run:** `rules(P.timestamp)` must equal `rules(now)`.
+- **R4. Shape.** Any G4.1 violation → the existing `checkSepoliaAnchorTx` problems.
+- **R5. Ambiguous execution state.**
+  - Code ≠ `"0x"` on any provider, or a disagreement between providers → `RNTP_ACCOUNT_UNSUITABLE`
+    or `RNTP_INCONSISTENT`.
+  - A missing code read → that provider is refused (P2).
+- **R6. Limit.** `need_R > 30000` → `RNTP_GAS_TOO_HIGH`.
+- **R7. Header consistency** (secondary; refuse-only). The pinned header's field set is not the
+  set reviewed for `rules(P.timestamp)` → `RNTP_INCONSISTENT`. It never selects or proves a rule
+  set.
+- **R8. Estimate inconsistency** (G8).
+
+### G6. At and near a fork boundary
+
+- **Inside the boundary window (R3), preparation refuses.** The founder waits and runs a new
+  gate D with a new read authorization. There is no retry inside a run.
+- **If a broadcast is pending across a boundary** (Sepolia has no expiry):
+  - The **gas limit is fixed and not derived from need_R**. A later rule set with a lower need
+    changes nothing but the gas charged.
+  - A later rule set whose need exceeds 30,000 would make the transaction **invalid**: it is not
+    included and no fee is charged. That is fail-safe.
+  - The receipt check (G10) evaluates the rule set **at the inclusion block's timestamp**.
+- **Pre-submit.** The broadcaster's pre-submit reads (ADR-RN-019 §6) must also refuse when
+  `rules(head.timestamp) ≠` the intent's recorded rule set. This needs ADR-RN-019 Amendment C1 or
+  a later amendment; it is a requirement, not a change made here.
+
+### G7. The gas limit
+
+- `gas` stays **30,000**, bound in the intent and signed. The balance rule stays
+  `balance ≥ 30,000 × maxFeePerGas` (P6).
+- need_R and the estimate are **checks only**. Neither sets a field.
+- `checkSepoliaAnchorTx`'s lower bound becomes `need_R` for the recorded rule set, in place of
+  the Prague value.
+
+### G8. Comparison with the pinned `eth_estimateGas`
+
+The live estimate is **retained** as a runtime cross-check. It is not replaced: removing it would
+remove the only live signal that the provider's rules differ from RN-NET's reviewed model.
+
+- **Request:** unchanged (P1, P4): `[{from, to: from, value: "0x0", data}, {blockHash: H,
+  requireCanonical: true}]`, on every provider, one attempt, never with `latest`, `pending`, a
+  number or no block parameter.
+- **Accept** iff `need_R(P.timestamp) ≤ est ≤ 30000`.
+- **Refuse:**
+  - `est < need_R`: the provider's rules or answer differ from the reviewed model →
+    `RNTP_INCONSISTENT`;
+  - `est > 30000` → `RNTP_GAS_TOO_HIGH`;
+  - a JSON-RPC error → P2.
+- **No upper tolerance relative to need_R.** An estimate is an upper bound by design. The standard
+  estimators stop within 1.5 % (`estimateGasErrorRatio = 0.015`), and the search differs between
+  clients. Equality with need_R is never required.
+  - Worked reproduction, go-ethereum v1.17.7 search with need 14,688:
+    - optimistic limit `(14,688 + 2,300)·64/63 = 17,257`;
+    - midpoints 15,972 → 15,329 → 15,008 → 14,847;
+    - stop at `(14,847 − 14,687)/14,847 = 1.08 % < 1.5 %`;
+    - **14,847**.
+  - Under Prague the same search gives 23,016.
+- **What an estimate does not prove.** A numerically correct estimate **does not show that the
+  provider honored the block-hash parameter**. For a code-less, history-less account, the
+  estimate is the same at H, at `latest`, or with the parameter ignored. Block-hash compliance is
+  a separate requirement (G9).
+
+### G9. Block-hash semantics, provider agreement, and C6 classification
+
+**Unchanged from C1:**
+- one agreed pin H across providers;
+- every pinned read at `{blockHash: H, requireCanonical: true}`;
+- the pending-nonce equality;
+- refusal without fallback;
+- both reviewed providers required.
+
+**Six separate questions.** They are recorded separately, and none implies another:
+
+| Question | Evidence that answers it | Recorded as |
+|---|---|---|
+| **Gas value correct** | `need_R(pin) ≤ est ≤ 30000` under G1–G4 | PASS / BLOCKED (out of range under the *correct* rule set) / UNRESOLVED (no answer, busy, not sent) |
+| **Block-hash form accepted** | the pinned request answered with a result of the right type, no JSON-RPC refusal | as `eip1898AccountReads` today, and for the estimate as `estimateGasBlockHash` (meaning narrowed to the form plus G8) |
+| **Pinned-block compliance** (state served at H; `requireCanonical` enforced) | only a reviewed test whose expected answer differs between H and other blocks; an unknown-hash refusal is supporting evidence only | a new field, `blockHashSemantics`: **`null` (UNRESOLVED) unless demonstrated**. No C6 result so far demonstrates it |
+| **Provider agreement** | head and pin agreement, one hash per number (C1) | PASS / BLOCKED / UNRESOLVED, unchanged |
+| **Unknown or unavailable** | no answer, HTTP error without JSON-RPC error, busy codes, not sent | UNRESOLVED, never PASS and never BLOCKED |
+| **Provider incompatibility** | a JSON-RPC refusal of a pinned form, an answered unknown hash, a wrong chain, a malformed block, or an estimate out of range under the correct rule set | BLOCKED (branch E for account reads, as today) |
+
+**Prospective, fork-aware C6 classification.** A future C6 run's `estimate_gas` range is
+`[need_R(rules(pin.timestamp)), 30000]`.
+- The classifier and its Python reference are **versioned**. The version that produced C6-H3
+  stays frozen, so that the historical report is still rebuilt byte for byte (16/16 AGREES).
+- The new version names its rule set in the check detail.
+- The manifest is unchanged: S10/S14 expect "QUANTITY from the intrinsic gas to 30,000", which
+  carries no number.
+
+**The C6-H3 report stays BLOCKED B.**
+- It is the immutable output of the reviewed classifier over the recorded exchanges, and it
+  correctly reports what that classifier decided.
+- This amendment does not re-classify it.
+- The reading recorded here is that the BLOCKED estimate check was caused by a **stale
+  pre-Amsterdam lower bound in RN-NET's classifier**. It is not evidence of provider
+  incompatibility.
+- It is also not a PASS of pinned-block compliance, which stays UNRESOLVED.
+- Any future `SEPOLIA_COMPATIBILITY` record is a separate reviewed change. It must not record
+  PublicNode `estimateGasBlockHash: false` from C6-H3.
+
+**Whether preparation must require `blockHashSemantics: true` is open (Q3).** Requiring it
+blocks Sepolia until a test design exists that can demonstrate it. Without it, account-read
+correctness rests on the C1 controls:
+- agreement on H across two providers;
+- unknown-hash refusal;
+- the broadcaster's pre-submit re-reads (ADR-RN-019 §6).
+
+### G10. Receipt `gasUsed` verification after inclusion
+
+At the status check or gate F (ADR-RN-019 Amendment C1, or the durable-verification ADR, which
+is to be specified there):
+- Let `R_i = rules(inclusion block timestamp)`. If `R_i` ≠ the intent's recorded rule set, report
+  `GAS_RULES_CROSSED`. This is an anomaly in the record, not a failure of inclusion.
+- **Expected:** `gasUsed = max(intrinsic_Ri + runtime + state − refund, floor_Ri)`, with
+  `runtime`, `state` and `refund` each **0** under G4.
+  - Under Amsterdam, EIP-7778 changes only block-level accounting: with no refund, transaction
+    and block gas are equal.
+  - EIP-8037 state gas is part of the transaction's gas used, and is 0 here.
+- **Check:** `receipt.gasUsed == need_Ri` (14,688 under `amsterdam`; 22,680 under `prague`).
+  - A mismatch is reported as `GAS_ACCOUNTING_MISMATCH`, together with the observed value.
+  - It is **never** silently accepted, and it is never "explained" by assuming a non-zero runtime,
+    state or refund term.
+  - Funds at risk are already bounded by `30,000 × maxFeePerGas`.
+- The receipt is read under the existing finality rules (P7, ADR-RN-015). This adds no new trust
+  in a provider.
+
+### G11. 1RPC remains an independent blocker
+
+**Observed in C6-H3:**
+- S06 (`eth_getBlockByNumber [P, false]` on `sepolia-1rpc`) received **HTTP 404** with an HTML
+  body and no JSON-RPC envelope.
+- Under the C6 matrix, an HTTP error without a JSON-RPC error is UNRESOLVED, so
+  `sepolia.pin_agreement` is **UNRESOLVED**.
+- S11–S14 (1RPC's nonce, balance, code and estimate at its own pin hash) each depend on that
+  hash, so they were **not sent** (`NOT_SENT`, "no pinned block on this provider").
+- 1RPC answered its other request forms in the same run.
+
+**Consequences:**
+- 1RPC's `eip1898AccountReads`, its estimate form and its `blockHashSemantics` are **UNRESOLVED**.
+- Preparation requires both reviewed providers, and runs the same numbered pin read.
+- **Accepting this amendment does not unblock Sepolia.**
+
+**Options**, each a separate, reviewed decision; WP1 performs no live investigation:
+- **O1. Repeat the reviewed manifest.** Run the same immutable 22-request manifest once, under a
+  **new** H3. It needs a new activation and deactivation cycle, and the fork-aware classifier
+  version first, so that PublicNode's estimate is not BLOCKED again.
+- **O2. A narrower diagnostic manifest** for 1RPC only: the pin, then the four pinned reads. It
+  is a new reviewed manifest, digest and budget, with its own H3.
+- **O3. Replace or add a provider**, through an ADR-RN-013/014 provider review and a config PR.
+  The two-provider agreement rule is never relaxed to one provider.
+- **O4. A desk review** of 1RPC's published documentation and limits, without any request. It is
+  evidence for choosing among O1–O3, not a substitute for them.
+
+### G12. Traceability
+
+| Requirement | Section | Future implementation component | Test (simulated, with Python reference) | Security invariant |
+|---|---|---|---|---|
+| Fork selected from reviewed timestamps only | G1, G2 | `packages/tx-intent` gas-rules table; `rnnet_prep_reference.py` twin | activation −1 / 0 / +1 s; pre-Prague refused; constants equal the G2 table | No RPC field selects a rule set |
+| Deterministic need_R | G3, G4 | `intrinsicGas(data, ruleSet)` | vectors 22,680 / 14,688; random digests: JS = Python; the Amsterdam floor is independent of the digest | Same bytes, same rule set, same need |
+| Preconditions | G4 | `checkSepoliaAnchorTx`, `prepareSepoliaIntent` | 7702 prefix, code disagreement, access list, value, `to ≠ from`, wrong input | No execution, so no runtime gas |
+| Unreviewed fork refused | G5 R2, R7 | horizon constant; header check | horizon −1 / 0; added or removed header field | Fail closed on the unknown |
+| Boundary | G5 R3, G6 | window check; pre-submit rule check (ADR-RN-019) | activation inside and outside the window; `rules(pin) ≠ rules(now)` | One rule set from pin to inclusion |
+| Gas limit | G7 | `SEPOLIA.gasLimit` unchanged | need_R > 30,000 with a synthetic rule set | The signed limit never comes from a provider |
+| Estimate cross-check | G8 | `prepare.mjs` estimate check | est = need_R − 1, need_R, 30,000, 30,001; reproduction of 14,847 | Live disagreement with the model refuses |
+| Separate block-hash semantics | G9 | `SEPOLIA_COMPATIBILITY` field; classifier | estimate in range with semantics `null` stays UNRESOLVED | A number never proves pinning |
+| Classifier versioning | G9 | `tools/compat/classify.mjs` v2; frozen v1; `rnnet_compat_reference.py` | C6-H3 replay with v1 rebuilds the report (16/16); v2 gives PublicNode's estimate in range | History is immutable |
+| Receipt check | G10 | status / gate-F verifier | gasUsed = need, ≠ need, rules crossed | Mismatch reported, never explained away |
+| 1RPC independent | G11 | none in C2 | compatibility with 1RPC `null` stays BLOCKED | Two providers, no relaxation |
+
+### G13. Assumptions and open questions
+
+- **A1.** The rules in force on Sepolia are those of the pinned client releases. If an EIP still
+  in Last Call changes before mainnet, Sepolia only follows through new releases and a chain
+  configuration change. That is caught by R2 and needs a new review.
+- **A2.** PublicNode's client is not identified. Nothing here depends on it.
+- **A3.** The G4 preconditions hold at inclusion by G4.3, and are re-read by the pre-submit check.
+- **Q1.** The value and governance of `REVIEWED_RULES_HORIZON`.
+- **Q2.** `BOUNDARY_BEFORE` and `BOUNDARY_AFTER`.
+- **Q3.** Whether preparation requires `blockHashSemantics: true`, and whether any reviewed C6
+  design can show it.
+- **Q4.** Whether the preparation record carries the rule set and need_R in
+  `rnnet.tx-preparation.v1` (P6 reasoning: only synthetic records exist) or in a v2.
+- **Q5.** Where the receipt check lives: ADR-RN-019 Amendment C1, or the durable-verification ADR.
+
+### What this amendment would change, once accepted, and what it does not
+
+- **Would allow** (implementation PRs, each reviewed):
+  - the fork-aware gas module and its Python twin;
+  - the fork-aware bounds in preparation, in `checkSepoliaAnchorTx` and in a versioned C6
+    classifier;
+  - the record of the rule set and need_R;
+  - the receipt check.
+- **Does not change:**
+  - the C6 manifest (`2a45e37c…088037`), its evidence or its report;
+  - `config/rpc-endpoints.json` and the reviewed providers;
+  - the request forms and P4's no-fallback rules;
+  - the 30,000 limit, the fee caps and the balance rule;
+  - finality (P7);
+  - any live switch.
+- **Still separately authorized:** every live RPC request (H3, H6) and gates B–F, as in the
+  acceptance of Amendment C1.
