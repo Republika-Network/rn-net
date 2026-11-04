@@ -223,7 +223,7 @@ test('the gate-F files are pure: fixed imports, no network, clock, environment, 
     assert.deepEqual([...text.matchAll(/^import [^;]* from '([^']+)';$/gm)].map((m) => m[1]), imports, file);
     const code = text.replace(/\/\/.*$/gm, '');
     for (const name of ['fetch', 'Date', 'process', 'globalThis', 'require', 'child_process', 'node:http', 'node:https', 'node:net', 'node:fs', 'WebSocket', 'signer/', 'chain-submit', 'setTimeout']) {
-      assert.doesNotMatch(code, new RegExp(`\\b${escapeRegExp(name)}(?![\\w])`), `${file}: ${name}`);
+      assert.doesNotMatch(code, new RegExp(`\\b${escapeRegExp(name)}${/\w$/.test(name) ? '(?!\\w)' : ''}`), `${file}: ${name}`);
     }
   }
 });
