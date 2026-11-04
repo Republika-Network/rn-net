@@ -37,3 +37,26 @@ export {
 export { decodeUint, encodeUint, rlpDecode, rlpEncode } from './rlp.mjs';
 export { decodeEip1559Signed, EIP1559_TYPE, encodeEip1559Signed, encodeEip1559Unsigned, SECP256K1_N } from './evm.mjs';
 export { compareSepolia, compareXrpl, SEPOLIA_COMPARE_ORDER, XRPL_COMPARE_ORDER } from './compare.mjs';
+// Fork-aware gas rules (ADR-RN-018 Amendment C2; WP2, offline). Not used by preparation yet;
+// the production intrinsicGas above is unchanged.
+export {
+  BOUNDARY_AFTER_SECONDS,
+  BOUNDARY_BEFORE_SECONDS,
+  calldataGas,
+  calldataGasForInput,
+  checkForkBoundary,
+  checkGasWithinLimit,
+  checkRuleSetForTimestamp,
+  evaluateGenesisGas,
+  GAS_RULE_SETS,
+  GAS_RULES_LIMIT,
+  MAX_REVIEW_AGE_SECONDS,
+  MAX_TIMESTAMP,
+  REVIEWED_GAS_RULE_SOURCES,
+  selectSepoliaGasRules,
+  SEPOLIA_ACTIVATIONS,
+  SEPOLIA_GAS_RULES_REVIEW,
+  validateActivationTable,
+  validateGenesisGasPreconditions,
+  validateReviewedRulesHorizon,
+} from './gas-rules.mjs';

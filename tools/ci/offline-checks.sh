@@ -127,6 +127,7 @@ run_checks() {
   python3 -I -B tools/reference/rnnet_keytool_reference.py
   python3 -I -B tools/reference/rnnet_rehearsal_reference.py
   python3 -I -B tools/reference/rnnet_compat_reference.py
+  python3 -I -B tools/reference/rnnet_gas_rules_reference.py
   echo "::endgroup::"
 }
 
