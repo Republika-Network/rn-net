@@ -3,7 +3,7 @@
 - Status: Accepted for the offline read-only preparation architecture only (founder approval of PR #16 as implemented, RN-NET-03B2-B2 governance closure)
 - Date: 2026-11-01
 - Amendment C1: **Accepted for the reviewed offline two-pass Sepolia preparation architecture only** (recorded when the founder merges this documentation change; the implementation is RN-NET-03B2-C3, PR #26, squash-merged as main `1723439`, whose tree `a91fc55` equals the reviewed head `578a4db`). It authorizes no live RPC: the C6 compatibility check (P5) and every preparation run need their own read authorization. Live Sepolia preparation stays `BLOCKED` until C6 records block-hash support on both providers, and its live provisions (P5, P9 enabled) are not accepted.
-- Amendment C2: **Proposed** (RN-NET Genesis Proof 01 WP1), not accepted: a fork-aware Sepolia gas policy (see *Amendment C2* below). Until it is accepted, Amendment C1 applies unchanged; C2 authorizes no implementation, no live RPC request and no change to the C6 manifest, evidence or report.
+- Amendment C2: **Proposed** (RN-NET Genesis Proof 01 WP1), not accepted: a fork-aware Sepolia gas policy (see *Amendment C2* below). The founder's architecture decisions on its open questions Q1–Q5 are recorded in G13. Until it is accepted, Amendment C1 applies unchanged; C2 authorizes no implementation, no live RPC request and no change to the C6 manifest, evidence or report.
 - Amends: [ADR-RN-013](ADR-RN-013-read-only-rpc-architecture.md). It adds read-only methods to the allowlist and changes nothing else in that ADR.
 - Builds on: [ADR-RN-016](ADR-RN-016-genesis-anchoring-transactions.md), [ADR-RN-017](ADR-RN-017-offline-signing-toolchain.md), [ADR-RN-014](ADR-RN-014-multi-provider-provenance.md)
 - Specification: [rnnet.tx-preparation.v1](../../spec/rnnet.tx-preparation.v1.md)
@@ -599,17 +599,47 @@ from 21,720 to 22,680. The value is always computed from the bytes, never hard-c
 Each is a refusal before any intent is written. It uses an existing code unless review adds one
 (P2, "no new codes"):
 - **R1. Unsupported fork.** `rules(P.timestamp)` is pre-Prague → `RNTP_INCONSISTENT`.
-- **R2. Unreviewed horizon.** `P.timestamp` or `now` is at or after `REVIEWED_RULES_HORIZON` →
-  refused. The horizon is a reviewed constant, set at implementation review no later than the
-  earliest of:
-  - any next Sepolia activation in the pinned chain configuration;
-  - the start of any client release that changes a G2 constant;
-  - a fixed date that the review chooses (open question Q1).
-- **R3. Fork boundary.** Any activation `A` in the table with
-  `P.timestamp − BOUNDARY_BEFORE ≤ A ≤ now + BOUNDARY_AFTER` is refused.
+- **R2. Unreviewed horizon** (founder decision Q1). The run is refused if
+  `P.timestamp ≥ REVIEWED_RULES_HORIZON` or `now ≥ REVIEWED_RULES_HORIZON`. The comparison is
+  inclusive: at exactly the horizon, the run is refused.
+  - **The review record.** `RULES_REVIEW` is a reviewed constant holding:
+    - `reviewedAt` (unix s): the time the G2 sources and the Sepolia chain configuration were
+      explicitly re-checked;
+    - the pinned commits and file SHA-256s of G2;
+    - the reviewer.
+    A missing or malformed record refuses every Sepolia run.
+  - **The horizon.** `REVIEWED_RULES_HORIZON` ≤ `reviewedAt + 2,592,000` (30 days). It is
+    **shortened** to no later than any **earlier known activation** that is not covered by a
+    reviewed rule set: any activation after the last reviewed one that appears in the pinned
+    chain configuration, a client release, or an announcement known at review time.
+    - A configuration whose horizon breaks either bound is refused when it is loaded, before any
+      read.
+    - Extending the horizon is a new, recorded review. Time passing never extends it.
+  - **What the horizon is not.** It is **not automatic detection of unannounced forks**. It only
+    bounds how long one review is trusted. An unannounced or unreviewed change inside the horizon
+    can only be caught by:
+    - the live estimate cross-check (G8), before signing;
+    - the receipt check (G10), after inclusion.
+    Neither is a guarantee. The fixed limit keeps the failure fail-safe (G6).
+- **R3. Fork boundary** (founder decision Q2): `BOUNDARY_BEFORE` = **3,600 s** and
+  `BOUNDARY_AFTER` = **86,400 s**.
+  - **Which activations count:** every known activation `A`, meaning every activation in the
+    reviewed rule table and every earlier known activation under R2.
+  - **The window is inclusive at both ends.** The run is refused iff some `A` satisfies
+    `P.timestamp − 3600 ≤ A ≤ now + 86400`.
   - The point: the pin, the run and the expected inclusion must all fall under one rule set.
-  - Proposed values: `BOUNDARY_BEFORE` = 3,600 s, `BOUNDARY_AFTER` = 86,400 s (Q2).
-  - **One rule set per run:** `rules(P.timestamp)` must equal `rules(now)`.
+  - **One rule set per run:** `rules(P.timestamp)` must equal `rules(now)`; otherwise the run is
+    refused.
+  - **Required boundary tests** (`now` and `P.timestamp` fixed, `P.timestamp ≤ now`):
+
+    | Position of `A` | Expected result |
+    |---|---|
+    | `A = P.timestamp − 3601` | allowed by R3 (the pin is more than an hour into its rule set) |
+    | `A = P.timestamp − 3600` | **refused** |
+    | `P.timestamp − 3600 < A ≤ now` | **refused** (this includes `rules(pin) ≠ rules(now)`) |
+    | `A = now + 86400` | **refused** |
+    | `A = now + 86401` | allowed by R3 |
+    | none within the window | allowed by R3; R2 still applies |
 - **R4. Shape.** Any G4.1 violation → the existing `checkSepoliaAnchorTx` problems.
 - **R5. Ambiguous execution state.**
   - Code ≠ `"0x"` on any provider, or a disagreement between providers → `RNTP_ACCOUNT_UNSUITABLE`
@@ -666,8 +696,9 @@ remove the only live signal that the provider's rules differ from RN-NET's revie
     - stop at `(14,847 − 14,687)/14,847 = 1.08 % < 1.5 %`;
     - **14,847**.
   - Under Prague the same search gives 23,016.
-- **What an estimate does not prove.** A numerically correct estimate **does not show that the
-  provider honored the block-hash parameter**. For a code-less, history-less account, the
+- **What an estimate does not prove.** An estimate in range **proves numerical consistency with
+  the reviewed rule set, and nothing more.** It is not evidence of actual block-hash enforcement:
+  it **does not show that the provider honored the block-hash parameter**. For a code-less, history-less account, the
   estimate is the same at H, at `latest`, or with the parameter ignored. Block-hash compliance is
   a separate requirement (G9).
 
@@ -684,7 +715,7 @@ remove the only live signal that the provider's rules differ from RN-NET's revie
 
 | Question | Evidence that answers it | Recorded as |
 |---|---|---|
-| **Gas value correct** | `need_R(pin) ≤ est ≤ 30000` under G1–G4 | PASS / BLOCKED (out of range under the *correct* rule set) / UNRESOLVED (no answer, busy, not sent) |
+| **Gas value numerically consistent** (not block-hash enforcement) | `need_R(pin) ≤ est ≤ 30000` under G1–G4 | PASS / BLOCKED (out of range under the *correct* rule set) / UNRESOLVED (no answer, busy, not sent) |
 | **Block-hash form accepted** | the pinned request answered with a result of the right type, no JSON-RPC refusal | as `eip1898AccountReads` today, and for the estimate as `estimateGasBlockHash` (meaning narrowed to the form plus G8) |
 | **Pinned-block compliance** (state served at H; `requireCanonical` enforced) | only a reviewed test whose expected answer differs between H and other blocks; an unknown-hash refusal is supporting evidence only | a new field, `blockHashSemantics`: **`null` (UNRESOLVED) unless demonstrated**. No C6 result so far demonstrates it |
 | **Provider agreement** | head and pin agreement, one hash per number (C1) | PASS / BLOCKED / UNRESOLVED, unchanged |
@@ -710,17 +741,40 @@ remove the only live signal that the provider's rules differ from RN-NET's revie
 - Any future `SEPOLIA_COMPATIBILITY` record is a separate reviewed change. It must not record
   PublicNode `estimateGasBlockHash: false` from C6-H3.
 
-**Whether preparation must require `blockHashSemantics: true` is open (Q3).** Requiring it
-blocks Sepolia until a test design exists that can demonstrate it. Without it, account-read
-correctness rests on the C1 controls:
-- agreement on H across two providers;
-- unknown-hash refusal;
-- the broadcaster's pre-submit re-reads (ADR-RN-019 §6).
+**Decision Q3: block-hash semantics.**
+- **Every C1 control stays mandatory:**
+  - the head pass on both providers;
+  - one agreed pin H, with the same hash and the same contents on every provider;
+  - every pinned read at `{blockHash: H, requireCanonical: true}`;
+  - the pending-nonce equality;
+  - refusal without fallback;
+  - both reviewed providers recorded as accepting the pinned forms (`eip1898AccountReads`, and
+    `estimateGasBlockHash` as narrowed in the table above);
+  - the broadcaster's pre-submit re-reads (ADR-RN-019 §6).
+- **`blockHashSemantics: true` is not required** until a separately reviewed test can
+  demonstrate it. Such a test must use an account or query whose correct answer differs between
+  H and other blocks. Accepting such a test is its own amendment.
+- **Until then the field is `null` (UNRESOLVED)** for every provider. It is never set to `true`
+  from:
+  - a numerically correct estimate;
+  - a type-correct account read;
+  - an unknown-hash refusal;
+  - provider agreement.
+- **Preparation records it as UNRESOLVED.** It neither treats it as satisfied nor refuses on
+  its absence.
 
 ### G10. Receipt `gasUsed` verification after inclusion
 
-At the status check or gate F (ADR-RN-019 Amendment C1, or the durable-verification ADR, which
-is to be specified there):
+**Where the check runs** (founder decision Q5):
+- **The authoritative check is in the durable gate-F verifier**, specified by the
+  durable-verification ADR. Only its result enters the gate-F record.
+- **The status check** (ADR-RN-019) **may report preliminary findings** (`GAS_RULES_CROSSED`,
+  `GAS_ACCOUNTING_MISMATCH`, marked preliminary). A preliminary finding:
+  - **never replaces finality evidence**;
+  - never marks a record final;
+  - never settles the gate-F result in either direction.
+
+**The rules of the check:**
 - Let `R_i = rules(inclusion block timestamp)`. If `R_i` ≠ the intent's recorded rule set, report
   `GAS_RULES_CROSSED`. This is an anomaly in the record, not a failure of inclusion.
 - **Expected:** `gasUsed = max(intrinsic_Ri + runtime + state − refund, floor_Ri)`, with
@@ -735,6 +789,8 @@ is to be specified there):
   - Funds at risk are already bounded by `30,000 × maxFeePerGas`.
 - The receipt is read under the existing finality rules (P7, ADR-RN-015). This adds no new trust
   in a provider.
+- In the gate-F record, the expected value is taken from the intent's `rnnet.tx-preparation.v2`
+  gas member (G13, Q4), never recomputed from an unreviewed rule set.
 
 ### G11. 1RPC remains an independent blocker
 
@@ -770,29 +826,49 @@ is to be specified there):
 | Fork selected from reviewed timestamps only | G1, G2 | `packages/tx-intent` gas-rules table; `rnnet_prep_reference.py` twin | activation −1 / 0 / +1 s; pre-Prague refused; constants equal the G2 table | No RPC field selects a rule set |
 | Deterministic need_R | G3, G4 | `intrinsicGas(data, ruleSet)` | vectors 22,680 / 14,688; random digests: JS = Python; the Amsterdam floor is independent of the digest | Same bytes, same rule set, same need |
 | Preconditions | G4 | `checkSepoliaAnchorTx`, `prepareSepoliaIntent` | 7702 prefix, code disagreement, access list, value, `to ≠ from`, wrong input | No execution, so no runtime gas |
-| Unreviewed fork refused | G5 R2, R7 | horizon constant; header check | horizon −1 / 0; added or removed header field | Fail closed on the unknown |
-| Boundary | G5 R3, G6 | window check; pre-submit rule check (ADR-RN-019) | activation inside and outside the window; `rules(pin) ≠ rules(now)` | One rule set from pin to inclusion |
+| Unreviewed fork refused | G5 R2, R7 | `RULES_REVIEW` and horizon constants; load-time configuration check; header check | `now` = horizon − 1 (allowed), = horizon (refused); `P.timestamp` = horizon (refused); horizon > `reviewedAt` + 30 d (refused at load); horizon after a known unreviewed activation (refused at load); missing review record (refused); added or removed header field | Fail closed on the unknown; the horizon bounds trust in a review, not detection |
+| Boundary | G5 R3, G6 | window check; pre-submit rule check (ADR-RN-019) | the six positions of the R3 table; `rules(pin) ≠ rules(now)` | One rule set from pin to inclusion |
 | Gas limit | G7 | `SEPOLIA.gasLimit` unchanged | need_R > 30,000 with a synthetic rule set | The signed limit never comes from a provider |
 | Estimate cross-check | G8 | `prepare.mjs` estimate check | est = need_R − 1, need_R, 30,000, 30,001; reproduction of 14,847 | Live disagreement with the model refuses |
-| Separate block-hash semantics | G9 | `SEPOLIA_COMPATIBILITY` field; classifier | estimate in range with semantics `null` stays UNRESOLVED | A number never proves pinning |
+| Separate block-hash semantics | G9 (Q3) | `SEPOLIA_COMPATIBILITY.blockHashSemantics`; classifier | estimate in range with semantics `null` stays UNRESOLVED; no code path sets it `true`; preparation proceeds with it `null` only if every C1 control passes | A number never proves pinning |
+| Record v2 | G13 (Q4) | `rnnet.tx-preparation.v2` spec, builder, verifier; `rnnet_prep_reference.py` | v2 rebuilt byte for byte (JS = Python); v2 without its gas member refused; a C2 Sepolia intent never emitted as v1; historical v1 records and fixtures replay unchanged | History is immutable; the need is bound by the intent digest |
 | Classifier versioning | G9 | `tools/compat/classify.mjs` v2; frozen v1; `rnnet_compat_reference.py` | C6-H3 replay with v1 rebuilds the report (16/16); v2 gives PublicNode's estimate in range | History is immutable |
-| Receipt check | G10 | status / gate-F verifier | gasUsed = need, ≠ need, rules crossed | Mismatch reported, never explained away |
+| Receipt check | G10 (Q5) | durable gate-F verifier (authoritative); status check (preliminary only) | gasUsed = need, ≠ need, rules crossed; a preliminary status finding does not change the gate-F result | Mismatch reported, never explained away; finality evidence never replaced |
 | 1RPC independent | G11 | none in C2 | compatibility with 1RPC `null` stays BLOCKED | Two providers, no relaxation |
 
-### G13. Assumptions and open questions
+### G13. Assumptions and founder decisions
 
 - **A1.** The rules in force on Sepolia are those of the pinned client releases. If an EIP still
   in Last Call changes before mainnet, Sepolia only follows through new releases and a chain
   configuration change. That is caught by R2 and needs a new review.
 - **A2.** PublicNode's client is not identified. Nothing here depends on it.
 - **A3.** The G4 preconditions hold at inclusion by G4.3, and are re-read by the pre-submit check.
-- **Q1.** The value and governance of `REVIEWED_RULES_HORIZON`.
-- **Q2.** `BOUNDARY_BEFORE` and `BOUNDARY_AFTER`.
-- **Q3.** Whether preparation requires `blockHashSemantics: true`, and whether any reviewed C6
-  design can show it.
-- **Q4.** Whether the preparation record carries the rule set and need_R in
-  `rnnet.tx-preparation.v1` (P6 reasoning: only synthetic records exist) or in a v2.
-- **Q5.** Where the receipt check lives: ADR-RN-019 Amendment C1, or the durable-verification ADR.
+The founder decided Q1–Q5 after the independent review of the WP1 text. They are part of this
+Proposed amendment, and they are not an acceptance of it.
+- **Q1 (horizon).** `REVIEWED_RULES_HORIZON` is no later than 30 days after an explicitly
+  recorded source and configuration review, and shortened for any earlier known activation.
+  It is not automatic detection of unannounced forks (G5 R2).
+- **Q2 (boundary).** `BOUNDARY_BEFORE` = 3,600 s and `BOUNDARY_AFTER` = 86,400 s, for known
+  activations, inclusive at both ends, with the required tests (G5 R3).
+- **Q3 (semantics).** Every C1 pinned-block and two-provider control stays mandatory.
+  `blockHashSemantics: true` is not required until a separately reviewed test can demonstrate it.
+  Unproven semantics stay UNRESOLVED and are never inferred from a numerically correct estimate
+  (G8, G9).
+- **Q4 (record).** Sepolia preparation under this amendment **requires `rnnet.tx-preparation.v2`**.
+  Beyond v1, it holds one gas member, covered by the intent digest:
+  - the fork / rule-set id;
+  - the calculated need, with its standard and floor terms;
+  - the reviewed rule-set identity: the `RULES_REVIEW` reference and the G2 source digests.
+
+  `estimateGas` stays per provider, as received.
+  - **Historical v1 replay is unchanged.** v1 records, the B2 fixtures and the v1 Python
+    reference stay verifiable byte for byte, and are not rewritten.
+  - A v1 record is never accepted as a C2 Sepolia intent, and a C2 Sepolia intent is never
+    emitted as v1.
+  - The v2 specification is written and reviewed in the implementation PR, not here.
+- **Q5 (receipt).** The authoritative receipt `gasUsed` verification is in the durable gate-F
+  verifier. The status check may report preliminary findings, without replacing finality
+  evidence (G10).
 
 ### What this amendment would change, once accepted, and what it does not
 
@@ -800,8 +876,9 @@ is to be specified there):
   - the fork-aware gas module and its Python twin;
   - the fork-aware bounds in preparation, in `checkSepoliaAnchorTx` and in a versioned C6
     classifier;
-  - the record of the rule set and need_R;
-  - the receipt check.
+  - `rnnet.tx-preparation.v2`, carrying the rule set, the reviewed rule-set identity and need_R;
+  - the authoritative receipt check in the durable gate-F verifier, with preliminary status
+    findings.
 - **Does not change:**
   - the C6 manifest (`2a45e37c…088037`), its evidence or its report;
   - `config/rpc-endpoints.json` and the reviewed providers;
