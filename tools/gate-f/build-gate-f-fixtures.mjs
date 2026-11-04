@@ -26,6 +26,8 @@ import { verifyGateFHypotheticalStageB } from './test-seam.mjs';
 import { verifyGateF } from './verify.mjs';
 
 export const PATH = fileURLToPath(new URL('../../fixtures/gate-f-b1/cases.json', import.meta.url));
+/** WP4-B1-SEC-01: regression cases in their own file, so the merged B1 fixtures stay byte-identical. */
+export const PATH_SEC01 = fileURLToPath(new URL('../../fixtures/gate-f-b1-sec01/cases.json', import.meta.url));
 export const FIXTURES_FORMAT = 'rnnet.gate-f-b1-fixtures.v1';
 const fixture = (p) => JSON.parse(readFileSync(new URL(`../../fixtures/${p}`, import.meta.url), 'utf8'));
 
@@ -213,6 +215,39 @@ export const CASES = [
   { id: 'live-report-differs', inputs: (i) => ({ ...i, liveReport: i.liveReport.replace('"agreement":"AGREEMENT"', '"agreement":"INSUFFICIENT_SOURCES"') }), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_EVIDENCE_INVALID'], null] },
 ];
 
+const DISAGREE_ON_BLOCK = { transaction: { blockNumber: q(TX_BLOCK + 1), blockHash: h(`block-${TX_BLOCK + 1}`) }, receipt: { blockNumber: q(TX_BLOCK + 1), blockHash: h(`block-${TX_BLOCK + 1}`) }, block: (b) => (b.number === q(TX_BLOCK + 1) ? { ...b, transactions: [OTHER_TX, TX_HASH] } : b) };
+const PENDING = { receipt: null, transaction: { blockHash: null, blockNumber: null, transactionIndex: null } };
+const s1Preparation = (id) => fixture('s1-preparation/cases.json').cases.find((c) => c.id === id).preparation;
+const withPreparation = (i, preparation) => {
+  const r = { ...INTENT, preparation };
+  return { ...i, intent: canonicalize(r), approvedDigest: rawIntentDigest(r) };
+};
+
+// WP4-B1-SEC-01. R1: the provider comparison table (spec §3.3.1). R2: fixed subject rules.
+export const SEC01_CASES = [
+  // R1 — a missing observation: contradicted (FAIL) or not (NOT_OBSERVED).
+  { id: 'r1-publicnode-not-found-1rpc-observed', chain: [{ notFound: true }, {}], expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNLO_PROVIDER_DISAGREEMENT'], null] },
+  { id: 'r1-publicnode-unavailable-1rpc-finalized', chain: [{ unavailable: true }, {}], expect: ['UNRESOLVED', 'ESTABLISHED', 'NOT_ESTABLISHED', ['RNGF_RULES_AUTHORITY_ABSENT'], null] },
+  { id: 'r1-both-unavailable', chain: [{ unavailable: true }, { unavailable: true }], expect: ['UNRESOLVED', 'NOT_ESTABLISHED', 'NOT_ESTABLISHED', [], null] },
+  { id: 'r1-not-found-and-unavailable', chain: [{ notFound: true }, { unavailable: true }], expect: ['UNRESOLVED', 'NOT_ESTABLISHED', 'NOT_ESTABLISHED', [], null] },
+  // R1 — a material difference is FAIL, including pending against included.
+  { id: 'r1-pending-against-included', chain: [{}, PENDING], expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNLO_PROVIDER_DISAGREEMENT'], null] },
+  // R1 — finality-only differences are decided by §3.4, never by the report's DISAGREEMENT.
+  { id: 'r1-safe-walk-differs-only', chain: [{}, { safe: 1005 }], expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_RULES_AUTHORITY_ABSENT'], T0] },
+  { id: 'r1-1rpc-walk-unresolved', chain: [{}, { unsupportedTags: true }], expect: ['UNRESOLVED', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED_SINGLE', ['RNGF_RULES_AUTHORITY_ABSENT'], T0] },
+  { id: 'r1-publicnode-walk-unresolved-1rpc-finalized', chain: [{ unsupportedTags: true }, {}], expect: ['UNRESOLVED', 'ESTABLISHED', 'NOT_ESTABLISHED', ['RNGF_RULES_AUTHORITY_ABSENT'], null] },
+  // R1 — CONFLICT is always FAIL and always recorded: finalized, safe, both providers, or behind an evidence failure.
+  { id: 'r1-both-providers-conflict', chain: [{ finalized: { fork: 1040 } }, { finalized: { fork: 1040 } }], expect: ['FAIL', 'ESTABLISHED', 'CONFLICT', ['RNLO_FINALITY_CONFLICT', 'RNLO_FINALITY_CONFLICT'], null] },
+  // The reader walks safe only when finalized is NOT_REACHED or UNRESOLVED (a finalized IN_ANCESTRY or CONFLICT holds for safe).
+  { id: 'r1-safe-conflict-publicnode-finalized-not-reached', chain: [{ finalized: 1005, safe: { fork: 1040 } }, {}], expect: ['FAIL', 'ESTABLISHED', 'NOT_ESTABLISHED', ['RNLO_FINALITY_CONFLICT'], null] },
+  { id: 'r1-safe-conflict-1rpc-finalized-not-reached', chain: [{}, { finalized: 1005, safe: { fork: 1040 } }], expect: ['FAIL', 'ESTABLISHED', 'PROVIDER_REPORTED_FINALIZED_SINGLE', ['RNLO_FINALITY_CONFLICT'], null] },
+  { id: 'r1-conflict-behind-material-disagreement', chain: [{ finalized: { fork: 1040 } }, DISAGREE_ON_BLOCK], expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNLO_PROVIDER_DISAGREEMENT', 'RNLO_FINALITY_CONFLICT'], null] },
+  // R2 — fixed subject rules: an approved v1 rpc-read intent is refused by both entries.
+  { id: 'r2-operational-refuses-v1-rpc-read', entry: 'operational', inputs: (i) => withPreparation(i, s1Preparation('historical-sepolia-v1')), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null] },
+  { id: 'r2-seam-refuses-v1-rpc-read', inputs: (i) => withPreparation(i, s1Preparation('historical-sepolia-v1')), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null] },
+  { id: 'r2-operational-refuses-synthetic-with-note', entry: 'operational', inputs: (i) => withPreparation(i, s1Preparation('historical-synthetic-with-note')), expect: ['FAIL', 'NOT_EVALUATED', 'NOT_EVALUATED', ['RNGF_SUBJECT_NOT_ELIGIBLE'], null] },
+];
+
 export async function runCase(c) {
   const inputs = c.inputs ? c.inputs(await baseInputs(c.chain)) : await baseInputs(c.chain);
   const { record, digest } = await (c.entry === 'operational' ? verifyGateF(inputs) : verifyGateFHypotheticalStageB(inputs));
@@ -222,9 +257,9 @@ export async function runCase(c) {
 const matches = (record, [disposition, inclusion, finality, codes, timestamp]) => record.disposition === disposition && record.inclusion.status === inclusion
   && record.finality.disposition === finality && JSON.stringify(record.findings.map((f) => f.code)) === JSON.stringify(codes) && record.inclusion.timestamp === timestamp;
 
-export async function build() {
+export async function build(list = CASES) {
   const cases = [];
-  for (const c of CASES) {
+  for (const c of list) {
     const { record, digest } = await runCase(c);
     if (!matches(record, c.expect)) throw new Error(`${c.id}: expected ${JSON.stringify(c.expect)}, got ${JSON.stringify([record.disposition, record.inclusion.status, record.finality.disposition, record.findings.map((f) => f.code), record.inclusion.timestamp])}`);
     // Inputs are regenerated deterministically by this builder; the record names each by digest.
@@ -238,15 +273,24 @@ export async function build() {
   return `${Buffer.from(canonicalBytes(doc)).toString('utf8')}\n`;
 }
 
+export const SETS = [{ path: PATH, cases: CASES }, { path: PATH_SEC01, cases: SEC01_CASES }];
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const text = await build();
-  if (process.argv.includes('--write')) {
-    if (existsSync(PATH)) throw new Error(`${PATH} exists; remove it first to rebuild`);
-    writeFileSync(PATH, text, { flag: 'wx' });
-    console.log(`wrote ${PATH}`);
-  } else {
-    const current = existsSync(PATH) && readFileSync(PATH, 'utf8') === text;
-    console.log(current ? 'gate-F B1 fixtures: current' : 'gate-F B1 fixtures: NOT current');
-    process.exit(current ? 0 : 1);
+  let allCurrent = true;
+  for (const { path, cases } of SETS) {
+    const text = await build(cases);
+    if (process.argv.includes('--write')) {
+      if (existsSync(path)) {
+        console.log(`${path} exists; left unchanged (remove it first to rebuild)`);
+        continue;
+      }
+      writeFileSync(path, text, { flag: 'wx' });
+      console.log(`wrote ${path}`);
+    } else {
+      const current = existsSync(path) && readFileSync(path, 'utf8') === text;
+      allCurrent &&= current;
+      console.log(`${path.slice(path.indexOf('fixtures/'))}: ${current ? 'current' : 'NOT current'}`);
+    }
   }
+  if (!process.argv.includes('--write')) process.exit(allCurrent ? 0 : 1);
 }

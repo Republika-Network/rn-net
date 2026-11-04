@@ -8,14 +8,15 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { canonicalBytes } from '../packages/canonical/src/index.mjs';
 import { statusRecordDigest, submissionRecordDigest } from '../packages/chain-submit/src/index.mjs';
-import { baseInputs, build, CASES, PATH, runCase, SUBMISSION, T0 } from './gate-f/build-gate-f-fixtures.mjs';
+import { baseInputs, build, CASES, PATH, PATH_SEC01, runCase, SEC01_CASES, SETS, SUBMISSION, T0 } from './gate-f/build-gate-f-fixtures.mjs';
 import { verifyGateFHypotheticalStageB } from './gate-f/test-seam.mjs';
 import { checkGateFChain, checkGateFRecord, FINDING_GROUPS, GATE_F_DIGEST_DOMAIN, gateFRecordDigest, verifyGateF } from './gate-f/verify.mjs';
 
 const ROOT = new URL('../', import.meta.url);
 const read = (p) => readFileSync(new URL(p, ROOT), 'utf8');
 const doc = JSON.parse(readFileSync(PATH, 'utf8'));
-const byId = Object.fromEntries(doc.cases.map((c) => [c.id, c.expected]));
+const docSec01 = JSON.parse(readFileSync(PATH_SEC01, 'utf8'));
+const byId = Object.fromEntries([...doc.cases, ...docSec01.cases].map((c) => [c.id, c.expected]));
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const refusedAs = (code) => (e) => e.name === 'GateFError' && e.code === code;
 const SKIP = new Set(['.git', 'node_modules', 'fixtures']);
@@ -28,14 +29,18 @@ const walk = (dir) =>
 const escapeRegExp = (s) => s.replace(/[\\^$.*+?()[\]{}|/-]/g, '\\$&');
 const importers = (target) => walk('./').filter((f) => new RegExp(`^(?:import|export) [^;]* from '[^']*${escapeRegExp(target)}';$`, 'm').test(read(f)));
 
-test('the committed gate-F B1 fixtures are exactly what the builder produces', async () => {
-  assert.equal(readFileSync(PATH, 'utf8'), await build());
+test('the committed gate-F fixtures are exactly what the builder produces; the merged B1 file is unchanged', async () => {
+  for (const { path, cases } of SETS) assert.equal(readFileSync(path, 'utf8'), await build(cases), path);
   assert.equal(doc.cases.length, CASES.length);
-  assert.match(doc.status, /^SYNTHETIC/);
+  assert.equal(docSec01.cases.length, SEC01_CASES.length);
+  for (const d of [doc, docSec01]) assert.match(d.status, /^SYNTHETIC/);
+  // WP4-B1-SEC-01 changed no B1 record: the file merged in #43 (aa44d19), byte for byte.
+  assert.equal(createHash('sha256').update(readFileSync(PATH)).digest('hex'), '3cb728e827788b7d1d9303d1548a5ef1045050f8c63b25e579649c19c8572dad');
+  assert.equal(new Set([...CASES, ...SEC01_CASES].map((c) => c.id)).size, CASES.length + SEC01_CASES.length);
 });
 
 test('every case replays to its recorded record and digest (byte-identical, deterministic)', async () => {
-  for (const c of CASES) {
+  for (const c of [...CASES, ...SEC01_CASES]) {
     const { record, digest } = await runCase(c);
     assert.deepEqual(clone(record), byId[c.id].record, c.id);
     assert.equal(digest, byId[c.id].digest, c.id);
@@ -199,16 +204,114 @@ test('the input set is strict, read once and frozen: unknown members, getters, p
   assert.equal(digest, byId['both-finalized'].digest);
 });
 
-test('the operational entry refuses every subject; only tests and the builder reach the hypothetical Stage B seam', async () => {
+test('R2: the operational entry refuses every subject, and no caller can supply an eligibility rule', async () => {
   const inputs = await baseInputs();
-  const { record } = await verifyGateF(inputs);
-  assert.deepEqual([record.disposition, record.findings[0].code], ['FAIL', 'RNGF_SUBJECT_NOT_ELIGIBLE']);
+  const { record, digest } = await verifyGateF(inputs);
+  assert.deepEqual([record.disposition, record.findings.map((f) => f.code)], ['FAIL', ['RNGF_SUBJECT_NOT_ELIGIBLE']]);
+  // Extra arguments (a callback, a policy object, a mode name) are ignored: the rule is fixed.
+  for (const extra of [() => true, { eligible: () => true }, 'TEST', { id: 'test-hypothetical-stage-b', eligible: () => true }]) {
+    assert.equal((await verifyGateF(inputs, extra)).digest, digest);
+  }
+  // The same synthetic subject the seam accepts is refused operationally, and so are v1 rpc-read and synthetic-with-note intents.
+  for (const id of ['operational-refuses-every-subject', 'r2-operational-refuses-v1-rpc-read', 'r2-operational-refuses-synthetic-with-note']) {
+    assert.deepEqual(byId[id].record.findings.map((f) => f.code), ['RNGF_SUBJECT_NOT_ELIGIBLE'], id);
+  }
+  // The seam's fixed rule accepts the synthetic preparation only: a v1 rpc-read intent is refused there too.
+  assert.deepEqual(byId['r2-seam-refuses-v1-rpc-read'].record.findings.map((f) => f.code), ['RNGF_SUBJECT_NOT_ELIGIBLE']);
+  assert.notEqual(byId['r2-seam-refuses-v1-rpc-read'].record.subject.commitment, null); // a valid approved intent, not eligible
+});
+
+test('R2: core.mjs exports no evaluator that takes a rule; the seam and builder are pinned by the guard and here', () => {
+  const core = read('tools/gate-f/core.mjs');
+  const exported = [...core.matchAll(/^export (?:async )?(?:function|const|class|let) (\w+)(\([^)]*\))?/gm)].map((m) => [m[1], m[2] ?? null]);
+  assert.deepEqual(exported, [['GATE_F_INPUTS', null], ['evaluateGateFOperational', '(inputs)'], ['evaluateGateFTestStandIn', '(inputs)']]);
+  assert.doesNotMatch(core, /^export (?:default|\{|\*)/m);
+  for (const gone of ['OPERATIONAL_SUBJECT_POLICY', 'evaluateGateF(', 'policy.eligible']) assert.ok(!core.includes(gone), gone);
+  assert.match(read('tools/gate-f/verify.mjs'), /^import \{ evaluateGateFOperational \} from '\.\/core\.mjs';$/m);
+  assert.doesNotMatch(read('tools/gate-f/verify.mjs'), /TestStandIn|test-seam/);
+  assert.match(read('tools/gate-f/test-seam.mjs'), /^import \{ evaluateGateFTestStandIn \} from '\.\/core\.mjs';$/m);
+  // Importers in the tree: exactly the allowed ones.
   assert.deepEqual(importers('test-seam.mjs').sort(), ['tools/gate-f.test.mjs', 'tools/gate-f/build-gate-f-fixtures.mjs']);
+  assert.deepEqual(importers('build-gate-f-fixtures.mjs'), ['tools/gate-f.test.mjs']);
   assert.deepEqual(importers('gate-f/core.mjs'), []);
   assert.deepEqual(walk('./').filter((f) => /from '\.\/core\.mjs';$/m.test(read(f))).sort(), ['tools/gate-f/test-seam.mjs', 'tools/gate-f/verify.mjs']);
-  assert.doesNotMatch(read('tools/gate-f/verify.mjs'), /test-seam/);
+  // The repository guard enforces the same pins (dependency-boundaries GATE_F_RESTRICTED).
+  const guard = read('tools/guards/dependency-boundaries.mjs');
+  for (const rule of ['gate-f-${id}-importer-not-allowed', 'gate-f-computed-import']) assert.ok(guard.includes(rule), rule);
   // Nothing operational uses gate F yet.
-  for (const f of walk('./').filter((p) => /^(tools\/(prepare|submit|rehearsal|keytool|compat-live)\/|signer\/|txverify\/src\/)/.test(p))) assert.doesNotMatch(read(f), /gate-f/, f);
+  for (const f of walk('./').filter((p) => /^(tools\/(prepare|submit|rehearsal|keytool|compat-live|broadcast|signing)\/|signer\/|txverify\/src\/|packages\/)/.test(p))) assert.doesNotMatch(read(f), /gate-f/, f);
+});
+
+test('R1: the provider comparison table (spec §3.3.1)', () => {
+  const look = (id) => {
+    const r = byId[id].record;
+    return [r.disposition, r.finality.disposition, r.findings.map((f) => f.code)];
+  };
+  // D2 contradicted missing observation (both directions) and D3 material difference: FAIL.
+  for (const id of ['one-provider-not-found', 'r1-publicnode-not-found-1rpc-observed', 'providers-disagree-on-block', 'r1-pending-against-included']) {
+    assert.deepEqual(look(id), ['FAIL', 'NOT_EVALUATED', ['RNLO_PROVIDER_DISAGREEMENT']], id);
+  }
+  // D4 no observation and D5 uncontradicted missing observation: never a disagreement.
+  assert.deepEqual(look('r1-both-unavailable'), ['UNRESOLVED', 'NOT_ESTABLISHED', []]);
+  assert.deepEqual(look('r1-not-found-and-unavailable'), ['UNRESOLVED', 'NOT_ESTABLISHED', []]);
+  assert.deepEqual(byId['r1-publicnode-unavailable-1rpc-finalized'].record.finality.perProvider.map((p) => p.result), ['NOT_OBSERVED', 'IN_ANCESTRY']);
+  assert.deepEqual(look('r1-publicnode-unavailable-1rpc-finalized'), ['UNRESOLVED', 'NOT_ESTABLISHED', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  assert.deepEqual(look('1rpc-unavailable'), ['UNRESOLVED', 'PROVIDER_REPORTED_FINALIZED_SINGLE', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  // D8 finality-only differences and D9 unresolved walks: decided by §3.4, never an evidence FAIL.
+  assert.deepEqual(look('r1-safe-walk-differs-only'), ['UNRESOLVED', 'PROVIDER_REPORTED_FINALIZED', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  assert.deepEqual(look('1rpc-not-reached'), ['UNRESOLVED', 'PROVIDER_REPORTED_FINALIZED_SINGLE', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  assert.deepEqual(look('r1-1rpc-walk-unresolved'), ['UNRESOLVED', 'PROVIDER_REPORTED_FINALIZED_SINGLE', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  assert.deepEqual(look('publicnode-not-reached-1rpc-finalized'), ['UNRESOLVED', 'NOT_ESTABLISHED', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  assert.deepEqual(look('r1-publicnode-walk-unresolved-1rpc-finalized'), ['UNRESOLVED', 'NOT_ESTABLISHED', ['RNGF_RULES_AUTHORITY_ABSENT']]);
+  // D6 / D7: every CONFLICT is FAIL and recorded, on either tag, either provider, or behind an evidence failure.
+  assert.deepEqual(look('r1-both-providers-conflict'), ['FAIL', 'CONFLICT', ['RNLO_FINALITY_CONFLICT', 'RNLO_FINALITY_CONFLICT']]);
+  assert.deepEqual(look('r1-safe-conflict-publicnode-finalized-not-reached'), ['FAIL', 'NOT_ESTABLISHED', ['RNLO_FINALITY_CONFLICT']]);
+  assert.deepEqual(look('r1-safe-conflict-1rpc-finalized-not-reached'), ['FAIL', 'PROVIDER_REPORTED_FINALIZED_SINGLE', ['RNLO_FINALITY_CONFLICT']]);
+  assert.deepEqual(look('r1-conflict-behind-material-disagreement'), ['FAIL', 'NOT_EVALUATED', ['RNLO_PROVIDER_DISAGREEMENT', 'RNLO_FINALITY_CONFLICT']]);
+  assert.deepEqual(byId['r1-safe-conflict-1rpc-finalized-not-reached'].record.findings[0], { code: 'RNLO_FINALITY_CONFLICT', group: 'finality', subject: 'sepolia-1rpc' });
+  // Across every recorded case: a CONFLICT anywhere is FAIL; two-provider finality needs both IN_ANCESTRY;
+  // SINGLE needs PublicNode IN_ANCESTRY and is never two-provider.
+  for (const [id, { record: r }] of Object.entries(byId)) {
+    const results = r.finality.perProvider.map((p) => p.result);
+    if (r.findings.some((f) => f.code === 'RNLO_FINALITY_CONFLICT') || r.finality.disposition === 'CONFLICT') assert.equal(r.disposition, 'FAIL', id);
+    if (r.finality.disposition === 'PROVIDER_REPORTED_FINALIZED') assert.deepEqual(results, ['IN_ANCESTRY', 'IN_ANCESTRY'], id);
+    if (r.finality.disposition === 'PROVIDER_REPORTED_FINALIZED_SINGLE') assert.ok(results[0] === 'IN_ANCESTRY' && results[1] !== 'IN_ANCESTRY' && results[1] !== 'CONFLICT', id);
+  }
+});
+
+test('R1: a second replay attributed to another provider, or not matching the report, is refused', async () => {
+  // The providers' readings differ (1RPC's finalized head is below the block), so moving each
+  // provider's exchanges to the other provider moves evidence between them.
+  const inputs = await baseInputs([{}, { finalized: 1005 }]);
+  assert.equal((await verifyGateFHypotheticalStageB(inputs)).record.finality.disposition, 'PROVIDER_REPORTED_FINALIZED_SINGLE');
+  const swapped = clone(inputs);
+  swapped.capture.exchanges = swapped.capture.exchanges.map((e) => ({ ...e, providerId: e.providerId === 'sepolia-1rpc' ? 'sepolia-publicnode' : 'sepolia-1rpc' }));
+  const { record } = await verifyGateFHypotheticalStageB(swapped);
+  assert.equal(record.disposition, 'FAIL');
+  assert.equal(record.findings[0].group, 'evidence');
+  assert.ok(['RNLO_REPLAY_MISMATCH', 'RNGF_EVIDENCE_INVALID'].includes(record.findings[0].code), record.findings[0].code);
+  assert.equal(record.finality.disposition, 'NOT_EVALUATED');
+});
+
+test('R3: exactly the ten finding groups of spec §5; any other group is refused', () => {
+  const spec = read('spec/rnnet.gate-f-sepolia-verification.v1.md');
+  const section = spec.slice(spec.indexOf('The finding groups are recorded separately'), spec.indexOf('`findings[].group` is exactly one of these'));
+  const listed = [...section.matchAll(/^- `(\w+)`/gm)].map((m) => m[1]);
+  assert.deepEqual(listed, [...FINDING_GROUPS]);
+  assert.equal(FINDING_GROUPS.length, 10);
+  assert.match(spec, /`findings\[\]\.group` is exactly one of these ten names\./);
+  assert.ok(!/eleven/.test(spec) && !/eleven/.test(read('tools/gate-f/record.mjs')));
+  const good = byId['both-finalized'].record;
+  for (const group of ['other', 'gas', 'Gas', 'GASRECORD', 'gasrecord', 'stageB', 'provider', 'status', 'preliminary', '', ' chain', 'chain ', 'finality\u0000', null, 1, ['chain'], { group: 'chain' }]) {
+    const r = clone(good);
+    r.findings[0].group = group;
+    assert.throws(() => checkGateFRecord(r), refusedAs('RNGF_EVIDENCE_INVALID'), JSON.stringify(group));
+  }
+  for (const group of FINDING_GROUPS) {
+    const r = clone(good);
+    r.findings[0].group = group;
+    checkGateFRecord(r);
+  }
 });
 
 test('the gate-F files are pure: fixed imports, no network, clock, environment, subprocess, key or write path', () => {

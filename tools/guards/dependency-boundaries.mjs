@@ -256,6 +256,23 @@ export const COMPAT_LIVE_NETWORK_FILES = ['tools/compat-live/compat-live.mjs', C
 export const WRITE_TRANSPORT_JOINERS = [];
 // Files outside packages/ that may import packages/chain-submit.
 // RN-NET-03B2-C3 adds tools/rehearsal/ (the offline rehearsal, which no network file may reach).
+// Durable gate F (tools/gate-f/; RN-NET-03B2-WP4-B1-SEC-01 R2). core.mjs exports the operational
+// evaluator (no subject is eligible) and, beside it, a TEST-ONLY evaluator whose fixed rule accepts
+// a synthetic-preparation intent as a stand-in for a hypothetical Stage B subject. JavaScript cannot
+// hide one export of a file from an importer, so this rule pins who may reach each file:
+//   - by import: a relative specifier resolving to the file, from anywhere outside packages/
+//     (packages/, signer/ and txverify/ have their own import allowlists, which exclude tools/);
+//   - by raw text: any code file naming it (GATE_F_TEXT_READERS may also name it, without being
+//     allowed to import it; the import check still applies to them);
+//   - inside tools/gate-f/, a computed import() is refused outright, so no path is assembled at run time.
+export const GATE_F_RESTRICTED = Object.freeze({
+  core: { file: 'tools/gate-f/core.mjs', text: /gate-f\/core\b/, importers: ['tools/gate-f/verify.mjs', 'tools/gate-f/test-seam.mjs'] },
+  'test-seam': { file: 'tools/gate-f/test-seam.mjs', text: /test-seam/, importers: ['tools/gate-f.test.mjs', 'tools/gate-f/build-gate-f-fixtures.mjs'] },
+  'fixture-builder': { file: 'tools/gate-f/build-gate-f-fixtures.mjs', text: /build-gate-f-fixtures/, importers: ['tools/gate-f.test.mjs'] },
+});
+// The gate-F test reads these files' text to check their imports; it does not import core.mjs.
+export const GATE_F_TEXT_READERS = ['tools/gate-f.test.mjs'];
+
 export const CHAIN_SUBMIT_IMPORTERS = /^(?:tools\/submit\/[^/]+\.mjs|tools\/broadcast\/[^/]+\.mjs|tools\/rehearsal\/[^/]+\.mjs|tools\/[^/]+\.test\.mjs|txverify\/test\/[^/]+\.test\.mjs)$/;
 // Manifest fields that change what npm installs or links, beyond the dependency lists.
 const MANIFEST_FIELDS_NOT_ALLOWED = ['overrides', 'workspaces', 'bundleDependencies', 'bundledDependencies'];
@@ -539,6 +556,7 @@ export function check(files, options = {}) {
     if (!path.startsWith('packages/') && /\.(mjs|js|cjs|mts|cts|ts)$/.test(path) && content !== null) {
       checkToolsSignerImports(path, content, add);
       checkWriteTransportJoin(path, content, add);
+      checkGateFImports(path, content, add);
       if (path.startsWith(SUBMIT_TOOLS)) checkSubmitTools(path, content, add);
       if (path.startsWith(PREPARE_TOOLS)) checkPrepareTools(path, content, add);
       if (path.startsWith('tools/')) continue;
@@ -986,6 +1004,19 @@ function checkToolsSignerImports(path, content, add) {
     // A specifier the guard cannot resolve exactly (percent-encoding, backslashes) is reported
     // only if it could name signer/; the guard's own tests use such specifiers as test data.
     else if (target === null && /signer/i.test(safeDecode(specifier))) add(path, 'signer-importer-not-allowed');
+  }
+}
+
+// Only the listed files may reach the gate-F core, its test seam and its fixture builder (GATE_F_RESTRICTED).
+function checkGateFImports(path, content, add) {
+  if (SIGNER_IMPORT_TEST_DATA.includes(path) || path === 'tools/guards/dependency-boundaries.mjs') return;
+  if (path.startsWith('tools/gate-f/') && FORBIDDEN_CONSTRUCTS.find((c) => c.id === 'dynamic-import-non-literal').pattern.test(content)) add(path, 'gate-f-computed-import');
+  const specifiers = [...new Set(rawImportsOf(content))];
+  for (const [id, { file, text, importers }] of Object.entries(GATE_F_RESTRICTED)) {
+    if (path === file || importers.includes(path)) continue;
+    const imported = specifiers.some((sp) => resolve(path, sp) === file || (resolve(path, sp) === null && text.test(safeDecode(sp))));
+    const named = !GATE_F_TEXT_READERS.includes(path) && text.test(content);
+    if (imported || named) add(path, `gate-f-${id}-importer-not-allowed`);
   }
 }
 

@@ -7,12 +7,12 @@
 //
 // No command line, no I/O, no network, no clock, no key. It reports evidence and findings only:
 // it approves, signs, submits and publishes nothing.
-import { evaluateGateF, OPERATIONAL_SUBJECT_POLICY } from './core.mjs';
+import { evaluateGateFOperational } from './core.mjs';
 
 export { GATE_F_INPUTS } from './core.mjs';
 export { checkGateFChain, checkGateFRecord, FINDING_GROUPS, GATE_F_DIGEST_DOMAIN, GATE_F_PROVIDERS, GATE_F_RECORD_FORMAT, GATE_F_RULES, gateFRecordDigest, GateFError, SUPERSESSION_REASONS } from './record.mjs';
 
 /** Verifies one gate-F input set (spec §2) and returns { record, digest }. Throws GateFError for an unusable set. */
 export function verifyGateF(inputs) {
-  return evaluateGateF(inputs, OPERATIONAL_SUBJECT_POLICY);
+  return evaluateGateFOperational(inputs);
 }

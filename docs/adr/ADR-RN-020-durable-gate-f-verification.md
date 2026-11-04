@@ -197,7 +197,7 @@ There is no `VERIFIED` and no `CHAIN_PROVEN`. Publication stays H10 and C5.
 | # | Threat | Control (stage) | Expected result | Residual |
 |---|---|---|---|---|
 | T1 | A provider fabricates receipt fields | Both providers read. Cross-provider agreement on material and `gasUsed`. Receipt-to-transaction and block consistency (anchor A9, A10). Field binding to the signed bytes (V5) | `RNLO_PROVIDER_DISAGREEMENT`, `RNAE_RECEIPT_MISMATCH`, or binding / evidence `FAIL` | Two colluding providers can agree on a fabrication. ADR-RN-015: `CLAIMED`, not proof |
-| T2 | The providers disagree on inclusion | Disagreement is never averaged (ADR-RN-019 §8) | `FAIL` (disagreement), or `UNRESOLVED` | — |
+| T2 | The providers disagree on inclusion | Disagreement is never averaged (ADR-RN-019 §8). The spec's provider comparison table (§3.3.1) separates material, missing-observation, finality-only, `CONFLICT` and unresolved-walk cases | `FAIL` (material or contradicted), `FAIL` (any `CONFLICT`), or `UNRESOLVED` (finality-only, unresolved, uncontradicted missing) | — |
 | T3 | An orphaned or replaced block | Walk from `finalized` with every link checked (V2) | `CONFLICT`, so `FAIL`; or `NOT_REACHED`, so `UNRESOLVED` | Reorganization after finality on a permissioned testnet (ADR-RN-015) |
 | T4 | A receipt belongs to another transaction | `receipt.transactionHash` = the hash = keccak of the signed bytes (A9, V5) | binding `FAIL` | — |
 | T5 | `gasUsed` disagrees with the reviewed calculation | G10 | `GAS_ACCOUNTING_MISMATCH` (recorded; inclusion unaffected) | Cause not determined (rule, code state, provider) |

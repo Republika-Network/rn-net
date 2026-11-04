@@ -90,11 +90,51 @@ that may coexist.
    (`RNGF_EVIDENCE_INVALID`).
 2. The capture names the two reviewed Sepolia providers (`sepolia-publicnode`, `sepolia-1rpc`)
    and the transaction hash of §3.2.
-3. The I7 outcome and agreement:
-   - `RNLO_PROVIDER_DISAGREEMENT` or an `INCONSISTENT` provider is `FAIL`, here;
+3. The I7 outcome and agreement are classified by the provider comparison table (§3.3.1), not
+   by the report's `agreement` label alone:
+   - a material disagreement, a contradicted missing observation, or an `INCONSISTENT`,
+     `WRONG_NETWORK` or `INVALID_RESPONSE` provider is `FAIL`, here;
+   - a difference in finality only is **not** cut off here. §3.4 decides it;
    - `RNLO_FINALITY_CONFLICT` is **not** cut off here. §3.4 records each provider's `CONFLICT`
      before the `FAIL`, so the record preserves it;
    - `INDETERMINATE` is `UNRESOLVED`.
+
+#### 3.3.1 Provider comparison (WP4-B1-SEC-01 R1)
+
+The live report compares each provider's **material** (live-observation-report §7.2; the
+reader's `material`):
+- the transaction hash, `blockHash`, `blockNumber`, `transactionIndex`, `input`, `from`, `to`;
+- the receipt `status`;
+- the `finality` walk results (`finalized`, `safe`).
+
+Any difference, finality included, makes the report `DISAGREEMENT`. Gate F classifies the
+difference instead. The rows are checked in order, and the first row that matches decides:
+
+| # | Readings | Class | Result |
+|---|---|---|---|
+| D1 | A provider's outcome is `INCONSISTENT`, `WRONG_NETWORK` or `INVALID_RESPONSE`, or an outcome the report cannot give | malformed evidence | its code (or `RNGF_EVIDENCE_INVALID`), `FAIL` (§3.3) |
+| D2 | One provider `OBSERVED`, another `NOT_FOUND` | **contradicted missing observation** | `RNLO_PROVIDER_DISAGREEMENT`, `FAIL` (§3.3) |
+| D3 | Two `OBSERVED` providers whose material differs **once `finality` is removed**. This includes one pending and one included | **material evidence failure** | `RNLO_PROVIDER_DISAGREEMENT`, `FAIL` (§3.3) |
+| D4 | No provider `OBSERVED` (both `NOT_FOUND`, both `UNAVAILABLE`, or one of each) | no observation | inclusion `NOT_ESTABLISHED`, finality `NOT_ESTABLISHED`, `UNRESOLVED` (§3.4) |
+| D5 | One provider `OBSERVED`, another `UNAVAILABLE` | **uncontradicted missing observation** | not a disagreement. The unavailable provider is `NOT_OBSERVED`, and the §3.4 table decides |
+| D6 | Any observed provider's `finalized` walk is `CONFLICT` | **finality `CONFLICT`** | `finality.disposition` `CONFLICT`, recorded per provider, `RNLO_FINALITY_CONFLICT`, `FAIL` (§3.4) |
+| D7 | Any observed provider's `safe` walk is `CONFLICT` (its `finalized` walk is not) | **finality `CONFLICT`** (ADR-RN-015 §3: another block at that height fails) | `RNLO_FINALITY_CONFLICT` on that provider (group `finality`), `FAIL`. `finality.disposition` stays the §3.4 table's, because `perProvider` holds the `finalized` walk. Verification ends |
+| D8 | Material equal once `finality` is removed; walk results differ, with no `CONFLICT` (`IN_ANCESTRY`, `NOT_REACHED`, `UNRESOLVED` in any combination) | **finality-only difference** | not an evidence failure. The §3.4 table decides: `PROVIDER_REPORTED_FINALIZED_SINGLE` when PublicNode is `IN_ANCESTRY`, otherwise `NOT_ESTABLISHED` (both `UNRESOLVED`) |
+| D9 | Any walk `UNRESOLVED` or `NOT_REACHED` | **unresolved walk** | never a disagreement and never inferred. It is a §3.4 row like any other non-`IN_ANCESTRY` result |
+
+- **`CONFLICT` is always `FAIL`,** in every row. When D1–D3 end verification first, every
+  `CONFLICT` the report shows is still recorded as an `RNLO_FINALITY_CONFLICT` finding (group
+  `finality`, with `finality` `NOT_EVALUATED`). A `CONFLICT` is never hidden, averaged or
+  downgraded.
+- **Two-provider finality is never inferred** from one provider. `PROVIDER_REPORTED_FINALIZED`
+  needs both `IN_ANCESTRY`. `PROVIDER_REPORTED_FINALIZED_SINGLE` stays labelled single-provider
+  (U1).
+- **These rules change neither ADR-RN-015 nor the reader.** The reader's walk, its 256-step limit
+  and its rule that a `finalized` `IN_ANCESTRY` or `CONFLICT` also holds for `safe` are unchanged.
+  Gate F only reads them.
+- **The second replay is bound to the report.** Each observed provider's re-read observation and
+  material must have the digests the report records for that provider. Otherwise the result is
+  `RNGF_EVIDENCE_INVALID`.
 
 ### 3.4 Inclusion and finality (ADR-RN-015 §3; ADR-RN-019 §8)
 - **Inclusion,** per provider: the block exists, matches the transaction's `blockHash` and
@@ -113,7 +153,8 @@ that may coexist.
   | not `IN_ANCESTRY` | any non-conflict | `NOT_ESTABLISHED` (`UNRESOLVED`) |
 
   The rows are checked in order, and **any `CONFLICT` takes precedence**. It is recorded per
-  provider in `perProvider`. A `CONFLICT` is **never** mapped to `UNRESOLVED`,
+  provider in `perProvider`. A `safe`-walk `CONFLICT` is recorded and fails the same way (§3.3.1
+  D7). A `CONFLICT` is **never** mapped to `UNRESOLVED`,
   `NOT_ESTABLISHED` or `PROVIDER_REPORTED_FINALIZED_SINGLE`. Like any failure in steps 1–4,
   verification then ends. `inclusion` and `finality` are recorded as observed, and every gas
   state is `NOT_EVALUATED`.
@@ -217,7 +258,7 @@ The finding groups are recorded separately and can coexist:
 - `review`;
 - `chain` (the append-only chain of §6.3).
 
-`findings[].group` is exactly one of these eleven names.
+`findings[].group` is exactly one of these ten names. No other group exists (WP4-B1-SEC-01 R3).
 
 **Precedence of the overall `disposition`** (first match wins):
 
